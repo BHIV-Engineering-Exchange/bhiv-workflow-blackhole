@@ -10,6 +10,15 @@ const auth = require('../middleware/auth');
 const adminAuth = require('../middleware/adminAuth');
 const { forceSyncAttendanceRange } = require('../services/attendanceCronJobs');
 
+// Helper to get branch filter from request headers
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
 // ========================================
 // 1. GET LIVE ATTENDANCE WITH LOCATIONS AND AIMS
 // ========================================
@@ -43,23 +52,25 @@ router.get('/locations', auth, adminAuth, async (req, res) => {
   try {
     const { date, department } = req.query;
     const { startOfDay, endOfDay, targetDate } = getDayRange(date);
+    const branchQuery = getBranchQuery(req);
 
     console.log('📅 Fetching attendance for date:', {
       requestedDate: date,
       targetDate: targetDate.toISOString(),
       startOfDay: startOfDay.toISOString(),
-      endOfDay: endOfDay.toISOString()
+      endOfDay: endOfDay.toISOString(),
+      branch: branchQuery.branch || 'all'
     });
 
-    // Build query
-    let userQuery = { stillExist: 1 }; // Only active employees
+    // Build query - FILTERED BY BRANCH
+    let userQuery = { stillExist: 1, ...branchQuery }; // Only active employees in selected branch
     if (department && department !== 'all') {
       userQuery.department = department;
     }
 
-    // Get all active users with department info
+    // Get all active users with department info - FILTERED BY BRANCH
     const allUsers = await User.find(userQuery)
-      .select('_id name email avatar department employeeId role')
+      .select('_id name email avatar department employeeId role branch')
       .populate('department', 'name color')
       .lean();
 
@@ -240,18 +251,28 @@ router.get('/start-time-summary', auth, adminAuth, async (req, res) => {
   try {
     const { date, department } = req.query;
     const { startOfDay, endOfDay, targetDate } = getDayRange(date);
+    const branchQuery = getBranchQuery(req);
 
-    // Build match condition for attendance
+    // Get users in selected branch first - for filtering
+    const userQuery = { stillExist: 1, ...branchQuery };
+    if (department && department !== 'all') {
+      userQuery.department = department;
+    }
+    const branchUsers = await User.find(userQuery).select('_id').lean();
+    const branchUserIds = branchUsers.map(u => u._id);
+
+    // Build match condition for attendance - FILTERED BY BRANCH
     const matchCondition = {
       date: { $gte: startOfDay, $lte: endOfDay },
-      startDayTime: { $exists: true, $ne: null }
+      startDayTime: { $exists: true, $ne: null },
+      user: { $in: branchUserIds }
     };
 
     // Get all start-day records with user details
     let startDayRecords = await DailyAttendance.find(matchCondition)
       .populate({
         path: 'user',
-        select: 'name email avatar department employeeId',
+        select: 'name email avatar department employeeId branch',
         populate: {
           path: 'department',
           select: 'name color'
@@ -260,14 +281,15 @@ router.get('/start-time-summary', auth, adminAuth, async (req, res) => {
       .sort({ startDayTime: 1 })
       .lean();
 
-    // Get AIMS records for employees who haven't started day
+    // Get AIMS records for employees who haven't started day - FILTERED BY BRANCH
     const aimsRecords = await Aim.find({
       date: { $gte: startOfDay, $lte: endOfDay },
-      aims: { $ne: 'Daily work objectives - to be updated' }
+      aims: { $ne: 'Daily work objectives - to be updated' },
+      user: { $in: branchUserIds }
     })
       .populate({
         path: 'user',
-        select: 'name email avatar department employeeId',
+        select: 'name email avatar department employeeId branch',
         populate: {
           path: 'department',
           select: 'name color'
@@ -388,15 +410,16 @@ router.get('/attendance-tracking', auth, adminAuth, async (req, res) => {
   try {
     const { date, department, status } = req.query;
     const { startOfDay, endOfDay, targetDate } = getDayRange(date);
+    const branchQuery = getBranchQuery(req);
 
-    // Get all active users
-    let userQuery = { stillExist: 1 };
+    // Get all active users - FILTERED BY BRANCH
+    let userQuery = { stillExist: 1, ...branchQuery };
     if (department && department !== 'all') {
       userQuery.department = department;
     }
 
     const allUsers = await User.find(userQuery)
-      .select('_id name email avatar department employeeId role')
+      .select('_id name email avatar department employeeId role branch')
       .populate('department', 'name color')
       .lean();
 
@@ -576,16 +599,17 @@ router.get('/dashboard-data', auth, adminAuth, async (req, res) => {
   try {
     const { date, department } = req.query;
     const { startOfDay, endOfDay, targetDate } = getDayRange(date);
+    const branchQuery = getBranchQuery(req);
 
-    // Build user query
-    let userQuery = { stillExist: 1 };
+    // Build user query - FILTERED BY BRANCH
+    let userQuery = { stillExist: 1, ...branchQuery };
     if (department && department !== 'all') {
       userQuery.department = department;
     }
 
-    // Get all users
+    // Get all users - FILTERED BY BRANCH
     const allUsers = await User.find(userQuery)
-      .select('_id name email avatar department employeeId role')
+      .select('_id name email avatar department employeeId role branch')
       .populate('department', 'name color')
       .lean();
 
@@ -758,21 +782,31 @@ router.get('/export/start-times', auth, adminAuth, async (req, res) => {
   try {
     const { date, department } = req.query;
     const targetDate = date ? new Date(date) : new Date();
+    const branchQuery = getBranchQuery(req);
     
     const startOfDay = new Date(targetDate);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
 
+    // Get users in selected branch - for filtering
+    const userQuery = { stillExist: 1, ...branchQuery };
+    if (department && department !== 'all') {
+      userQuery.department = department;
+    }
+    const branchUsers = await User.find(userQuery).select('_id').lean();
+    const branchUserIds = branchUsers.map(u => u._id);
+
     const matchCondition = {
       date: { $gte: startOfDay, $lte: endOfDay },
-      startDayTime: { $exists: true, $ne: null }
+      startDayTime: { $exists: true, $ne: null },
+      user: { $in: branchUserIds }
     };
 
     let records = await DailyAttendance.find(matchCondition)
       .populate({
         path: 'user',
-        select: 'name email employeeId department',
+        select: 'name email employeeId department branch',
         populate: { path: 'department', select: 'name' }
       })
       .sort({ startDayTime: 1 })
