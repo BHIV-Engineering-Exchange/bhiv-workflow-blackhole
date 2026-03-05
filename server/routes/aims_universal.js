@@ -269,8 +269,7 @@ router.get("/with-progress", auth, async (req, res) => {
         return res.json({
           success: true,
           data: []
-          });
-        }
+        });
       }
       if (user) aimFilter.user = user;
       console.log('👑 Admin user - applying filters:', { department, user });
