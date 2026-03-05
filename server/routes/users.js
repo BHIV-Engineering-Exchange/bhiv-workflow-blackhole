@@ -7,10 +7,20 @@ const auth = require("../middleware/auth")
 const adminAuth = require("../middleware/adminAuth")
 const auditLogService = require('../services/auditLogService');
 
+// Helper to get branch filter from request
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
 // Search users - SHOW ALL ACTIVE USERS (for selection in dropdowns)
 router.get("/search", async (req, res) => {
   try {
     const { q } = req.query;
+    const branchQuery = getBranchQuery(req);
 
     if (!q || q.trim().length === 0) {
       return res.json([]);
@@ -19,6 +29,7 @@ router.get("/search", async (req, res) => {
     const searchQuery = {
       $and: [
         { stillExist: 1 }, // Only show active users
+        branchQuery, // Filter by branch
         {
           $or: [
             { name: { $regex: q, $options: 'i' } },
@@ -88,9 +99,10 @@ router.get("/search", async (req, res) => {
 router.get("/", async (req, res) => {
   try {
     const { includeExited } = req.query;
+    const branchQuery = getBranchQuery(req);
     
-    // Build filter - show all active users
-    const filter = {};
+    // Build filter - show all active users filtered by branch
+    const filter = { ...branchQuery };
     if (!includeExited || includeExited !== 'true') {
       filter.stillExist = 1;
     }

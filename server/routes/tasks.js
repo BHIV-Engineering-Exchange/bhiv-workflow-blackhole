@@ -7,6 +7,15 @@ const multer = require("multer")
 const { uploadToCloudinary } = require("../utils/cloudinary")
 const Notification = require("../models/Notification")
 
+// Helper to get branch filter from request
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
 // Configure multer for memory storage
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -54,9 +63,11 @@ const upload = multer({
 router.get("/overdue", auth, async (req, res) => {
   try {
     const now = new Date()
+    const branchQuery = getBranchQuery(req);
     
     // Find tasks that are overdue (dueDate < now) and not completed
     const tasks = await Task.find({
+      ...branchQuery,
       dueDate: { $lt: now },
       status: { $ne: "Completed" }
     })
@@ -113,9 +124,10 @@ router.get("/overdue", auth, async (req, res) => {
 router.get("/", auth, async (req, res) => {
   try {
     const { department, status, dueDate, priority } = req.query
+    const branchQuery = getBranchQuery(req);
 
-    // Build filter object
-    const filter = {}
+    // Build filter object with branch filter
+    const filter = { ...branchQuery }
     if (department) filter.department = department
     if (status) filter.status = status
     if (priority) filter.priority = priority
@@ -254,7 +266,8 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       fileType = req.file.mimetype;
     }
 
-    // Create task
+    // Create task with branch from header
+    const selectedBranch = req.headers['x-branch'] || req.query.branch || 'blackhole_mumbai';
     const task = new Task({
       title,
       description,
@@ -268,6 +281,7 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       createdBy: user || req.user.id,
       notes,
       fileType,
+      branch: selectedBranch,
     });
     const savedTask = await task.save();
 

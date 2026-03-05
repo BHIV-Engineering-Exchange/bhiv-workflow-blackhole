@@ -17,9 +17,6 @@ export function BranchSwitcher() {
   const { user } = useAuth()
   const { selectedBranch, setSelectedBranch, branches, loading } = useBranch()
 
-  // Debug: log branches count
-  console.log("BranchSwitcher - branches:", branches.length, branches.map(b => b.code))
-
   // Only show for admin users
   if (user?.role !== "Admin") {
     return null

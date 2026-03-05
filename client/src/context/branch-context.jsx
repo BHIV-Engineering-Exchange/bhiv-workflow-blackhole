@@ -17,11 +17,8 @@ export function BranchProvider({ children }) {
   useEffect(() => {
     const fetchBranches = async () => {
       try {
-        console.log("BranchContext - Fetching branches...")
         const response = await api.branches.getAll()
-        console.log("BranchContext - API response:", response)
         const data = response.success ? response.data : response
-        console.log("BranchContext - Branches data:", data)
         setBranches(Array.isArray(data) ? data : [])
       } catch (error) {
         console.error("Error fetching branches:", error)

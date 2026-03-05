@@ -7,6 +7,15 @@ const Notification = require('../models/Notification');
 const auth = require('../middleware/auth');
 const adminAuth = require('../middleware/adminAuth');
 
+// Helper to get branch filter from request
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
 // Submit leave request
 router.post('/request', auth, async (req, res) => {
   try {
@@ -62,7 +71,8 @@ router.post('/request', auth, async (req, res) => {
       });
     }
 
-    // Create leave request
+    // Create leave request with branch from header
+    const selectedBranch = req.headers['x-branch'] || req.query.branch || req.user.branch || 'blackhole_mumbai';
     const leaveRequest = new Leave({
       user: req.user.id,
       startDate: start,
@@ -72,7 +82,8 @@ router.post('/request', auth, async (req, res) => {
       isHalfDay: isHalfDay || false,
       emergencyContact,
       handoverNotes,
-      priority: priority || 'Medium'
+      priority: priority || 'Medium',
+      branch: selectedBranch
     });
 
     await leaveRequest.save();
@@ -185,20 +196,22 @@ router.get('/pending', auth, async (req, res) => {
     }
 
     const { department, priority, page = 1, limit = 20 } = req.query;
+    const branchQuery = getBranchQuery(req);
 
-    // Build filter
-    const filter = { status: 'Pending' };
+    // Build filter with branch
+    const filter = { status: 'Pending', ...branchQuery };
 
     // If manager, only show requests from their department
     if (req.user.role === 'Manager' && req.user.department) {
       const departmentUsers = await User.find({ 
-        department: req.user.department 
+        department: req.user.department,
+        ...branchQuery 
       }).select('_id');
       filter.user = { $in: departmentUsers.map(u => u._id) };
     }
 
     if (department) {
-      const departmentUsers = await User.find({ department }).select('_id');
+      const departmentUsers = await User.find({ department, ...branchQuery }).select('_id');
       filter.user = { $in: departmentUsers.map(u => u._id) };
     }
 

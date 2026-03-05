@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const multer = require('multer');
 const ExcelJS = require('exceljs');
 const XLSX = require('xlsx');
@@ -12,6 +13,15 @@ const auth = require('../middleware/auth');
 const adminAuth = require('../middleware/adminAuth');
 const DailyAttendance = require('../models/DailyAttendance');
 const { reverseGeocode } = require('../utils/reverseGeocode');
+
+// Helper to get branch filter from request
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
 
 // SIMPLE RULE: Spam validation = EXACTLY 8 hours for cumulative calculation
 const SPAM_VALIDATION_HOURS = 8;
@@ -101,7 +111,8 @@ router.post('/start', auth, async (req, res) => {
       existingRecord.notes = notes || existingRecord.notes;
       await existingRecord.save();
     } else {
-      // Create new record
+      // Create new record with branch from header or user
+      const selectedBranch = req.headers['x-branch'] || req.query.branch || req.user?.branch || 'blackhole_mumbai';
       existingRecord = new Attendance({
         user: userId,
         date: today,
@@ -116,6 +127,7 @@ router.post('/start', auth, async (req, res) => {
         notes,
         officeHours: 0,
         remoteHours: 0,
+        branch: selectedBranch,
         activities: [{
           type: 'StartDay',
           timestamp: startTime,
@@ -267,6 +279,8 @@ router.post('/start-day/:userId', auth, async (req, res) => {
       attendanceRecord = existingRecord;
       await attendanceRecord.save();
     } else {
+      // Create new Attendance with branch
+      const selectedBranch = req.headers['x-branch'] || req.query.branch || req.user?.branch || 'blackhole_mumbai';
       attendanceRecord = new Attendance({
         user: userId,
         date: today,
@@ -275,7 +289,8 @@ router.post('/start-day/:userId', auth, async (req, res) => {
         isPresent: true,
         source: 'StartDay',
         spamStatus: 'Valid',
-        autoEnded: false
+        autoEnded: false,
+        branch: selectedBranch
       });
       await attendanceRecord.save();
     }
@@ -893,12 +908,14 @@ router.post('/auto-end-day', auth, async (req, res) => {
 router.get('/analytics', auth, async (req, res) => {
   try {
     const { startDate, endDate, userId, department } = req.query;
+    const branchQuery = getBranchQuery(req);
 
     const start = startDate ? new Date(startDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const end = endDate ? new Date(endDate) : new Date();
 
-    // Build match condition
+    // Build match condition with branch filter
     const matchCondition = {
+      ...branchQuery,
       date: { $gte: start, $lte: end }
     };
 
@@ -907,7 +924,7 @@ router.get('/analytics', auth, async (req, res) => {
     }
 
     if (department) {
-      const users = await User.find({ department }).select('_id');
+      const users = await User.find({ department, ...branchQuery }).select('_id');
       matchCondition.user = { $in: users.map(u => u._id) };
     }
 
@@ -1103,6 +1120,7 @@ router.get('/live', adminAuth, async (req, res) => {
   try {
     const { date, department, status } = req.query;
     const targetDate = date ? new Date(date) : new Date();
+    const branchQuery = getBranchQuery(req);
 
     // Set date range for the day
     const startOfDay = new Date(targetDate);
@@ -1110,20 +1128,21 @@ router.get('/live', adminAuth, async (req, res) => {
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // Get all active users
-    let userQuery = { isActive: { $ne: false } }; // Users who are not explicitly deactivated
+    // Get all active users filtered by branch
+    let userQuery = { isActive: { $ne: false }, ...branchQuery }; // Users who are not explicitly deactivated
     if (department && department !== 'all') {
       userQuery.department = department;
     }
     
     const allUsers = await User.find(userQuery)
-      .select('_id name email avatar department employeeId')
+      .select('_id name email avatar department employeeId branch')
       .lean();
 
-    console.log(`📊 Found ${allUsers.length} active users`);
+    console.log(`📊 Found ${allUsers.length} active users for branch: ${branchQuery.branch || 'all'}`);
 
-    // Fetch attendance records for today
+    // Fetch attendance records for today filtered by branch
     const attendance = await Attendance.find({
+      ...branchQuery,
       date: { $gte: startOfDay, $lte: endOfDay }
     })
       .populate('user', 'name email avatar department employeeId')

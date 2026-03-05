@@ -7,15 +7,27 @@ const Aim = require("../models/Aim")
 const Progress = require("../models/Progress")
 const DailyAttendance = require("../models/DailyAttendance")
 const auth = require("../middleware/auth")
+const { branchFilter } = require("../middleware/branchMiddleware")
+
+// Helper to get branch filter from request
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
 
 // Get dashboard stats
-router.get("/stats",async (req, res) => {
+router.get("/stats", async (req, res) => {
   try {
+    const branchQuery = getBranchQuery(req);
+    
     // Get task counts by status
-    const totalTasks = await Task.countDocuments()
-    const completedTasks = await Task.countDocuments({ status: "Completed" })
-    const inProgressTasks = await Task.countDocuments({ status: "In Progress" })
-    const pendingTasks = await Task.countDocuments({ status: "Pending" })
+    const totalTasks = await Task.countDocuments(branchQuery)
+    const completedTasks = await Task.countDocuments({ ...branchQuery, status: "Completed" })
+    const inProgressTasks = await Task.countDocuments({ ...branchQuery, status: "In Progress" })
+    const pendingTasks = await Task.countDocuments({ ...branchQuery, status: "Pending" })
  
  
     // Get change percentages (mock data - in a real app, you'd compare with historical data)
@@ -43,13 +55,15 @@ router.get("/stats",async (req, res) => {
 // Get department stats
 router.get("/departments", async (req, res) => {
   try {
+    const branchQuery = getBranchQuery(req);
     const departments = await Department.find().sort({ name: 1 })
 
     // For each department, get task counts
     const departmentStats = await Promise.all(
       departments.map(async (department) => {
-        const totalTasks = await Task.countDocuments({ department: department._id })
+        const totalTasks = await Task.countDocuments({ ...branchQuery, department: department._id })
         const completedTasks = await Task.countDocuments({
+          ...branchQuery,
           department: department._id,
           status: "Completed",
         })
@@ -74,15 +88,17 @@ router.get("/departments", async (req, res) => {
 // Get tasks overview
 router.get("/tasks-overview", async (req, res) => {
   try {
+    const branchQuery = getBranchQuery(req);
+    
     // Get task counts by status
-    const completedCount = await Task.countDocuments({ status: "Completed" })
-    const inProgressCount = await Task.countDocuments({ status: "In Progress" })
-    const pendingCount = await Task.countDocuments({ status: "Pending" })
+    const completedCount = await Task.countDocuments({ ...branchQuery, status: "Completed" })
+    const inProgressCount = await Task.countDocuments({ ...branchQuery, status: "In Progress" })
+    const pendingCount = await Task.countDocuments({ ...branchQuery, status: "Pending" })
 
     // Get task counts by priority
-    const highPriorityCount = await Task.countDocuments({ priority: "High" })
-    const mediumPriorityCount = await Task.countDocuments({ priority: "Medium" })
-    const lowPriorityCount = await Task.countDocuments({ priority: "Low" })
+    const highPriorityCount = await Task.countDocuments({ ...branchQuery, priority: "High" })
+    const mediumPriorityCount = await Task.countDocuments({ ...branchQuery, priority: "Medium" })
+    const lowPriorityCount = await Task.countDocuments({ ...branchQuery, priority: "Low" })
 
     const statusData = [
       { name: "Completed", value: completedCount, color: "#22c55e" },
