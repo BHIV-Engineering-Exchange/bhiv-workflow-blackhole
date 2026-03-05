@@ -354,6 +354,9 @@ import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"
 import { useAuth } from "@/context/auth-context"
 
 export default function Register() {
+  // Get currently selected branch from localStorage, default to blackhole_mumbai
+  const selectedBranch = localStorage.getItem('selectedBranch') || 'blackhole_mumbai'
+  
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -361,7 +364,7 @@ export default function Register() {
     confirmPassword: "",
     department: "",
     role: "User",
-    branch: "blackhole_mumbai",
+    branch: selectedBranch, // Use currently selected branch as default
   })
 
   const [errors, setErrors] = useState({})

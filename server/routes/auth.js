@@ -440,7 +440,7 @@ router.post("/register", async (req, res) => {
       email,
       password: password,
       role,
-      branch: branch || 'mumbai', // Default to mumbai if not provided
+      branch: branch || 'blackhole_mumbai', // Default to blackhole_mumbai if not provided
       ...(departmentId && { department: departmentId }),
     })
 
