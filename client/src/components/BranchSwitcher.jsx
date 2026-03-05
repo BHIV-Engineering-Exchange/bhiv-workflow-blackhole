@@ -17,6 +17,9 @@ export function BranchSwitcher() {
   const { user } = useAuth()
   const { selectedBranch, setSelectedBranch, branches, loading } = useBranch()
 
+  // Debug: log branches count
+  console.log("BranchSwitcher - branches:", branches.length, branches.map(b => b.code))
+
   // Only show for admin users
   if (user?.role !== "Admin") {
     return null
@@ -28,8 +31,18 @@ export function BranchSwitcher() {
     return branch?.name || selectedBranch?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   }
 
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 bg-card/50 backdrop-blur-sm border border-border rounded-md">
+        <Building2 className="h-4 w-4 text-primary animate-pulse" />
+        <span className="hidden sm:inline font-medium text-sm">Loading...</span>
+      </div>
+    )
+  }
+
   // Show static badge when only one branch exists
-  if (!loading && branches.length <= 1) {
+  if (branches.length <= 1) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-card/50 backdrop-blur-sm border border-border rounded-md">
         <Building2 className="h-4 w-4 text-primary" />
