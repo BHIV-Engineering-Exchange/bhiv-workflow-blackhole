@@ -8,13 +8,23 @@ const User = require('../models/User');
 const auth = require('../middleware/auth');
 const adminAuth = require('../middleware/adminAuth');
 
+// Helper to get branch filter from request headers
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
 // @route   GET /api/enhanced-aims/with-progress
-// @desc    Get enhanced aims with progress data and proper department handling
+// @desc    Get enhanced aims with progress data and proper department handling - FILTERED BY BRANCH
 // @access  Private (Admin only for all aims, users for their own)
 router.get('/with-progress', auth, async (req, res) => {
   try {
     const { department, date, user } = req.query;
-    console.log('🔍 Enhanced aims query params:', { department, date, user });
+    const branchQuery = getBranchQuery(req);
+    console.log('🔍 Enhanced aims query params:', { department, date, user, branch: branchQuery.branch });
     console.log('👤 Request user:', { id: req.user.id, role: req.user.role });
 
     // Build filter object for aims
@@ -25,22 +35,26 @@ router.get('/with-progress', auth, async (req, res) => {
       aimFilter.user = req.user.id;
       console.log('🔒 Non-admin user - filtering by user ID:', req.user.id);
     } else {
-      // Admin can filter by department and specific user
+      // Admin can filter by department, branch, and specific user
+      const userFilter = { stillExist: 1, ...branchQuery };
+      
       if (department && department !== "all") {
-        // Filter by users in the department instead of aim department
-        const usersInDept = await User.find({ department }).select('_id');
-        if (usersInDept.length > 0) {
-          aimFilter.user = { $in: usersInDept.map(u => u._id) };
-        } else {
-          // No users in department, return empty result
-          return res.json({
-            success: true,
-            data: []
-          });
-        }
+        userFilter.department = department;
+      }
+      
+      // Get users matching the filter (branch + optional department)
+      const usersMatching = await User.find(userFilter).select('_id');
+      if (usersMatching.length > 0) {
+        aimFilter.user = { $in: usersMatching.map(u => u._id) };
+      } else {
+        // No users matching filter, return empty result
+        return res.json({
+          success: true,
+          data: []
+        });
       }
       if (user) aimFilter.user = user;
-      console.log('👑 Admin user - applying filters:', { department, user });
+      console.log('👑 Admin user - applying filters:', { department, user, branch: branchQuery.branch });
     }
     
     let queryDate = new Date();
@@ -63,11 +77,12 @@ router.get('/with-progress', auth, async (req, res) => {
 
     console.log('🎯 Final aim filter:', aimFilter);
 
-    // 🏢 DEPARTMENT FIX: Properly populate user with department
+    // 🏢 DEPARTMENT FIX: Properly populate user with department - FILTERED BY BRANCH
     const aims = await Aim.find(aimFilter)
       .populate({
         path: "user",
-        select: "name email department",
+        select: "name email department branch",
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {},
         populate: {
           path: "department",
           select: "name color"
@@ -75,15 +90,18 @@ router.get('/with-progress', auth, async (req, res) => {
       })
       .sort({ date: -1 });
 
-    console.log(`📊 Found ${aims.length} aims for date ${queryDate.toISOString().split('T')[0]}`);
+    // Filter out aims where user didn't populate (not in branch)
+    const filteredAims = aims.filter(aim => aim.user !== null);
+
+    console.log(`📊 Found ${filteredAims.length} aims for date ${queryDate.toISOString().split('T')[0]}`);
 
     // Log department info for debugging
-    aims.forEach(aim => {
+    filteredAims.forEach(aim => {
       console.log(`👤 User: ${aim.user?.name}, Department: ${aim.user?.department?.name || 'No Department'}`);
     });
 
     // Enhance each aim with progress and attendance data
-    const enhancedAims = await Promise.all(aims.map(async (aim) => {
+    const enhancedAims = await Promise.all(filteredAims.map(async (aim) => {
       const aimObj = aim.toObject();
       console.log(`🔄 Processing aim for user: ${aim.user?.name} (${aim.user?._id})`);
 
@@ -353,6 +371,7 @@ router.get('/enhanced', auth, async (req, res) => {
   try {
     const { date } = req.query;
     const targetDate = date ? new Date(date) : new Date();
+    const branchQuery = getBranchQuery(req);
     
     // Set date range for the day
     const startOfDay = new Date(targetDate);
@@ -372,19 +391,31 @@ router.get('/enhanced', auth, async (req, res) => {
     // Non-admin users can only see their own aims
     if (req.user.role !== 'Admin') {
       aimFilter.user = req.user.id;
+    } else if (branchQuery.branch) {
+      // Admin: Filter by branch
+      const usersInBranch = await User.find({ ...branchQuery, stillExist: 1 }).select('_id');
+      if (usersInBranch.length > 0) {
+        aimFilter.user = { $in: usersInBranch.map(u => u._id) };
+      } else {
+        return res.json({ success: true, data: [] });
+      }
     }
 
-    // Fetch aims with user and department data
+    // Fetch aims with user and department data - FILTERED BY BRANCH
     const aims = await Aim.find(aimFilter)
       .populate({
         path: 'user',
-        select: 'name email avatar department',
+        select: 'name email avatar department branch',
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {},
         populate: {
           path: 'department',
           select: 'name color'
         }
       })
       .lean();
+    
+    // Filter out aims where user didn't populate (not in branch)
+    const filteredAims = aims.filter(aim => aim.user !== null);
 
     // Fetch all progress for the date
     const progressFilter = {
@@ -431,7 +462,7 @@ router.get('/enhanced', auth, async (req, res) => {
     });
 
     // Combine aims with related data
-    const enhancedAims = aims.map(aim => {
+    const enhancedAims = filteredAims.map(aim => {
       const userId = aim.user._id.toString();
       const userProgress = progressMap.get(userId) || [];
       const userAttendance = attendanceMap.get(userId);
