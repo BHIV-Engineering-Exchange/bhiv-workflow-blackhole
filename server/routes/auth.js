@@ -409,7 +409,7 @@ const sendWelcomeEmail = async (user) => {
 
 // Register route
 router.post("/register", async (req, res) => {
-  const { name, email, password, role, department } = req.body
+  const { name, email, password, role, department, branch } = req.body
 
   try {
     // Check if user already exists
@@ -434,12 +434,13 @@ router.post("/register", async (req, res) => {
       }
     }
 
-    // Create new user
+    // Create new user with branch
     const newUser = new User({
       name,
       email,
       password: password,
       role,
+      branch: branch || 'mumbai', // Default to mumbai if not provided
       ...(departmentId && { department: departmentId }),
     })
 
@@ -461,6 +462,7 @@ router.post("/register", async (req, res) => {
       email: newUser.email,
       role: newUser.role,
       department: newUser.department,
+      branch: newUser.branch,
     }
 
     // Generate JWT token
@@ -504,6 +506,7 @@ router.post("/login", async (req, res) => {
       email: user.email,
       role: user.role,
       department: user.department,
+      branch: user.branch || 'mumbai',
     }
 
     // Generate JWT token

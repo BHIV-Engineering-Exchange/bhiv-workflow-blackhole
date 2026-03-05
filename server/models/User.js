@@ -87,6 +87,12 @@ const UserSchema = new mongoose.Schema({
     default: 'WFO', // Default to Work From Office (no cap)
     index: true,
   },
+  // Branch - Office location (Mumbai, Pune, etc.)
+  branch: {
+    type: String,
+    default: 'blackhole_mumbai',
+    index: true,
+  },
 })
 
 // Update the updatedAt field before saving

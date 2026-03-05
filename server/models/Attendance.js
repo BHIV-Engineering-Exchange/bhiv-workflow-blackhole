@@ -78,6 +78,12 @@ const attendanceSchema = new mongoose.Schema({
     default: 0, // in minutes
     min: 0
   },
+  // Branch - Office location for this attendance
+  branch: {
+    type: String,
+    default: 'blackhole_mumbai',
+    index: true,
+  },
   
   // Work patterns
   workPattern: {

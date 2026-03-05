@@ -36,10 +36,12 @@ export { API_URL };
 //-----------------------------------------------------
 async function fetchAPI(endpoint, options = {}) {
   const token = localStorage.getItem("WorkflowToken");
+  const selectedBranch = localStorage.getItem("selectedBranch");
 
   const headers = {
     "Content-Type": "application/json",
     ...(token && { "x-auth-token": token }),
+    ...(selectedBranch && selectedBranch !== "all" && { "x-branch": selectedBranch }),
     ...options.headers,
   };
 
@@ -583,6 +585,39 @@ const attendance = {
 
 
 //-----------------------------------------------------
+// Branches API
+//-----------------------------------------------------
+const branches = {
+  // Get all active branches (public - for registration)
+  getAll: () => fetchAPI("/branches"),
+  
+  // Get all branches including inactive (admin only)
+  getAllAdmin: () => fetchAPI("/branches/all"),
+  
+  // Get single branch
+  get: (id) => fetchAPI(`/branches/${id}`),
+  
+  // Create branch (admin only)
+  create: (branch) =>
+    fetchAPI("/branches", {
+      method: "POST",
+      body: JSON.stringify(branch),
+    }),
+  
+  // Update branch (admin only)
+  update: (id, branch) =>
+    fetchAPI(`/branches/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(branch),
+    }),
+  
+  // Delete branch (admin only)
+  delete: (id) =>
+    fetchAPI(`/branches/${id}`, { method: "DELETE" }),
+};
+
+
+//-----------------------------------------------------
 // Generic HTTP Methods
 //-----------------------------------------------------
 const httpMethods = {
@@ -616,6 +651,7 @@ export const api = {
   attendance,
   ems,
   procurement,
+  branches,
 };
 
 export default api;

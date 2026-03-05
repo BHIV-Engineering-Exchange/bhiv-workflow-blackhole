@@ -69,6 +69,12 @@ const leaveSchema = new mongoose.Schema({
     enum: ['Low', 'Medium', 'High', 'Urgent'],
     default: 'Medium'
   },
+  // Branch - Office location for this leave request
+  branch: {
+    type: String,
+    default: 'blackhole_mumbai',
+    index: true,
+  },
   createdAt: { 
     type: Date, 
     default: Date.now,

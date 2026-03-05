@@ -130,6 +130,12 @@ const TaskSchema = new mongoose.Schema({
       type: String,
     },
   ],
+  // Branch - Office location for this task
+  branch: {
+    type: String,
+    default: 'blackhole_mumbai',
+    index: true,
+  },
 });
 
 // Update the updatedAt field before saving

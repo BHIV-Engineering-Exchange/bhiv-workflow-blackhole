@@ -6,6 +6,7 @@ import { Toaster } from "./components/ui/toaster";
 import { WorkspaceProvider } from "./context/workspace-context";
 import { SocketProvider } from "./context/socket-context";
 import { AuthProvider, useAuth } from "./context/auth-context";
+import { BranchProvider } from "./context/branch-context";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { DashboardLayout } from "./layouts/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
@@ -44,6 +45,7 @@ import ProcurementDashboard from "./pages/ProcurementDashboard";
 import EnhancedSalaryDashboard from "./pages/EnhancedSalaryDashboard";
 import BiometricAttendanceDashboard from "./pages/BiometricAttendanceDashboard";
 import NewSalaryManagement from "./pages/NewSalaryManagement";
+import BranchManagement from "./pages/BranchManagement";
 import MyTasks from "./pages/MyTasks";
 
 function AppContent() {
@@ -383,6 +385,14 @@ function AppContent() {
                           </ProtectedRoute>
                         }
                       />
+                      <Route
+                        path="/branch-management"
+                        element={
+                          <ProtectedRoute>
+                            <BranchManagement />
+                          </ProtectedRoute>
+                        }
+                      />
                     </Route>
                   </Routes>
                   <Toaster />
@@ -398,7 +408,9 @@ function App() {
     <ThemeProvider defaultTheme="light" storageKey="workflow-theme">
       <Router>
         <AuthProvider>
-          <AppContent />
+          <BranchProvider>
+            <AppContent />
+          </BranchProvider>
         </AuthProvider>
       </Router>
       <ToastContainer

@@ -348,7 +348,7 @@ import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
-import { Loader2, Mail, UserPlus, Eye, EyeOff, Sparkles, Lock, User, Briefcase } from "lucide-react"
+import { Loader2, Mail, UserPlus, Eye, EyeOff, Sparkles, Lock, User, Briefcase, Building2 } from "lucide-react"
 import { api } from "../lib/api"
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"
 import { useAuth } from "@/context/auth-context"
@@ -361,10 +361,12 @@ export default function Register() {
     confirmPassword: "",
     department: "",
     role: "User",
+    branch: "blackhole_mumbai",
   })
 
   const [errors, setErrors] = useState({})
   const [departments, setDepartments] = useState([])
+  const [branches, setBranches] = useState([])
   const [success, setSuccess] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -396,7 +398,26 @@ export default function Register() {
       }
     }
 
+    const fetchBranches = async () => {
+      try {
+        const response = await api.branches.getAll()
+        const data = response.success ? response.data : response
+        const branchesArray = Array.isArray(data) ? data : []
+        setBranches(branchesArray)
+        if (branchesArray.length > 0 && !formData.branch) {
+          setFormData((prev) => ({ ...prev, branch: branchesArray[0].code }))
+        }
+      } catch (err) {
+        console.error("Error fetching branches:", err)
+        // Fallback branches
+        setBranches([
+          { _id: '1', name: 'Blackhole Mumbai', code: 'blackhole_mumbai' }
+        ])
+      }
+    }
+
     fetchDepartments()
+    fetchBranches()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -409,6 +430,11 @@ export default function Register() {
   const handleDepartmentChange = (value) => {
     setFormData({ ...formData, department: value })
     if (errors.department) setErrors({ ...errors, department: "" })
+  }
+
+  const handleBranchChange = (value) => {
+    setFormData({ ...formData, branch: value })
+    if (errors.branch) setErrors({ ...errors, branch: "" })
   }
 
   const handleRoleChange = (value) => {
@@ -446,6 +472,8 @@ export default function Register() {
     if (formData.role === "User" && !formData.department) newErrors.department = "Please select a department"
 
     if (!formData.role) newErrors.role = "Please select a role"
+
+    if (!formData.branch) newErrors.branch = "Please select a branch"
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -746,6 +774,49 @@ export default function Register() {
                   </p>
                 )}
               </div>
+            </div>
+
+            {/* Branch Selection */}
+            <div className="space-y-2">
+              <Label htmlFor="branch" className="text-sm font-medium text-foreground flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-primary" />
+                Office Branch
+              </Label>
+              <Select
+                value={formData.branch}
+                onValueChange={handleBranchChange}
+                disabled={loading || success}
+              >
+                <SelectTrigger
+                  className={`h-12 bg-background/50 backdrop-blur-sm border-border hover:border-primary/50 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all ${
+                    errors.branch ? "border-destructive" : ""
+                  }`}
+                >
+                  <SelectValue placeholder="Select your branch" />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border max-h-60 overflow-y-auto">
+                  {branches.map((branch) => (
+                    <SelectItem
+                      key={branch._id || branch.code}
+                      value={branch.code}
+                      className="hover:bg-muted focus:bg-muted transition-colors"
+                    >
+                      {branch.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.branch && (
+                <p className="text-sm text-destructive animate-slide-up flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  {errors.branch}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Select the office location where you work.
+              </p>
             </div>
           </CardContent>
           

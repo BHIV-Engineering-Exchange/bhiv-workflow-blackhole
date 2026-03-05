@@ -104,6 +104,7 @@ import { MobileMenuButton } from "@/components/ui/mobile-menu-button"
 import { EnhancedSearch } from "./enhanced-search"
 import { UserDetailsModal } from "./user-details-modal"
 import { Alerts } from "../notifications/Alerts";
+import { BranchSwitcher } from "../BranchSwitcher"
 
 export function DashboardHeader({ sidebarOpen, onSidebarToggle }) {
   const navigate = useNavigate()
@@ -152,6 +153,7 @@ export function DashboardHeader({ sidebarOpen, onSidebarToggle }) {
 
         {/* Right Section - Action Buttons */}
         <div className="flex items-center gap-2 flex-shrink-0">
+            <BranchSwitcher />
             <NotificationsPopover />
             <Alerts />
             <SimpleModeToggle />
