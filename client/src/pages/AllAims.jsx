@@ -48,10 +48,12 @@ function AllAims() {
 
       try {
         // Try enhanced API first
+        const selectedBranch = localStorage.getItem('selectedBranch')
         const enhancedResponse = await axios.get(`${API_URL}/enhanced-aims/with-progress`, {
           params: filters,
           headers: {
-            'x-auth-token': localStorage.getItem('WorkflowToken')
+            'x-auth-token': localStorage.getItem('WorkflowToken'),
+            ...(selectedBranch && selectedBranch !== 'all' && { 'x-branch': selectedBranch })
           }
         })
         console.log('AllAims - Enhanced aims response:', enhancedResponse.data)
