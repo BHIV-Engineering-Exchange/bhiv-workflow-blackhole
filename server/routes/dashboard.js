@@ -283,7 +283,7 @@ router.get("/progress-stats", auth, async (req, res) => {
 });
 
 // @route   GET api/dashboard/admin-report
-// @desc    Get comprehensive admin report with date filtering
+// @desc    Get comprehensive admin report with date filtering - FILTERED BY BRANCH
 // @access  Admin or Manager
 router.get("/admin-report", auth, async (req, res) => {
   try {
@@ -293,6 +293,7 @@ router.get("/admin-report", auth, async (req, res) => {
     }
 
     const { date, filter } = req.query;
+    const branchQuery = getBranchQuery(req);
     
     // Determine filter type (today, yesterday, weekly, lifetime)
     const filterType = filter || (date ? 'today' : 'lifetime');
@@ -345,30 +346,33 @@ router.get("/admin-report", auth, async (req, res) => {
     
     const nextDay = dateRangeEnd || new Date();
 
-    // 1. Main Admin Dashboard Stats
-    const totalTasks = await Task.countDocuments();
-    const completedTasks = await Task.countDocuments({ status: "Completed" });
-    const inProgressTasks = await Task.countDocuments({ status: "In Progress" });
-    const pendingTasks = await Task.countDocuments({ status: "Pending" });
-    const totalUsers = await User.countDocuments({ stillExist: 1 });
+    // 1. Main Admin Dashboard Stats - FILTERED BY BRANCH
+    const totalTasks = await Task.countDocuments(branchQuery);
+    const completedTasks = await Task.countDocuments({ ...branchQuery, status: "Completed" });
+    const inProgressTasks = await Task.countDocuments({ ...branchQuery, status: "In Progress" });
+    const pendingTasks = await Task.countDocuments({ ...branchQuery, status: "Pending" });
+    const totalUsers = await User.countDocuments({ stillExist: 1, ...branchQuery });
     const totalDepartments = await Department.countDocuments();
 
-    // 2. Department-wise Task Count
+    // 2. Department-wise Task Count - FILTERED BY BRANCH
     const departments = await Department.find().sort({ name: 1 });
     const departmentTaskCounts = await Promise.all(
       departments.map(async (dept) => {
-        const totalTasks = await Task.countDocuments({ department: dept._id });
+        const totalTasks = await Task.countDocuments({ department: dept._id, ...branchQuery });
         const completedTasks = await Task.countDocuments({
           department: dept._id,
           status: "Completed",
+          ...branchQuery
         });
         const inProgressTasks = await Task.countDocuments({
           department: dept._id,
           status: "In Progress",
+          ...branchQuery
         });
         const pendingTasks = await Task.countDocuments({
           department: dept._id,
           status: "Pending",
+          ...branchQuery
         });
 
         return {
@@ -383,10 +387,10 @@ router.get("/admin-report", auth, async (req, res) => {
       })
     );
 
-    // 3. All Users with Aims and Time
-    const users = await User.find({ stillExist: 1 })
+    // 3. All Users with Aims and Time - FILTERED BY BRANCH
+    const users = await User.find({ stillExist: 1, ...branchQuery })
       .populate("department", "name")
-      .select("name email role department");
+      .select("name email role department branch");
     
     const usersWithAims = await Promise.all(
       users.map(async (user) => {
@@ -418,12 +422,13 @@ router.get("/admin-report", auth, async (req, res) => {
     // 4. User Count
     const userCount = users.length;
 
-    // 5. Zero Task Employees (with ability to assign tasks)
+    // 5. Zero Task Employees (with ability to assign tasks) - FILTERED BY BRANCH
     const usersWithTaskCounts = await Promise.all(
       users.map(async (user) => {
         const taskCount = await Task.countDocuments({
           assignee: user._id,
           status: { $ne: "Completed" },
+          ...branchQuery
         });
         return {
           userId: user._id,
@@ -440,14 +445,16 @@ router.get("/admin-report", auth, async (req, res) => {
       .filter((u) => u.taskCount === 0)
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    // 6. Each User Progress Update (for the selected date)
+    // 6. Each User Progress Update (for the selected date) - FILTERED BY BRANCH
+    const userIdsList = users.map(u => u._id);
     const progressUpdates = await Progress.find({
       date: {
         $gte: targetDate,
         $lt: nextDay,
       },
+      user: { $in: userIdsList }
     })
-      .populate("user", "name email role")
+      .populate("user", "name email role branch")
       .populate("task", "title status")
       .sort({ createdAt: -1 });
 
@@ -470,7 +477,10 @@ router.get("/admin-report", auth, async (req, res) => {
         createdAt: progress.createdAt,
       }));
 
-    // 7. Users who Started Day with Work Hours
+    // 7. Users who Started Day with Work Hours - FILTERED BY BRANCH
+    // Get user IDs in selected branch for filtering attendance
+    const branchUserIds = users.map(u => u._id);
+    
     let dailyAttendances;
     if (dateRangeStart && dateRangeEnd) {
       dailyAttendances = await DailyAttendance.find({
@@ -479,15 +489,17 @@ router.get("/admin-report", auth, async (req, res) => {
           $lt: dateRangeEnd,
       },
       startDayTime: { $exists: true },
+      user: { $in: branchUserIds }
     })
-      .populate("user", "name email role department")
+      .populate("user", "name email role department branch")
       .sort({ startDayTime: 1 });
     } else {
-      // Lifetime: get all attendances
+      // Lifetime: get all attendances - FILTERED BY BRANCH
       dailyAttendances = await DailyAttendance.find({
         startDayTime: { $exists: true },
+        user: { $in: branchUserIds }
       })
-        .populate("user", "name email role department")
+        .populate("user", "name email role department branch")
         .sort({ startDayTime: 1 });
     }
 
@@ -495,10 +507,8 @@ router.get("/admin-report", auth, async (req, res) => {
     
     // For weekly, monthly, and lifetime, aggregate hours by user and include all users
     if (filterType === 'weekly' || filterType === 'monthly' || filterType === 'lifetime') {
-      // Get all active users first
-      const allUsers = await User.find({ stillExist: 1 })
-        .populate("department", "name")
-        .select("name email role department");
+      // Get all active users first - FILTERED BY BRANCH (already filtered in users variable)
+      const allUsers = users;
       
       const userHoursMap = new Map();
       
