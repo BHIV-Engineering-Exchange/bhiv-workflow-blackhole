@@ -17,6 +17,15 @@ const reportGenerator = require('../services/reportGenerator');
 const fs = require('fs').promises;
 const { getViolationScreenshots, generateOptimizedScreenshotUrl } = require('../utils/cloudinary');
 
+// Helper to get branch filter from request
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
 // Start monitoring session for an employee
 router.post('/start/:employeeId', async (req, res) => {
   try {
@@ -74,20 +83,21 @@ router.post('/stop/:employeeId', async (req, res) => {
   }
 });
 
-// Start monitoring for all employees
+// Start monitoring for all employees - FILTERED BY BRANCH
 router.post('/start-all', async (req, res) => {
   try {
     const { intelligentMode = true, departmentFilter } = req.body;
+    const branchQuery = getBranchQuery(req);
 
-    // Get all employees (filter by department if specified)
+    // Get all employees (filter by department and branch)
     const User = require('../models/User');
-    let query = { role: { $ne: 'Admin' } }; // Don't monitor admins
+    let query = { role: { $ne: 'Admin' }, stillExist: 1, ...branchQuery }; // Don't monitor admins
 
     if (departmentFilter) {
       query.department = departmentFilter;
     }
 
-    const employees = await User.find(query).select('_id name email department');
+    const employees = await User.find(query).select('_id name email department branch');
 
     const results = [];
     const errors = [];
@@ -664,12 +674,13 @@ router.get('/status/:employeeId', async (req, res) => {
   }
 });
 
-// Get all employees monitoring status
+// Get all employees monitoring status - FILTERED BY BRANCH
 router.get('/status/all', async (req, res) => {
   try {
     const User = require('../models/User');
-    const employees = await User.find({ role: { $ne: 'Admin' } })
-      .select('_id name email department')
+    const branchQuery = getBranchQuery(req);
+    const employees = await User.find({ role: { $ne: 'Admin' }, stillExist: 1, ...branchQuery })
+      .select('_id name email department branch')
       .populate('department', 'name');
 
     const statusList = employees.map(employee => {

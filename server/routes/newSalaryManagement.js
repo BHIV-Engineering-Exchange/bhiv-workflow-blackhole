@@ -8,6 +8,15 @@ const NewSalaryRecord = require('../models/NewSalaryRecord');
 const User = require('../models/User');
 const Aim = require('../models/Aim');
 
+// Helper to get branch filter from request
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
 /**
  * ============================================
  * HOURS MANAGEMENT SECTION
@@ -119,10 +128,13 @@ router.get('/hours/all', auth, adminAuth, async (req, res) => {
       daysInRange: Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1
     });
 
-    // Get all active users
-    const allUsers = await User.find({ stillExist: 1 })
+    // Get branch filter
+    const branchQuery = getBranchQuery(req);
+
+    // Get all active users - FILTERED BY BRANCH
+    const allUsers = await User.find({ stillExist: 1, ...branchQuery })
       .populate('department', 'name color')
-      .select('name email department employeeId role')
+      .select('name email department employeeId role branch')
       .lean();
     
     console.log(`Found ${allUsers.length} active users`);
@@ -624,11 +636,12 @@ router.get('/hours/all', auth, adminAuth, async (req, res) => {
  * GET /api/new-salary/debug/attendance
  * Debug endpoint to show actual attendance records in database
  * Query params: fromDate, toDate (ISO date strings)
- * Admin only
+ * Admin only - FILTERED BY BRANCH
  */
 router.get('/debug/attendance', auth, adminAuth, async (req, res) => {
   try {
     const { fromDate, toDate } = req.query;
+    const branchQuery = getBranchQuery(req);
 
     // Parse date range
     let startDate, endDate;
@@ -654,9 +667,9 @@ router.get('/debug/attendance', auth, adminAuth, async (req, res) => {
       endDate.setHours(23, 59, 59, 999);
     }
 
-    // Get all active users
-    const users = await User.find({ stillExist: 1 })
-      .select('_id name email employeeId')
+    // Get all active users - FILTERED BY BRANCH
+    const users = await User.find({ stillExist: 1, ...branchQuery })
+      .select('_id name email employeeId branch')
       .lean();
 
     const userIds = users.map(u => u._id);
@@ -2002,9 +2015,10 @@ router.post('/spam-users/validate', auth, adminAuth, async (req, res) => {
     if (action === 'spam') {
       try {
         const Notification = require('../models/Notification');
+        const branchQuery = getBranchQuery(req);
         
-        // Notify Admin and Manager
-        const admins = await User.find({ role: { $in: ['Admin', 'Manager'] } })
+        // Notify Admin and Manager - FILTERED BY BRANCH
+        const admins = await User.find({ role: { $in: ['Admin', 'Manager'] }, ...branchQuery })
           .select('_id');
 
         if (admins && admins.length > 0) {
@@ -2158,7 +2172,9 @@ router.post('/spam-users/bulk-validate', auth, adminAuth, async (req, res) => {
     if (action === 'spam' && result.modifiedCount > 0) {
       try {
         const Notification = require('../models/Notification');
-        const admins = await User.find({ role: { $in: ['Admin', 'Manager'] } })
+        const branchQuery = getBranchQuery(req);
+        // Notify Admin and Manager - FILTERED BY BRANCH
+        const admins = await User.find({ role: { $in: ['Admin', 'Manager'] }, ...branchQuery })
           .select('_id');
 
         if (admins && admins.length > 0) {

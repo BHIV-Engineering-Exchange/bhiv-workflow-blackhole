@@ -8,6 +8,15 @@ const User = require('../models/User');
 const auth = require('../middleware/auth');
 const adminAuth = require('../middleware/adminAuth');
 
+// Helper to get branch filter from request
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
 // Send task assignment email
 router.post('/send-task-assignment', auth, adminAuth, async (req, res) => {
   try {
@@ -36,10 +45,11 @@ router.post('/send-task-assignment', auth, adminAuth, async (req, res) => {
   }
 });
 
-// Send task reminder emails
+// Send task reminder emails - FILTERED BY BRANCH
 router.post('/send-task-reminders', auth, async (req, res) => {
   try {
     const { reminderType = 'due_soon' } = req.body;
+    const branchQuery = getBranchQuery(req);
 
     if (!reminderType) {
       return res.status(400).json({
@@ -48,26 +58,28 @@ router.post('/send-task-reminders', auth, async (req, res) => {
       });
     }
 
-    // Find tasks based on reminder type
-    let query = {};
+    // Find tasks based on reminder type and branch
+    let query = { ...branchQuery };
 
     switch (reminderType) {
       case 'due_soon':
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         query = {
+          ...query,
           dueDate: { $lte: tomorrow, $gte: new Date() },
           status: { $ne: 'Completed' }
         };
         break;
       case 'overdue':
         query = {
+          ...query,
           dueDate: { $lt: new Date() },
           status: { $ne: 'Completed' }
         };
         break;
       default:
-        query = { status: { $ne: 'Completed' } };
+        query = { ...query, status: { $ne: 'Completed' } };
     }
 
     const tasks = await Task.find(query).populate('assignee');
@@ -113,11 +125,14 @@ router.post('/send-task-reminders', auth, async (req, res) => {
   }
 });
 
-// Send overdue task alerts
+// Send overdue task alerts - FILTERED BY BRANCH
 router.post('/send-overdue-alerts', auth, adminAuth, async (req, res) => {
   try {
-    // Find overdue tasks
+    const branchQuery = getBranchQuery(req);
+    
+    // Find overdue tasks filtered by branch
     const overdueTasks = await Task.find({
+      ...branchQuery,
       dueDate: { $lt: new Date() },
       status: { $ne: 'Completed' }
     }).populate('assignee');

@@ -8,6 +8,15 @@ const { check, validationResult } = require("express-validator");
 const multer = require("multer");
 const { uploadProgressImage } = require("../utils/cloudinary");
 
+// Helper to get branch filter from request
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
 // Configure multer for memory storage
 const storage = multer.memoryStorage();
 const upload = multer({ 
@@ -72,18 +81,23 @@ router.get("/user/:userId", auth, async (req, res) => {
 });
 
 // @route   GET api/progress/all
-// @desc    Get all progress updates for admin view
+// @desc    Get all progress updates for admin view - FILTERED BY BRANCH
 // @access  Admin only
 router.get("/all", auth, async (req, res) => {
   try {
     const { date, user } = req.query;
-    console.log('Progress all query params:', { date, user });
+    const branchQuery = getBranchQuery(req);
+    console.log('Progress all query params:', { date, user, branch: branchQuery.branch });
     
     // Build filter object
     const filter = {};
+    
+    // Get users filter for branch
+    const userFilter = { stillExist: 1, ...branchQuery };
+    
     if (user) {
-      // Check if specific user is active
-      const userDoc = await User.findOne({ _id: user, stillExist: 1 });
+      // Check if specific user is active and in branch
+      const userDoc = await User.findOne({ _id: user, ...userFilter });
       if (!userDoc) {
         return res.json({
           success: true,
@@ -92,6 +106,18 @@ router.get("/all", auth, async (req, res) => {
         });
       }
       filter.user = user;
+    } else if (branchQuery.branch) {
+      // Get users in the selected branch
+      const usersInBranch = await User.find(userFilter).select('_id');
+      if (usersInBranch.length > 0) {
+        filter.user = { $in: usersInBranch.map(u => u._id) };
+      } else {
+        return res.json({
+          success: true,
+          count: 0,
+          data: []
+        });
+      }
     }
     
     if (date) {
@@ -112,8 +138,8 @@ router.get("/all", auth, async (req, res) => {
     const progress = await Progress.find(filter)
       .populate({
         path: "user",
-        select: "name email department stillExist",
-        match: { stillExist: 1 }, // Only populate active users
+        select: "name email department stillExist branch",
+        match: branchQuery.branch ? { stillExist: 1, branch: branchQuery.branch } : { stillExist: 1 },
         populate: {
           path: "department",
           select: "name color"
@@ -122,7 +148,7 @@ router.get("/all", auth, async (req, res) => {
       .populate("task", "title description")
       .sort({ date: -1 });
 
-    // Filter out progress entries where user didn't populate (inactive users)
+    // Filter out progress entries where user didn't populate (inactive users or not in branch)
     const activeProgress = progress.filter(p => p.user);
       
     console.log(`Found ${activeProgress.length} progress entries for active users`);

@@ -3,23 +3,25 @@ const Task = require('../models/Task');
 const { auditLogger } = require('./complianceAuditLogger');
 
 class ProcurementAgent {
-  async analyzeEmployeeAvailability(adminId) {
+  async analyzeEmployeeAvailability(adminId, branchFilter = {}) {
     try {
-      // Only fetch ACTIVE employees (exclude exited/terminated employees)
+      // Only fetch ACTIVE employees (exclude exited/terminated employees) - filtered by branch
       const employees = await User.find({ 
         role: 'User',
-        stillExist: 1 // Only include active employees (0 = exited, 1 = active)
-      }).select('name email department stillExist');
+        stillExist: 1, // Only include active employees (0 = exited, 1 = active)
+        ...branchFilter
+      }).select('name email department stillExist branch');
       const analysis = [];
       const lowTaskEmployees = [];
 
       for (const employee of employees) {
-        const employeeStats = await this.getEmployeeTaskStats(employee._id);
+        const employeeStats = await this.getEmployeeTaskStats(employee._id, branchFilter);
         const employeeData = {
           employeeId: employee._id,
           name: employee.name,
           email: employee.email,
           department: employee.department,
+          branch: employee.branch,
           ...employeeStats
         };
         
@@ -44,7 +46,8 @@ class ProcurementAgent {
         {
           total_employees: employees.length,
           available_employees: analysis.filter(e => e.isAvailable).length,
-          low_task_employees: lowTaskEmployees.length
+          low_task_employees: lowTaskEmployees.length,
+          branch: branchFilter.branch || 'all'
         }
       );
 
@@ -61,11 +64,12 @@ class ProcurementAgent {
     }
   }
 
-  async getEmployeeTaskStats(employeeId) {
+  async getEmployeeTaskStats(employeeId, branchFilter = {}) {
     const now = new Date();
     
-    // Get all tasks for employee
-    const allTasks = await Task.find({ assignee: employeeId });
+    // Get all tasks for employee filtered by branch
+    const taskQuery = { assignee: employeeId, ...branchFilter };
+    const allTasks = await Task.find(taskQuery);
     
     // Categorize tasks
     const completedTasks = allTasks.filter(task => task.status === 'Completed');
@@ -107,17 +111,18 @@ class ProcurementAgent {
     return Math.max(0, Math.min(100, score));
   }
 
-  async getTopPerformers(limit = 5) {
+  async getTopPerformers(limit = 5, branchFilter = {}) {
     try {
-      // Only fetch ACTIVE employees (exclude exited/terminated employees)
+      // Only fetch ACTIVE employees (exclude exited/terminated employees) - filtered by branch
       const employees = await User.find({ 
         role: 'User',
-        stillExist: 1 // Only include active employees (0 = exited, 1 = active)
-      }).select('name email stillExist');
+        stillExist: 1, // Only include active employees (0 = exited, 1 = active)
+        ...branchFilter
+      }).select('name email stillExist branch');
       const performers = [];
 
       for (const employee of employees) {
-        const stats = await this.getEmployeeTaskStats(employee._id);
+        const stats = await this.getEmployeeTaskStats(employee._id, branchFilter);
         performers.push({
           employeeId: employee._id,
           name: employee.name,
@@ -137,17 +142,18 @@ class ProcurementAgent {
     }
   }
 
-  async getAvailableEmployees(minAvailabilityScore = 50) {
+  async getAvailableEmployees(minAvailabilityScore = 50, branchFilter = {}) {
     try {
-      // Only fetch ACTIVE employees (exclude exited/terminated employees)
+      // Only fetch ACTIVE employees (exclude exited/terminated employees) - filtered by branch
       const employees = await User.find({ 
         role: 'User',
-        stillExist: 1 // Only include active employees (0 = exited, 1 = active)
-      }).select('name email department stillExist');
+        stillExist: 1, // Only include active employees (0 = exited, 1 = active)
+        ...branchFilter
+      }).select('name email department stillExist branch');
       const available = [];
 
       for (const employee of employees) {
-        const stats = await this.getEmployeeTaskStats(employee._id);
+        const stats = await this.getEmployeeTaskStats(employee._id, branchFilter);
         
         if (stats.isAvailable && stats.availabilityScore >= minAvailabilityScore) {
           available.push({
@@ -169,11 +175,11 @@ class ProcurementAgent {
     }
   }
 
-  async generateProcurementReport(adminId) {
+  async generateProcurementReport(adminId, branchFilter = {}) {
     try {
-      const analysis = await this.analyzeEmployeeAvailability(adminId);
-      const topPerformers = await this.getTopPerformers();
-      const availableEmployees = await this.getAvailableEmployees();
+      const analysis = await this.analyzeEmployeeAvailability(adminId, branchFilter);
+      const topPerformers = await this.getTopPerformers(5, branchFilter);
+      const availableEmployees = await this.getAvailableEmployees(50, branchFilter);
 
       const report = {
         timestamp: new Date().toISOString(),

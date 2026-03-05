@@ -172,6 +172,15 @@ const Aim = require("../models/Aim")
 const MonitoringAlert = require("../models/MonitoringAlert")
 const { sendPushNotificationToUsers, broadcastPushNotification } = require("../utils/pushNotificationService")
 
+// Helper to get branch filter from request headers
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
 // Nodemailer transporter setup (replace with your email service details)
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -181,13 +190,15 @@ const transporter = nodemailer.createTransport({
   },
 })
 
-// Route to broadcast task reminders with monitoring alerts
+// Route to broadcast task reminders with monitoring alerts - FILTERED BY BRANCH
 router.post("/broadcast-reminders", async (req, res) => {
   try {
+    const branchQuery = getBranchQuery(req);
     // Find only pending tasks - explicitly exclude "Completed" and "In Progress"
-    // Query with exact enum value first, then filter to ensure only pending tasks
+    // Query with exact enum value first, then filter to ensure only pending tasks - FILTERED BY BRANCH
     const allTasks = await Task.find({
-      status: { $ne: "Completed" }  // Exclude completed tasks
+      status: { $ne: "Completed" },  // Exclude completed tasks
+      ...branchQuery
     }).populate("assignee", "email name _id")
 
     // Filter to get ONLY pending tasks (exclude "In Progress" and any other statuses)
@@ -337,12 +348,14 @@ router.post("/broadcast-reminders", async (req, res) => {
   }
 })
 
-// Route to broadcast daily aims reminders with monitoring alerts
+// Route to broadcast daily aims reminders with monitoring alerts - FILTERED BY BRANCH
 router.post("/broadcast-aim-reminders", async (req, res) => {
   try {
-    // Fetch all users (excluding admins)
+    const branchQuery = getBranchQuery(req);
+    // Fetch all users (excluding admins) - FILTERED BY BRANCH
     const users = await User.find({
-      role: { $ne: "Admin" }
+      role: { $ne: "Admin" },
+      ...branchQuery
     })
 
     if (!users || users.length === 0) {

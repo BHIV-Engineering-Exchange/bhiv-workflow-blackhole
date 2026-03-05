@@ -6,17 +6,27 @@ const Task = require("../models/Task")
 const auth = require("../middleware/auth")
 const adminAuth = require("../middleware/adminAuth")
 
+// Helper to get branch filter from request
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
 // ===== USER ROUTES =====
 
 // @route   GET api/admin/users
-// @desc    Get all users - SHOW ALL ACTIVE USERS
+// @desc    Get all users - FILTERED BY BRANCH
 // @access  Admin or Manager
 router.get("/users", auth, async (req, res) => {
   try {
     const { includeExited } = req.query;
+    const branchQuery = getBranchQuery(req);
     
-    // Build filter - show all active users
-    const baseFilter = {};
+    // Build filter - show users filtered by branch
+    const baseFilter = { ...branchQuery };
     if (!includeExited || includeExited !== 'true') {
       baseFilter.stillExist = 1;
     }
@@ -43,7 +53,7 @@ router.get("/users", auth, async (req, res) => {
       return res.json(usersWithIndicators)
     }
 
-    // For admins, return all users
+    // For admins, return users filtered by branch
     const users = await User.find(baseFilter).select("-password").sort({ name: 1 })
 
     // Add blackhole indicator
@@ -61,11 +71,12 @@ router.get("/users", auth, async (req, res) => {
 })
 
 // @route   GET api/admin/users/all
-// @desc    Get all users including exited ones (admin only) - SHOW ALL USERS
+// @desc    Get all users including exited ones (admin only) - FILTERED BY BRANCH
 // @access  Admin only
 router.get("/users/all", auth, adminAuth, async (req, res) => {
   try {
-    const users = await User.find({}).select("-password").populate("department", "name").sort({ name: 1 })
+    const branchQuery = getBranchQuery(req);
+    const users = await User.find(branchQuery).select("-password").populate("department", "name").sort({ name: 1 })
     
     // Add blackhole indicator
     const usersWithIndicators = users.map(user => ({
@@ -411,11 +422,12 @@ router.delete("/users/:id", auth, adminAuth, async (req, res) => {
 })
 
 // @route   GET api/admin/users/role/:role
-// @desc    Get users by role - SHOW ALL ACTIVE USERS
+// @desc    Get users by role - FILTERED BY BRANCH
 // @access  Admin or Manager
 router.get("/users/role/:role", auth, async (req, res) => {
   try {
     const { role } = req.params
+    const branchQuery = getBranchQuery(req);
 
     // Validate role
     if (!["Admin", "Manager", "User"].includes(role)) {
@@ -424,7 +436,8 @@ router.get("/users/role/:role", auth, async (req, res) => {
 
     const baseFilter = { 
       role, 
-      stillExist: 1
+      stillExist: 1,
+      ...branchQuery
     }
 
     // If manager, only return users from their department
@@ -451,7 +464,7 @@ router.get("/users/role/:role", auth, async (req, res) => {
       return res.json(usersWithIndicators)
     }
 
-    // For admins, return all active users with the specified role
+    // For admins, return users with the specified role filtered by branch
     const users = await User.find(baseFilter).select("-password").sort({ name: 1 })
 
     // Add blackhole indicator
@@ -469,11 +482,12 @@ router.get("/users/role/:role", auth, async (req, res) => {
 })
 
 // @route   GET api/admin/users/search
-// @desc    Search users by name or email - SHOW ALL ACTIVE USERS
+// @desc    Search users by name or email - FILTERED BY BRANCH
 // @access  Admin or Manager
 router.get("/users/search", auth, async (req, res) => {
   try {
     const { query } = req.query
+    const branchQuery = getBranchQuery(req);
 
     if (!query) {
       return res.status(400).json({ error: "Search query is required" })
@@ -482,7 +496,8 @@ router.get("/users/search", auth, async (req, res) => {
     const searchRegex = new RegExp(query, "i")
     const baseFilter = {
       stillExist: 1,
-      $or: [{ name: searchRegex }, { email: searchRegex }]
+      $or: [{ name: searchRegex }, { email: searchRegex }],
+      ...branchQuery
     }
 
     // If manager, only search users from their department
@@ -509,7 +524,7 @@ router.get("/users/search", auth, async (req, res) => {
       return res.json(usersWithIndicators)
     }
 
-    // For admins, search all active users
+    // For admins, search users filtered by branch
     const users = await User.find(baseFilter)
       .select("-password")
       .sort({ name: 1 })
@@ -531,24 +546,49 @@ router.get("/users/search", auth, async (req, res) => {
 // ===== DEPARTMENT ROUTES =====
 
 // @route   GET api/admin/departments
-// @desc    Get all departments - SHOW ALL USERS
+// @desc    Get all departments - FILTERED BY BRANCH
 // @access  Private
 router.get("/departments", auth, async (req, res) => {
   try {
-    const departments = await Department.find()
+    const branchQuery = getBranchQuery(req);
+    
+    // If branch filter is active, only show departments with members from that branch
+    let matchFilter = {};
+    if (branchQuery.branch) {
+      const usersInBranch = await User.find({ ...branchQuery, stillExist: 1 }).select('_id');
+      const userIds = usersInBranch.map(u => u._id);
+      
+      matchFilter = {
+        $or: [
+          { lead: { $in: userIds } },
+          { members: { $in: userIds } }
+        ]
+      };
+    }
+
+    const departments = await Department.find(matchFilter)
       .populate({
         path: "lead",
-        select: "name email role stillExist"
-        // Show all users - no filtering
+        select: "name email role stillExist branch",
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {}
       })
       .populate({
         path: "members",
-        select: "name email role stillExist"
-        // Show all users - no filtering
+        select: "name email role stillExist branch",
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {}
       })
       .sort({ name: 1 })
 
-    res.json(departments)
+    // Filter out null members from populate
+    const filteredDepartments = departments.map(dept => {
+      const deptObj = dept.toObject();
+      if (branchQuery.branch) {
+        deptObj.members = deptObj.members.filter(m => m !== null);
+      }
+      return deptObj;
+    });
+
+    res.json(filteredDepartments)
   } catch (error) {
     console.error("Error fetching departments:", error)
     res.status(500).json({ error: "Server error" })
@@ -556,27 +596,35 @@ router.get("/departments", auth, async (req, res) => {
 })
 
 // @route   GET api/admin/departments/:id
-// @desc    Get department by ID - SHOW ALL USERS
+// @desc    Get department by ID - FILTERED BY BRANCH
 // @access  Private
 router.get("/departments/:id", auth, async (req, res) => {
   try {
+    const branchQuery = getBranchQuery(req);
+    
     const department = await Department.findById(req.params.id)
       .populate({
         path: "lead",
-        select: "name email role stillExist"
-        // Show all users - no filtering
+        select: "name email role stillExist branch",
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {}
       })
       .populate({
         path: "members",
-        select: "name email role stillExist"
-        // Show all users - no filtering
+        select: "name email role stillExist branch",
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {}
       })
 
     if (!department) {
       return res.status(404).json({ error: "Department not found" })
     }
 
-    res.json(department)
+    // Filter out null members from populate
+    const deptObj = department.toObject();
+    if (branchQuery.branch) {
+      deptObj.members = deptObj.members.filter(m => m !== null);
+    }
+
+    res.json(deptObj)
   } catch (error) {
     console.error("Error fetching department:", error)
     if (error.kind === "ObjectId") {

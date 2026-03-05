@@ -5,10 +5,20 @@ const auth = require('../middleware/auth');
 const adminAuth = require('../middleware/adminAuth');
 const procurementAuth = require('../middleware/procurementAuth');
 
-// Run procurement analysis
+// Helper to get branch filter from request
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
+// Run procurement analysis - FILTERED BY BRANCH
 router.post('/run-analysis', auth, procurementAuth, async (req, res) => {
   try {
-    const analysis = await procurementAgent.analyzeEmployeeAvailability(req.user.id);
+    const branchQuery = getBranchQuery(req);
+    const analysis = await procurementAgent.analyzeEmployeeAvailability(req.user.id, branchQuery);
 
     // Calculate team workload percentage
     const totalEmployees = analysis.totalEmployees;
@@ -32,10 +42,11 @@ router.post('/run-analysis', auth, procurementAuth, async (req, res) => {
   }
 });
 
-// Generate full procurement report
+// Generate full procurement report - FILTERED BY BRANCH
 router.get('/report', auth, procurementAuth, async (req, res) => {
   try {
-    const report = await procurementAgent.generateProcurementReport(req.user.id);
+    const branchQuery = getBranchQuery(req);
+    const report = await procurementAgent.generateProcurementReport(req.user.id, branchQuery);
 
     res.json({
       success: true,
@@ -50,11 +61,12 @@ router.get('/report', auth, procurementAuth, async (req, res) => {
   }
 });
 
-// Get available employees
+// Get available employees - FILTERED BY BRANCH
 router.get('/available-employees', auth, procurementAuth, async (req, res) => {
   try {
     const { minScore = 50 } = req.query;
-    const availableEmployees = await procurementAgent.getAvailableEmployees(parseInt(minScore));
+    const branchQuery = getBranchQuery(req);
+    const availableEmployees = await procurementAgent.getAvailableEmployees(parseInt(minScore), branchQuery);
 
     res.json({
       success: true,
@@ -70,11 +82,12 @@ router.get('/available-employees', auth, procurementAuth, async (req, res) => {
   }
 });
 
-// Get top performers
+// Get top performers - FILTERED BY BRANCH
 router.get('/top-performers', auth, procurementAuth, async (req, res) => {
   try {
     const { limit = 5 } = req.query;
-    const topPerformers = await procurementAgent.getTopPerformers(parseInt(limit));
+    const branchQuery = getBranchQuery(req);
+    const topPerformers = await procurementAgent.getTopPerformers(parseInt(limit), branchQuery);
 
     res.json({
       success: true,

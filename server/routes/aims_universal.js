@@ -9,31 +9,49 @@ const auth = require("../middleware/auth");
 const adminAuth = require("../middleware/adminAuth");
 const { sendAimReminder } = require("../utils/emailService");
 
+// Helper to get branch filter from request
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
 // ============================================================================
 // UNIVERSAL AIMS ROUTES - ALL AIM FUNCTIONALITY CONSOLIDATED
 // ============================================================================
 
 // @route   GET /api/aims
-// @desc    Get all aims (with filters) - Admin only
+// @desc    Get all aims (with filters) - FILTERED BY BRANCH
 // @access  Private (Admin/Manager)
 router.get("/", adminAuth, async (req, res) => {
   try {
     const { department, date, user } = req.query;
+    const branchQuery = getBranchQuery(req);
 
     // Build filter object
     const filter = {};
     
+    // Get users in the branch first
+    const userFilter = { stillExist: 1, ...branchQuery };
+    
     // Filter by department users instead of aim department
     if (department && department !== "all") {
-      const usersInDept = await User.find({ department }).select('_id');
-      if (usersInDept.length > 0) {
-        filter.user = { $in: usersInDept.map(u => u._id) };
+      userFilter.department = department;
+    }
+    
+    if (user) {
+      filter.user = user;
+    } else if (branchQuery.branch || department) {
+      // Get users matching branch and/or department
+      const usersInFilter = await User.find(userFilter).select('_id');
+      if (usersInFilter.length > 0) {
+        filter.user = { $in: usersInFilter.map(u => u._id) };
       } else {
         return res.json([]);
       }
     }
-    
-    if (user) filter.user = user;
     
     if (date) {
       const queryDate = new Date(date);
@@ -49,7 +67,8 @@ router.get("/", adminAuth, async (req, res) => {
     const aims = await Aim.find(filter)
       .populate({
         path: "user",
-        select: "name email department",
+        select: "name email department branch",
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {},
         populate: {
           path: "department",
           select: "name color"
@@ -57,7 +76,10 @@ router.get("/", adminAuth, async (req, res) => {
       })
       .sort({ date: -1 });
 
-    res.json(aims);
+    // Filter out aims where user didn't populate (not in branch)
+    const filteredAims = aims.filter(aim => aim.user !== null);
+
+    res.json(filteredAims);
   } catch (error) {
     console.error("Error fetching aims:", error);
     res.status(500).json({ error: "Server error" });
@@ -158,15 +180,26 @@ router.get("/user/:userId", auth, async (req, res) => {
 });
 
 // @route   GET /api/aims/all
-// @desc    Get all aims with user data for admin view
+// @desc    Get all aims with user data for admin view - FILTERED BY BRANCH
 // @access  Admin only
 router.get("/all", adminAuth, async (req, res) => {
   try {
     const { date } = req.query;
+    const branchQuery = getBranchQuery(req);
     
     let filter = {
       aims: { $ne: 'Daily work objectives - to be updated' } // Exclude default aims
     };
+    
+    // Filter by branch - get users in branch first
+    if (branchQuery.branch) {
+      const usersInBranch = await User.find({ ...branchQuery, stillExist: 1 }).select('_id');
+      if (usersInBranch.length > 0) {
+        filter.user = { $in: usersInBranch.map(u => u._id) };
+      } else {
+        return res.json([]);
+      }
+    }
     
     if (date) {
       const targetDate = new Date(date);
@@ -183,15 +216,19 @@ router.get("/all", adminAuth, async (req, res) => {
     const aims = await Aim.find(filter)
       .populate({
         path: "user",
-        select: "name email department",
+        select: "name email department branch",
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {},
         populate: {
           path: "department",
           select: "name color"
         }
       })
       .sort({ updatedAt: -1 });
+    
+    // Filter out aims where user didn't populate (not in branch)
+    const filteredAims = aims.filter(aim => aim.user !== null);
       
-    res.json(aims);
+    res.json(filteredAims);
   } catch (error) {
     console.error("Error fetching all aims:", error);
     res.status(500).json({ error: "Server error" });
@@ -199,12 +236,13 @@ router.get("/all", adminAuth, async (req, res) => {
 });
 
 // @route   GET /api/aims/with-progress
-// @desc    Get aims with their related progress data (ENHANCED VERSION)
+// @desc    Get aims with their related progress data (ENHANCED VERSION) - FILTERED BY BRANCH
 // @access  Private
 router.get("/with-progress", auth, async (req, res) => {
   try {
     const { department, date, user } = req.query;
-    console.log('🔍 Enhanced aims query params:', { department, date, user });
+    const branchQuery = getBranchQuery(req);
+    console.log('🔍 Enhanced aims query params:', { department, date, user, branch: branchQuery.branch });
     console.log('👤 Request user:', { id: req.user.id, role: req.user.role });
 
     // Build filter object for aims
@@ -215,17 +253,22 @@ router.get("/with-progress", auth, async (req, res) => {
       aimFilter.user = req.user.id;
       console.log('🔒 Non-admin user - filtering by user ID:', req.user.id);
     } else {
-      // Admin can filter by department and specific user
+      // Admin can filter by department, branch, and specific user
+      const userFilter = { stillExist: 1, ...branchQuery };
+      
       if (department && department !== "all") {
-        // Filter by users in the department instead of aim department
-        const usersInDept = await User.find({ department }).select('_id');
-        if (usersInDept.length > 0) {
-          aimFilter.user = { $in: usersInDept.map(u => u._id) };
-        } else {
-          // No users in department, return empty result
-          return res.json({
-            success: true,
-            data: []
+        userFilter.department = department;
+      }
+      
+      // Get users matching the filter
+      const usersMatching = await User.find(userFilter).select('_id');
+      if (usersMatching.length > 0) {
+        aimFilter.user = { $in: usersMatching.map(u => u._id) };
+      } else {
+        // No users matching filter, return empty result
+        return res.json({
+          success: true,
+          data: []
           });
         }
       }

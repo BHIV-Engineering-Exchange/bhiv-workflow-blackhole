@@ -5,24 +5,60 @@ const Task = require("../models/Task")
 const User = require("../models/User")
 const auth = require("../middleware/auth")
 
-// Get all departments - SHOW ALL DEPARTMENTS (no blackhole filtering)
+// Helper to get branch filter from request
+const getBranchQuery = (req) => {
+  const selectedBranch = req.headers['x-branch'] || req.query.branch;
+  if (selectedBranch && selectedBranch !== 'all') {
+    return { branch: selectedBranch };
+  }
+  return {};
+};
+
+// Get all departments - FILTERED BY BRANCH
 router.get("/", async (req, res) => {
   try {
-    const departments = await Department.find()
+    const branchQuery = getBranchQuery(req);
+    
+    // If branch filter is active, only show departments with members from that branch
+    let matchFilter = {};
+    if (branchQuery.branch) {
+      // Get users from the selected branch
+      const usersInBranch = await User.find({ ...branchQuery, stillExist: 1 }).select('_id');
+      const userIds = usersInBranch.map(u => u._id);
+      
+      // Filter departments where lead or members are in the branch
+      matchFilter = {
+        $or: [
+          { lead: { $in: userIds } },
+          { members: { $in: userIds } }
+        ]
+      };
+    }
+
+    const departments = await Department.find(matchFilter)
       .populate({
         path: "lead",
-        select: "name avatar stillExist email"
-        // Removed blackhole filtering - show all leads
+        select: "name avatar stillExist email branch",
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {}
       })
       .populate({
         path: "members",
-        select: "name avatar stillExist email"
-        // Removed blackhole filtering - show all members
+        select: "name avatar stillExist email branch",
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {}
       })
+    
+    // Filter out members that don't match branch (populate match only nullifies non-matching)
+    const filteredDepartments = departments.map(dept => {
+      const deptObj = dept.toObject();
+      if (branchQuery.branch) {
+        deptObj.members = deptObj.members.filter(m => m !== null);
+      }
+      return deptObj;
+    });
     
     res.json({
       success: true,
-      data: departments
+      data: filteredDepartments
     })
   } catch (error) {
     console.error("Error fetching departments:", error)
@@ -33,26 +69,34 @@ router.get("/", async (req, res) => {
   }
 })
 
-// Get department by ID - SHOW ALL USERS
+// Get department by ID - FILTERED BY BRANCH
 router.get("/:id", auth, async (req, res) => {
   try {
+    const branchQuery = getBranchQuery(req);
+    
     const department = await Department.findById(req.params.id)
       .populate({
         path: "lead",
-        select: "name avatar stillExist email"
-        // Removed blackhole filtering
+        select: "name avatar stillExist email branch",
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {}
       })
       .populate({
         path: "members",
-        select: "name avatar stillExist email"
-        // Removed blackhole filtering
+        select: "name avatar stillExist email branch",
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {}
       })
 
     if (!department) {
       return res.status(404).json({ error: "Department not found" })
     }
 
-    res.json(department)
+    // Filter out members that don't match branch
+    const deptObj = department.toObject();
+    if (branchQuery.branch) {
+      deptObj.members = deptObj.members.filter(m => m !== null);
+    }
+
+    res.json(deptObj)
   } catch (error) {
     console.error("Error fetching department:", error)
     res.status(500).json({ error: "Server error" })
@@ -63,28 +107,35 @@ router.get("/:id", auth, async (req, res) => {
 router.post("/", auth, async (req, res) => {
   try {
     const { lead, members, ...departmentData } = req.body
+    const branchQuery = getBranchQuery(req);
 
-    // For NEW assignments, verify lead is active and has blackhole email if provided
+    // For NEW assignments, verify lead is active and has blackhole email and belongs to selected branch
     if (lead) {
-      const leadUser = await User.findOne({ 
+      const leadFilter = { 
         _id: lead, 
         stillExist: 1,
         email: { $regex: /^blackhole/, $options: 'i' }
-      })
+      };
+      if (branchQuery.branch) leadFilter.branch = branchQuery.branch;
+      
+      const leadUser = await User.findOne(leadFilter)
       if (!leadUser) {
-        return res.status(400).json({ error: "Lead user not found, not active, or not authorized" })
+        return res.status(400).json({ error: "Lead user not found, not active, not authorized, or not in selected branch" })
       }
     }
 
-    // For NEW assignments, verify all members are active and have blackhole emails if provided
+    // For NEW assignments, verify all members are active, have blackhole emails, and belong to selected branch
     if (members && members.length > 0) {
-      const activeMembers = await User.find({ 
+      const memberFilter = { 
         _id: { $in: members }, 
         stillExist: 1,
         email: { $regex: /^blackhole/, $options: 'i' }
-      })
+      };
+      if (branchQuery.branch) memberFilter.branch = branchQuery.branch;
+      
+      const activeMembers = await User.find(memberFilter)
       if (activeMembers.length !== members.length) {
-        return res.status(400).json({ error: "Some members are not active, not found, or not authorized" })
+        return res.status(400).json({ error: "Some members are not active, not found, not authorized, or not in selected branch" })
       }
     }
 
@@ -123,29 +174,36 @@ router.put("/:id", auth, async (req, res) => {
   try {
     const { id } = req.params
     const { lead, members, ...updates } = req.body
+    const branchQuery = getBranchQuery(req);
 
-    // For NEW assignments, verify lead is active and has blackhole email if being updated
+    // For NEW assignments, verify lead is active, has blackhole email, and belongs to selected branch
     if (lead) {
-      const leadUser = await User.findOne({ 
+      const leadFilter = { 
         _id: lead, 
         stillExist: 1,
         email: { $regex: /^blackhole/, $options: 'i' }
-      })
+      };
+      if (branchQuery.branch) leadFilter.branch = branchQuery.branch;
+      
+      const leadUser = await User.findOne(leadFilter)
       if (!leadUser) {
-        return res.status(400).json({ error: "Lead user not found, not active, or not authorized" })
+        return res.status(400).json({ error: "Lead user not found, not active, not authorized, or not in selected branch" })
       }
       updates.lead = lead
     }
 
-    // For NEW assignments, verify all members are active and have blackhole emails if being updated
+    // For NEW assignments, verify all members are active, have blackhole emails, and belong to selected branch
     if (members && members.length > 0) {
-      const activeMembers = await User.find({ 
+      const memberFilter = { 
         _id: { $in: members }, 
         stillExist: 1,
         email: { $regex: /^blackhole/, $options: 'i' }
-      })
+      };
+      if (branchQuery.branch) memberFilter.branch = branchQuery.branch;
+      
+      const activeMembers = await User.find(memberFilter)
       if (activeMembers.length !== members.length) {
-        return res.status(400).json({ error: "Some members are not active, not found, or not authorized" })
+        return res.status(400).json({ error: "Some members are not active, not found, not authorized, or not in selected branch" })
       }
       updates.members = members
     }
@@ -153,13 +211,13 @@ router.put("/:id", auth, async (req, res) => {
     const department = await Department.findByIdAndUpdate(id, { $set: updates }, { new: true })
       .populate({
         path: "lead",
-        select: "name avatar stillExist email"
-        // Show all users - no filtering
+        select: "name avatar stillExist email branch",
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {}
       })
       .populate({
         path: "members",
-        select: "name avatar stillExist email"
-        // Show all users - no filtering
+        select: "name avatar stillExist email branch",
+        match: branchQuery.branch ? { branch: branchQuery.branch } : {}
       })
 
     if (!department) {
@@ -208,14 +266,16 @@ router.delete("/:id", auth, async (req, res) => {
   }
 })
 
-// Get tasks by department - SHOW ALL EXISTING ASSIGNEES
+// Get tasks by department - FILTERED BY BRANCH
 router.get("/:id/tasks", auth, async (req, res) => {
   try {
     const { status } = req.query
+    const branchQuery = getBranchQuery(req);
 
-    // Build filter object
+    // Build filter object - include branch filter for tasks
     const filter = { department: req.params.id }
     if (status) filter.status = status
+    if (branchQuery.branch) filter.branch = branchQuery.branch
 
     const tasks = await Task.find(filter)
       .populate("dependencies", "title status")
