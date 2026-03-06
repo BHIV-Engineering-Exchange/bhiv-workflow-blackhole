@@ -1,21 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const crypto = require('crypto');
-const nodemailer = require('nodemailer');
 const Branch = require('../models/Branch');
 const authMiddleware = require('../middleware/auth');
-
-// Super admin email for branch password setup
-const SUPER_ADMIN_EMAIL = 'blackholeadmin321@gmail.com';
-
-// Create email transporter
-const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE || "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
-  },
-});
 
 // Get all branches (public - for registration dropdown)
 router.get('/', async (req, res) => {
@@ -232,8 +218,8 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// Request branch password setup - sends email to super admin
-router.post('/:id/request-password-setup', authMiddleware, async (req, res) => {
+// Set branch password directly (admin only)
+router.post('/:id/set-password', authMiddleware, async (req, res) => {
   try {
     // Check if user is admin
     if (req.user.role !== 'Admin') {
@@ -243,134 +229,12 @@ router.post('/:id/request-password-setup', authMiddleware, async (req, res) => {
       });
     }
 
-    const branch = await Branch.findById(req.params.id);
-    if (!branch) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'Branch not found' 
-      });
-    }
+    const { password } = req.body;
 
-    // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-
-    // Save token to branch
-    branch.passwordResetToken = resetToken;
-    branch.passwordResetExpires = resetExpires;
-    await branch.save();
-
-    // Get frontend URL
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const resetLink = `${frontendUrl}/set-branch-password/${branch._id}/${resetToken}`;
-
-    // Try to send email, but don't fail if email service is not configured
-    let emailSent = false;
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
-      try {
-        const mailOptions = {
-          from: process.env.EMAIL_USER,
-          to: SUPER_ADMIN_EMAIL,
-          subject: `Set Password for Branch: ${branch.name}`,
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-              <h2 style="color: #3b82f6;">Branch Password Setup Request</h2>
-              <p>A request has been made to set a password for branch switching.</p>
-              
-              <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                <p><strong>Branch Name:</strong> ${branch.name}</p>
-                <p><strong>Branch Code:</strong> ${branch.code}</p>
-              </div>
-              
-              <p>Click the button below to set the password for this branch:</p>
-              
-              <a href="${resetLink}" style="display: inline-block; background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">
-                Set Branch Password
-              </a>
-              
-              <p style="color: #6b7280; font-size: 14px;">This link will expire in 24 hours.</p>
-              
-              <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
-                If you did not expect this email, please ignore it.
-              </p>
-            </div>
-          `
-        };
-
-        await transporter.sendMail(mailOptions);
-        emailSent = true;
-      } catch (emailError) {
-        console.error('Email sending failed:', emailError.message);
-      }
-    }
-
-    // Return success with link (useful if email fails or for testing)
-    res.json({
-      success: true,
-      emailSent,
-      message: emailSent 
-        ? `Password setup email sent to super admin for branch: ${branch.name}`
-        : `Email service not configured. Use the link below to set password.`,
-      resetLink: emailSent ? undefined : resetLink // Only show link if email wasn't sent
-    });
-  } catch (error) {
-    console.error('Error requesting password setup:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-
-// Verify password reset token (public - for the reset page)
-router.get('/:id/verify-token/:token', async (req, res) => {
-  try {
-    const branch = await Branch.findById(req.params.id);
-    
-    if (!branch) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'Branch not found' 
-      });
-    }
-
-    if (branch.passwordResetToken !== req.params.token) {
+    if (!password) {
       return res.status(400).json({ 
         success: false, 
-        error: 'Invalid token' 
-      });
-    }
-
-    if (branch.passwordResetExpires < Date.now()) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Token has expired' 
-      });
-    }
-
-    res.json({
-      success: true,
-      branchName: branch.name,
-      branchCode: branch.code
-    });
-  } catch (error) {
-    console.error('Error verifying token:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-
-// Set branch password (public - via email link)
-router.post('/:id/set-password', async (req, res) => {
-  try {
-    const { token, password } = req.body;
-
-    if (!token || !password) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Token and password are required' 
+        error: 'Password is required' 
       });
     }
 
@@ -390,24 +254,8 @@ router.post('/:id/set-password', async (req, res) => {
       });
     }
 
-    if (branch.passwordResetToken !== token) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Invalid token' 
-      });
-    }
-
-    if (branch.passwordResetExpires < Date.now()) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Token has expired' 
-      });
-    }
-
-    // Set the password (plain text as per existing pattern in this codebase)
+    // Set the password
     branch.switchPassword = password;
-    branch.passwordResetToken = null;
-    branch.passwordResetExpires = null;
     await branch.save();
 
     res.json({

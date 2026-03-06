@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Building2, Plus, Pencil, Trash2, MapPin, Loader2, Save, X, Mail, KeyRound, Copy, ExternalLink } from "lucide-react"
+import { Building2, Plus, Pencil, Trash2, MapPin, Loader2, Save, X, KeyRound, Eye, EyeOff } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -37,7 +37,7 @@ export default function BranchManagement() {
   const [branches, setBranches] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [sendingEmail, setSendingEmail] = useState(null) // branchId of branch being sent email
+  const [settingPassword, setSettingPassword] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedBranch, setSelectedBranch] = useState(null)
@@ -211,60 +211,76 @@ export default function BranchManagement() {
     }
   }
 
-  // State for password link dialog
-  const [passwordLinkDialog, setPasswordLinkDialog] = useState({ open: false, link: "", branchName: "" })
+  // State for password dialog
+  const [passwordDialog, setPasswordDialog] = useState({ open: false, branch: null })
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
 
-  // Request password setup email for a branch
-  const handleRequestPasswordSetup = async (branch) => {
+  // Open password dialog for a branch
+  const handleOpenPasswordDialog = (branch) => {
+    setPasswordDialog({ open: true, branch })
+    setNewPassword("")
+    setConfirmPassword("")
+    setShowPassword(false)
+  }
+
+  // Set password for branch
+  const handleSetPassword = async () => {
+    if (!newPassword) {
+      toast({
+        title: "Error",
+        description: "Please enter a password",
+        variant: "destructive"
+      })
+      return
+    }
+    if (newPassword.length < 4) {
+      toast({
+        title: "Error",
+        description: "Password must be at least 4 characters",
+        variant: "destructive"
+      })
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: "Error",
+        description: "Passwords do not match",
+        variant: "destructive"
+      })
+      return
+    }
+
     try {
-      setSendingEmail(branch._id)
-      const response = await api.branches.requestPasswordSetup(branch._id)
+      setSettingPassword(true)
+      const response = await api.branches.setPassword(passwordDialog.branch._id, newPassword)
       
       if (response.success) {
-        if (response.emailSent) {
-          toast({
-            title: "Email Sent",
-            description: `Password setup link sent to super admin for ${branch.name}`,
-          })
-        } else if (response.resetLink) {
-          // Email not configured, show link in dialog
-          setPasswordLinkDialog({
-            open: true,
-            link: response.resetLink,
-            branchName: branch.name
-          })
-        } else {
-          toast({
-            title: "Success",
-            description: response.message,
-          })
-        }
+        toast({
+          title: "Success",
+          description: `Switch password set for ${passwordDialog.branch.name}`,
+        })
+        setPasswordDialog({ open: false, branch: null })
+        setNewPassword("")
+        setConfirmPassword("")
       } else {
         toast({
           title: "Error",
-          description: response.error || "Failed to send email",
+          description: response.error || "Failed to set password",
           variant: "destructive"
         })
       }
     } catch (error) {
-      console.error("Error requesting password setup:", error)
+      console.error("Error setting password:", error)
       toast({
         title: "Error",
-        description: error.message || "Failed to send password setup email",
+        description: error.message || "Failed to set password",
         variant: "destructive"
       })
     } finally {
-      setSendingEmail(null)
+      setSettingPassword(false)
     }
-  }
-
-  // Copy link to clipboard
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(passwordLinkDialog.link)
-    toast({
-      title: "Copied",
-      description: "Link copied to clipboard",
-    })
   }
 
   return (
@@ -351,19 +367,14 @@ export default function BranchManagement() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  onClick={() => handleRequestPasswordSetup(branch)}
-                                  disabled={sendingEmail === branch._id}
+                                  onClick={() => handleOpenPasswordDialog(branch)}
                                   className="text-primary hover:text-primary"
                                 >
-                                  {sendingEmail === branch._id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <KeyRound className="h-4 w-4" />
-                                  )}
+                                  <KeyRound className="h-4 w-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
-                                <p>Send password setup email</p>
+                                <p>Set switch password</p>
                               </TooltipContent>
                             </Tooltip>
                             <Tooltip>
@@ -577,53 +588,76 @@ export default function BranchManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Password Link Dialog */}
-      <Dialog open={passwordLinkDialog.open} onOpenChange={(open) => setPasswordLinkDialog(prev => ({ ...prev, open }))}>
-        <DialogContent className="sm:max-w-lg">
+      {/* Set Password Dialog */}
+      <Dialog open={passwordDialog.open} onOpenChange={(open) => {
+        if (!open) {
+          setPasswordDialog({ open: false, branch: null })
+          setNewPassword("")
+          setConfirmPassword("")
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <KeyRound className="h-5 w-5 text-primary" />
-              Password Setup Link
+              Set Branch Switch Password
             </DialogTitle>
             <DialogDescription>
-              Share this link with the super admin to set password for <strong>{passwordLinkDialog.branchName}</strong>.
-              <br />
-              <span className="text-yellow-600 dark:text-yellow-400">Note: Email service is not configured.</span>
+              Set a password required to switch to <strong>{passwordDialog.branch?.name}</strong>.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Input
-                value={passwordLinkDialog.link}
-                readOnly
-                className="font-mono text-xs"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={handleCopyLink}
-                title="Copy link"
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => window.open(passwordLinkDialog.link, '_blank')}
-                title="Open link"
-              >
-                <ExternalLink className="h-4 w-4" />
-              </Button>
+            <div className="space-y-2">
+              <Label htmlFor="newPassword">Password</Label>
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={showPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter switch password"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground">
-              This link will expire in 24 hours.
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Input
+                id="confirmPassword"
+                type={showPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm password"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              This password will be required when switching to this branch.
             </p>
           </div>
           <DialogFooter>
-            <Button onClick={() => setPasswordLinkDialog({ open: false, link: "", branchName: "" })}>
-              Close
+            <Button
+              variant="outline"
+              onClick={() => setPasswordDialog({ open: false, branch: null })}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSetPassword} disabled={settingPassword}>
+              {settingPassword ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Saving...
+                </>
+              ) : (
+                "Set Password"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
