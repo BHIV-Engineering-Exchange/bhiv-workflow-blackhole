@@ -46,6 +46,8 @@ import EnhancedSalaryDashboard from "./pages/EnhancedSalaryDashboard";
 import BiometricAttendanceDashboard from "./pages/BiometricAttendanceDashboard";
 import NewSalaryManagement from "./pages/NewSalaryManagement";
 import BranchManagement from "./pages/BranchManagement";
+import ProjectManagement from "./pages/ProjectManagement";
+import ProjectDetails from "./pages/ProjectDetails";
 import MyTasks from "./pages/MyTasks";
 
 function AppContent() {
@@ -390,6 +392,22 @@ function AppContent() {
                         element={
                           <ProtectedRoute>
                             <BranchManagement />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/projects"
+                        element={
+                          <ProtectedRoute>
+                            <ProjectManagement />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/projects/:id"
+                        element={
+                          <ProtectedRoute>
+                            <ProjectDetails />
                           </ProtectedRoute>
                         }
                       />

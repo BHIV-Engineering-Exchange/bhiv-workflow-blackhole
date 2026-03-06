@@ -643,6 +643,72 @@ const branches = {
 
 
 //-----------------------------------------------------
+// Projects API
+//-----------------------------------------------------
+const projects = {
+  // Get all projects
+  getAll: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchAPI(`/projects${query ? `?${query}` : ""}`);
+  },
+
+  // Get single project with full details
+  get: (id) => fetchAPI(`/projects/${id}`),
+
+  // Create project (admin only)
+  create: (project) =>
+    fetchAPI("/projects", {
+      method: "POST",
+      body: JSON.stringify(project),
+    }),
+
+  // Update project (admin only)
+  update: (id, project) =>
+    fetchAPI(`/projects/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(project),
+    }),
+
+  // Delete project (admin only)
+  delete: (id) =>
+    fetchAPI(`/projects/${id}`, { method: "DELETE" }),
+
+  // Get projects by department
+  getByDepartment: (departmentId) =>
+    fetchAPI(`/projects/department/${departmentId}`),
+
+  // Add task to project
+  addTask: (projectId, taskId) =>
+    fetchAPI(`/projects/${projectId}/tasks`, {
+      method: "POST",
+      body: JSON.stringify({ taskId }),
+    }),
+
+  // Remove task from project
+  removeTask: (projectId, taskId) =>
+    fetchAPI(`/projects/${projectId}/tasks/${taskId}`, { method: "DELETE" }),
+
+  // Add team member
+  addTeamMember: (projectId, userId) =>
+    fetchAPI(`/projects/${projectId}/team`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
+
+  // Remove team member
+  removeTeamMember: (projectId, userId) =>
+    fetchAPI(`/projects/${projectId}/team/${userId}`, { method: "DELETE" }),
+
+  // Get project statistics
+  getStats: (id) => fetchAPI(`/projects/${id}/stats`),
+
+  // Recalculate progress
+  recalculateProgress: (id) =>
+    fetchAPI(`/projects/${id}/recalculate`, { method: "POST" }),
+};
+
+
+//-----------------------------------------------------
 // Generic HTTP Methods
 //-----------------------------------------------------
 const httpMethods = {
@@ -677,6 +743,7 @@ export const api = {
   ems,
   procurement,
   branches,
+  projects,
 };
 
 export default api;
