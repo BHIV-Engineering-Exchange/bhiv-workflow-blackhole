@@ -264,41 +264,54 @@ router.post('/:id/request-password-setup', authMiddleware, async (req, res) => {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const resetLink = `${frontendUrl}/set-branch-password/${branch._id}/${resetToken}`;
 
-    // Send email to super admin
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: SUPER_ADMIN_EMAIL,
-      subject: `Set Password for Branch: ${branch.name}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h2 style="color: #3b82f6;">Branch Password Setup Request</h2>
-          <p>A request has been made to set a password for branch switching.</p>
-          
-          <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
-            <p><strong>Branch Name:</strong> ${branch.name}</p>
-            <p><strong>Branch Code:</strong> ${branch.code}</p>
-          </div>
-          
-          <p>Click the button below to set the password for this branch:</p>
-          
-          <a href="${resetLink}" style="display: inline-block; background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">
-            Set Branch Password
-          </a>
-          
-          <p style="color: #6b7280; font-size: 14px;">This link will expire in 24 hours.</p>
-          
-          <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
-            If you did not expect this email, please ignore it.
-          </p>
-        </div>
-      `
-    };
+    // Try to send email, but don't fail if email service is not configured
+    let emailSent = false;
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
+      try {
+        const mailOptions = {
+          from: process.env.EMAIL_USER,
+          to: SUPER_ADMIN_EMAIL,
+          subject: `Set Password for Branch: ${branch.name}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+              <h2 style="color: #3b82f6;">Branch Password Setup Request</h2>
+              <p>A request has been made to set a password for branch switching.</p>
+              
+              <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p><strong>Branch Name:</strong> ${branch.name}</p>
+                <p><strong>Branch Code:</strong> ${branch.code}</p>
+              </div>
+              
+              <p>Click the button below to set the password for this branch:</p>
+              
+              <a href="${resetLink}" style="display: inline-block; background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">
+                Set Branch Password
+              </a>
+              
+              <p style="color: #6b7280; font-size: 14px;">This link will expire in 24 hours.</p>
+              
+              <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
+                If you did not expect this email, please ignore it.
+              </p>
+            </div>
+          `
+        };
 
-    await transporter.sendMail(mailOptions);
+        await transporter.sendMail(mailOptions);
+        emailSent = true;
+      } catch (emailError) {
+        console.error('Email sending failed:', emailError.message);
+      }
+    }
 
+    // Return success with link (useful if email fails or for testing)
     res.json({
       success: true,
-      message: `Password setup email sent to super admin for branch: ${branch.name}`
+      emailSent,
+      message: emailSent 
+        ? `Password setup email sent to super admin for branch: ${branch.name}`
+        : `Email service not configured. Use the link below to set password.`,
+      resetLink: emailSent ? undefined : resetLink // Only show link if email wasn't sent
     });
   } catch (error) {
     console.error('Error requesting password setup:', error);

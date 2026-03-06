@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Building2, Plus, Pencil, Trash2, MapPin, Loader2, Save, X, Mail, KeyRound } from "lucide-react"
+import { Building2, Plus, Pencil, Trash2, MapPin, Loader2, Save, X, Mail, KeyRound, Copy, ExternalLink } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -211,6 +211,9 @@ export default function BranchManagement() {
     }
   }
 
+  // State for password link dialog
+  const [passwordLinkDialog, setPasswordLinkDialog] = useState({ open: false, link: "", branchName: "" })
+
   // Request password setup email for a branch
   const handleRequestPasswordSetup = async (branch) => {
     try {
@@ -218,10 +221,24 @@ export default function BranchManagement() {
       const response = await api.branches.requestPasswordSetup(branch._id)
       
       if (response.success) {
-        toast({
-          title: "Email Sent",
-          description: `Password setup link sent to super admin for ${branch.name}`,
-        })
+        if (response.emailSent) {
+          toast({
+            title: "Email Sent",
+            description: `Password setup link sent to super admin for ${branch.name}`,
+          })
+        } else if (response.resetLink) {
+          // Email not configured, show link in dialog
+          setPasswordLinkDialog({
+            open: true,
+            link: response.resetLink,
+            branchName: branch.name
+          })
+        } else {
+          toast({
+            title: "Success",
+            description: response.message,
+          })
+        }
       } else {
         toast({
           title: "Error",
@@ -239,6 +256,15 @@ export default function BranchManagement() {
     } finally {
       setSendingEmail(null)
     }
+  }
+
+  // Copy link to clipboard
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(passwordLinkDialog.link)
+    toast({
+      title: "Copied",
+      description: "Link copied to clipboard",
+    })
   }
 
   return (
@@ -546,6 +572,58 @@ export default function BranchManagement() {
                   Delete
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Password Link Dialog */}
+      <Dialog open={passwordLinkDialog.open} onOpenChange={(open) => setPasswordLinkDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-primary" />
+              Password Setup Link
+            </DialogTitle>
+            <DialogDescription>
+              Share this link with the super admin to set password for <strong>{passwordLinkDialog.branchName}</strong>.
+              <br />
+              <span className="text-yellow-600 dark:text-yellow-400">Note: Email service is not configured.</span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Input
+                value={passwordLinkDialog.link}
+                readOnly
+                className="font-mono text-xs"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleCopyLink}
+                title="Copy link"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => window.open(passwordLinkDialog.link, '_blank')}
+                title="Open link"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              This link will expire in 24 hours.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setPasswordLinkDialog({ open: false, link: "", branchName: "" })}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
