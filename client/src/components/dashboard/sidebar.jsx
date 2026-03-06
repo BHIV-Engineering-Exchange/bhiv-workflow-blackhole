@@ -148,12 +148,12 @@ export function DashboardSidebar() {
           >
             <div className={`flex items-center gap-3 ${isCollapsed ? 'justify-center' : ''}`}>
               <div className="relative">
-                <div className="w-10 h-10 gradient-primary rounded-xl flex items-center justify-center shadow-glow-primary transition-all duration-300 group-hover:scale-110 group-hover:rotate-12 cursor-pointer">
-                  <Sparkles className="h-5 w-5 text-primary-foreground" />
+                <div className="w-10 h-10 gradient-primary rounded-xl flex items-center justify-center shadow-glow-primary transition-all duration-300 group-hover:scale-110 group-hover:rotate-12 group-hover:shadow-lg cursor-pointer">
+                  <Sparkles className="h-5 w-5 text-primary-foreground group-hover:animate-pulse" />
                 </div>
               </div>
               {!isCollapsed && (
-                <span className="text-xl font-heading font-bold tracking-tight text-foreground transition-opacity duration-300 group-hover:text-primary">
+                <span className="text-xl font-heading font-bold tracking-tight bg-gradient-to-r from-primary to-purple-500 bg-clip-text text-transparent transition-all duration-300">
                   Infiverse
                 </span>
               )}
