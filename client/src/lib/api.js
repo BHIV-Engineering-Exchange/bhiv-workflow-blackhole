@@ -111,6 +111,13 @@ const auth = {
     }),
 
   getCurrentUser: () => fetchAPI("/auth/me"),
+
+  // Verify admin password (for branch switching)
+  verifyPassword: (password) =>
+    fetchAPI("/auth/verify-password", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
 };
 
 

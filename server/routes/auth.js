@@ -521,6 +521,38 @@ router.post("/login", async (req, res) => {
   }
 })
 
+// Verify admin password for branch switching
+router.post("/verify-password", authMiddleware, async (req, res) => {
+  const { password } = req.body
+
+  try {
+    // Only allow admin users
+    if (req.user.role !== "Admin") {
+      return res.status(403).json({ error: "Access denied. Admin only." })
+    }
+
+    if (!password) {
+      return res.status(400).json({ error: "Password is required" })
+    }
+
+    // Find the user by ID
+    const user = await User.findById(req.user.id)
+    if (!user) {
+      return res.status(404).json({ error: "User not found" })
+    }
+
+    // Check password directly
+    if (password !== user.password) {
+      return res.status(400).json({ error: "Invalid password" })
+    }
+
+    res.json({ success: true, message: "Password verified successfully" })
+  } catch (error) {
+    console.error("Password verification error:", error)
+    res.status(500).json({ error: "Server error" })
+  }
+})
+
 // Protected route to get user data
 router.get("/me", authMiddleware, async (req, res) => {
   try {
