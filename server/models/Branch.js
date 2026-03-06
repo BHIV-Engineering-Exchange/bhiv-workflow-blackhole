@@ -34,6 +34,20 @@ const branchSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  // Branch switching password (set by super admin via email link)
+  switchPassword: {
+    type: String,
+    default: null
+  },
+  // Token for password setup via email
+  passwordResetToken: {
+    type: String,
+    default: null
+  },
+  passwordResetExpires: {
+    type: Date,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now

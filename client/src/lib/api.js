@@ -621,6 +621,32 @@ const branches = {
   // Delete branch (admin only)
   delete: (id) =>
     fetchAPI(`/branches/${id}`, { method: "DELETE" }),
+
+  // Request password setup email for a branch
+  requestPasswordSetup: (id) =>
+    fetchAPI(`/branches/${id}/request-password-setup`, { method: "POST" }),
+
+  // Verify password reset token (public)
+  verifyToken: (id, token) =>
+    fetchAPI(`/branches/${id}/verify-token/${token}`),
+
+  // Set branch password (public - via email link)
+  setPassword: (id, token, password) =>
+    fetchAPI(`/branches/${id}/set-password`, {
+      method: "POST",
+      body: JSON.stringify({ token, password }),
+    }),
+
+  // Verify branch switch password
+  verifySwitchPassword: (branchCode, password) =>
+    fetchAPI("/branches/verify-switch-password", {
+      method: "POST",
+      body: JSON.stringify({ branchCode, password }),
+    }),
+
+  // Check if branch has password set
+  hasPassword: (id) =>
+    fetchAPI(`/branches/${id}/has-password`),
 };
 
 

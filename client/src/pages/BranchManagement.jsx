@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Building2, Plus, Pencil, Trash2, MapPin, Loader2, Save, X } from "lucide-react"
+import { Building2, Plus, Pencil, Trash2, MapPin, Loader2, Save, X, Mail, KeyRound } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -25,12 +25,19 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../components/ui/tooltip"
 
 export default function BranchManagement() {
   const { toast } = useToast()
   const [branches, setBranches] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [sendingEmail, setSendingEmail] = useState(null) // branchId of branch being sent email
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedBranch, setSelectedBranch] = useState(null)
@@ -204,6 +211,36 @@ export default function BranchManagement() {
     }
   }
 
+  // Request password setup email for a branch
+  const handleRequestPasswordSetup = async (branch) => {
+    try {
+      setSendingEmail(branch._id)
+      const response = await api.branches.requestPasswordSetup(branch._id)
+      
+      if (response.success) {
+        toast({
+          title: "Email Sent",
+          description: `Password setup link sent to super admin for ${branch.name}`,
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: response.error || "Failed to send email",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error("Error requesting password setup:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send password setup email",
+        variant: "destructive"
+      })
+    } finally {
+      setSendingEmail(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -281,23 +318,59 @@ export default function BranchManagement() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEdit(branch)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => handleDeleteClick(branch)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        <TooltipProvider>
+                          <div className="flex justify-end gap-1">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleRequestPasswordSetup(branch)}
+                                  disabled={sendingEmail === branch._id}
+                                  className="text-primary hover:text-primary"
+                                >
+                                  {sendingEmail === branch._id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <KeyRound className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Send password setup email</p>
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleEdit(branch)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Edit branch</p>
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => handleDeleteClick(branch)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Delete branch</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                        </TooltipProvider>
                       </TableCell>
                     </TableRow>
                   ))}

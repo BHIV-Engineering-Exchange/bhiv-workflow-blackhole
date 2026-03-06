@@ -75,7 +75,8 @@ export function BranchSwitcher() {
     setError("")
 
     try {
-      const response = await api.auth.verifyPassword(password)
+      // Use branch-specific password verification
+      const response = await api.branches.verifySwitchPassword(pendingBranch.code, password)
       
       if (response.success) {
         // Password verified - switch branch
