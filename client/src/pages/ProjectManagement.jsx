@@ -49,19 +49,8 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip"
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar"
-
-const colorOptions = [
-  { value: "bg-blue-500", label: "Blue" },
-  { value: "bg-green-500", label: "Green" },
-  { value: "bg-red-500", label: "Red" },
-  { value: "bg-yellow-500", label: "Yellow" },
-  { value: "bg-purple-500", label: "Purple" },
-  { value: "bg-cyan-500", label: "Cyan" },
-  { value: "bg-indigo-500", label: "Indigo" },
-  { value: "bg-teal-500", label: "Teal" },
-  { value: "bg-orange-500", label: "Orange" },
-  { value: "bg-pink-500", label: "Pink" },
-]
+import { Checkbox } from "../components/ui/checkbox"
+import { ScrollArea } from "../components/ui/scroll-area"
 
 const statusOptions = [
   { value: "Planning", label: "Planning", color: "bg-gray-100 text-gray-700" },
@@ -102,8 +91,12 @@ export default function ProjectManagement() {
     priority: "Medium",
     startDate: "",
     dueDate: "",
-    color: "bg-blue-500",
   })
+
+  // Filter users by selected department
+  const departmentUsers = formData.department
+    ? users.filter((user) => user.department?._id === formData.department || user.department === formData.department)
+    : users
 
   // Fetch projects
   const fetchProjects = async () => {
@@ -165,9 +158,30 @@ export default function ProjectManagement() {
       priority: "Medium",
       startDate: "",
       dueDate: "",
-      color: "bg-blue-500",
     })
     setSelectedProject(null)
+  }
+
+  // Handle team member toggle
+  const handleTeamMemberToggle = (userId) => {
+    setFormData((prev) => ({
+      ...prev,
+      teamMembers: prev.teamMembers.includes(userId)
+        ? prev.teamMembers.filter((id) => id !== userId)
+        : [...prev.teamMembers, userId],
+    }))
+  }
+
+  // Handle select all team members
+  const handleSelectAllTeamMembers = () => {
+    if (formData.teamMembers.length === departmentUsers.length) {
+      setFormData((prev) => ({ ...prev, teamMembers: [] }))
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        teamMembers: departmentUsers.map((u) => u._id),
+      }))
+    }
   }
 
   // Open dialog for create
@@ -189,7 +203,6 @@ export default function ProjectManagement() {
       priority: project.priority || "Medium",
       startDate: project.startDate ? project.startDate.split("T")[0] : "",
       dueDate: project.dueDate ? project.dueDate.split("T")[0] : "",
-      color: project.color || "bg-blue-500",
     })
     setIsDialogOpen(true)
   }
@@ -220,6 +233,7 @@ export default function ProjectManagement() {
       setSaving(true)
       const payload = {
         ...formData,
+        lead: formData.lead === "none" ? null : formData.lead || null,
         startDate: formData.startDate || undefined,
         dueDate: formData.dueDate || undefined,
       }
@@ -399,10 +413,8 @@ export default function ProjectManagement() {
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div
-                      className={`w-10 h-10 rounded-lg ${project.color || "bg-blue-500"} flex items-center justify-center`}
-                    >
-                      <FolderKanban className="h-5 w-5 text-white" />
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <FolderKanban className="h-5 w-5 text-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-lg truncate group-hover:text-primary transition-colors">
@@ -479,6 +491,22 @@ export default function ProjectManagement() {
                     {project.priority}
                   </Badge>
                 </div>
+
+                {/* Project Lead */}
+                {project.lead && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">Lead:</span>
+                    <div className="flex items-center gap-1.5">
+                      <Avatar className="h-5 w-5">
+                        <AvatarImage src={project.lead.profileImage} alt={project.lead.name} />
+                        <AvatarFallback className="text-xs">
+                          {project.lead.name?.charAt(0)?.toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="font-medium">{project.lead.name}</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Meta info */}
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
@@ -583,7 +611,7 @@ export default function ProjectManagement() {
                 <Select
                   value={formData.department}
                   onValueChange={(value) =>
-                    setFormData({ ...formData, department: value })
+                    setFormData({ ...formData, department: value, lead: "", teamMembers: [] })
                   }
                 >
                   <SelectTrigger>
@@ -604,18 +632,88 @@ export default function ProjectManagement() {
                 <Select
                   value={formData.lead}
                   onValueChange={(value) => setFormData({ ...formData, lead: value })}
+                  disabled={!formData.department}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select lead" />
+                    <SelectValue placeholder={formData.department ? "Select lead" : "Select department first"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {users.map((user) => (
+                    <SelectItem value="none">No Lead</SelectItem>
+                    {departmentUsers.map((user) => (
                       <SelectItem key={user._id} value={user._id}>
-                        {user.name}
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-5 w-5">
+                            <AvatarImage src={user.profileImage} alt={user.name} />
+                            <AvatarFallback className="text-xs">
+                              {user.name?.charAt(0)?.toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          {user.name} {user.employeeId ? `(${user.employeeId})` : ""}
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="sm:col-span-2 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="teamMembers">
+                    Team Members {formData.teamMembers.length > 0 && `(${formData.teamMembers.length} selected)`}
+                  </Label>
+                  {formData.department && departmentUsers.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs"
+                      onClick={handleSelectAllTeamMembers}
+                    >
+                      {formData.teamMembers.length === departmentUsers.length ? "Deselect All" : "Select All"}
+                    </Button>
+                  )}
+                </div>
+                {!formData.department ? (
+                  <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
+                    Select a department first to choose team members
+                  </div>
+                ) : departmentUsers.length === 0 ? (
+                  <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
+                    No employees found in this department
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[150px] border rounded-md p-3">
+                    <div className="space-y-2">
+                      {departmentUsers.map((user) => (
+                        <div
+                          key={user._id}
+                          className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer"
+                          onClick={() => handleTeamMemberToggle(user._id)}
+                        >
+                          <Checkbox
+                            checked={formData.teamMembers.includes(user._id)}
+                            onCheckedChange={() => handleTeamMemberToggle(user._id)}
+                          />
+                          <Avatar className="h-7 w-7">
+                            <AvatarImage src={user.profileImage} alt={user.name} />
+                            <AvatarFallback className="text-xs">
+                              {user.name?.charAt(0)?.toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{user.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {user.employeeId || user.email}
+                            </p>
+                          </div>
+                          {formData.lead === user._id && (
+                            <Badge variant="secondary" className="text-xs">Lead</Badge>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -680,31 +778,6 @@ export default function ProjectManagement() {
                     setFormData({ ...formData, dueDate: e.target.value })
                   }
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="color">Color</Label>
-                <Select
-                  value={formData.color}
-                  onValueChange={(value) => setFormData({ ...formData, color: value })}
-                >
-                  <SelectTrigger>
-                    <div className="flex items-center gap-2">
-                      <div className={`w-4 h-4 rounded ${formData.color}`} />
-                      <SelectValue placeholder="Select color" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {colorOptions.map((color) => (
-                      <SelectItem key={color.value} value={color.value}>
-                        <div className="flex items-center gap-2">
-                          <div className={`w-4 h-4 rounded ${color.value}`} />
-                          {color.label}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             </div>
 
