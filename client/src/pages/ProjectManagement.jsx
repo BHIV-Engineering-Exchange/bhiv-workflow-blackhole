@@ -91,11 +91,27 @@ export default function ProjectManagement() {
     startDate: "",
     dueDate: "",
   })
+  const [leadSearch, setLeadSearch] = useState("")
+  const [teamSearch, setTeamSearch] = useState("")
 
   // Filter users by selected department
   const departmentUsers = formData.department
     ? (users || []).filter((user) => user.department?._id === formData.department || user.department === formData.department)
     : (users || [])
+
+  // Filter users for lead dropdown based on search
+  const filteredLeadUsers = (departmentUsers || []).filter((user) =>
+    user.name?.toLowerCase().includes(leadSearch.toLowerCase()) ||
+    user.employeeId?.toLowerCase().includes(leadSearch.toLowerCase()) ||
+    user.email?.toLowerCase().includes(leadSearch.toLowerCase())
+  )
+
+  // Filter users for team members based on search
+  const filteredTeamUsers = (departmentUsers || []).filter((user) =>
+    user.name?.toLowerCase().includes(teamSearch.toLowerCase()) ||
+    user.employeeId?.toLowerCase().includes(teamSearch.toLowerCase()) ||
+    user.email?.toLowerCase().includes(teamSearch.toLowerCase())
+  )
 
   // Fetch projects
   const fetchProjects = async () => {
@@ -159,6 +175,8 @@ export default function ProjectManagement() {
       dueDate: "",
     })
     setSelectedProject(null)
+    setLeadSearch("")
+    setTeamSearch("")
   }
 
   // Handle team member toggle
@@ -601,9 +619,11 @@ export default function ProjectManagement() {
                 </Label>
                 <Select
                   value={formData.department}
-                  onValueChange={(value) =>
+                  onValueChange={(value) => {
                     setFormData({ ...formData, department: value, lead: "", teamMembers: [] })
-                  }
+                    setLeadSearch("")
+                    setTeamSearch("")
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select department" />
@@ -629,12 +649,25 @@ export default function ProjectManagement() {
                     <SelectValue placeholder={formData.department ? "Select lead" : "Select department first"} />
                   </SelectTrigger>
                   <SelectContent>
+                    <div className="px-2 pb-2">
+                      <Input
+                        placeholder="Search by name or ID..."
+                        value={leadSearch}
+                        onChange={(e) => setLeadSearch(e.target.value)}
+                        className="h-8"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
                     <SelectItem value="none">No Lead</SelectItem>
-                    {(departmentUsers || []).map((user) => (
-                      <SelectItem key={user._id} value={user._id}>
-                        {user.name} {user.employeeId ? `(${user.employeeId})` : ""}
-                      </SelectItem>
-                    ))}
+                    {filteredLeadUsers.length === 0 ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">No users found</div>
+                    ) : (
+                      filteredLeadUsers.map((user) => (
+                        <SelectItem key={user._id} value={user._id}>
+                          {user.name} {user.employeeId ? `(${user.employeeId})` : ""}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -665,37 +698,56 @@ export default function ProjectManagement() {
                     No employees found in this department
                   </div>
                 ) : (
-                  <ScrollArea className="h-[150px] border rounded-md p-3">
-                    <div className="space-y-2">
-                      {(departmentUsers || []).map((user) => (
-                        <div
-                          key={user._id}
-                          className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer"
-                          onClick={() => handleTeamMemberToggle(user._id)}
-                        >
-                          <Checkbox
-                            checked={(formData.teamMembers || []).includes(user._id)}
-                            onCheckedChange={() => handleTeamMemberToggle(user._id)}
-                          />
-                          <Avatar className="h-7 w-7">
-                            <AvatarImage src={user.profileImage} alt={user.name} />
-                            <AvatarFallback className="text-xs">
-                              {user.name?.charAt(0)?.toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{user.name}</p>
-                            <p className="text-xs text-muted-foreground truncate">
-                              {user.employeeId || user.email}
-                            </p>
-                          </div>
-                          {formData.lead === user._id && (
-                            <Badge variant="secondary" className="text-xs">Lead</Badge>
-                          )}
-                        </div>
-                      ))}
+                  <div className="border rounded-md">
+                    <div className="p-2 border-b">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search team members..."
+                          value={teamSearch}
+                          onChange={(e) => setTeamSearch(e.target.value)}
+                          className="h-8 pl-8"
+                        />
+                      </div>
                     </div>
-                  </ScrollArea>
+                    <ScrollArea className="h-[150px] p-3">
+                      <div className="space-y-2">
+                        {filteredTeamUsers.length === 0 ? (
+                          <div className="text-sm text-muted-foreground text-center py-4">
+                            No matching team members found
+                          </div>
+                        ) : (
+                          filteredTeamUsers.map((user) => (
+                            <div
+                              key={user._id}
+                              className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer"
+                              onClick={() => handleTeamMemberToggle(user._id)}
+                            >
+                              <Checkbox
+                                checked={(formData.teamMembers || []).includes(user._id)}
+                                onCheckedChange={() => handleTeamMemberToggle(user._id)}
+                              />
+                              <Avatar className="h-7 w-7">
+                                <AvatarImage src={user.profileImage} alt={user.name} />
+                                <AvatarFallback className="text-xs">
+                                  {user.name?.charAt(0)?.toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{user.name}</p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {user.employeeId || user.email}
+                                </p>
+                              </div>
+                              {formData.lead === user._id && (
+                                <Badge variant="secondary" className="text-xs">Lead</Badge>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </div>
                 )}
               </div>
 
