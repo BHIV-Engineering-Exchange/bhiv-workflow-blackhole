@@ -119,7 +119,7 @@ export default function ProjectManagement() {
   // Fetch departments
   const fetchDepartments = async () => {
     try {
-      const response = await api.departments.getAll()
+      const response = await api.departments.getDepartments()
       const data = response.success ? response.data : response
       setDepartments(Array.isArray(data) ? data : [])
     } catch (error) {
@@ -130,7 +130,7 @@ export default function ProjectManagement() {
   // Fetch users
   const fetchUsers = async () => {
     try {
-      const response = await api.users.getAll()
+      const response = await api.users.getUsers()
       const data = response.success ? response.data : response
       setUsers(Array.isArray(data) ? data : [])
     } catch (error) {
