@@ -94,8 +94,8 @@ export default function ProjectManagement() {
 
   // Filter users by selected department
   const departmentUsers = formData.department
-    ? users.filter((user) => user.department?._id === formData.department || user.department === formData.department)
-    : users
+    ? (users || []).filter((user) => user.department?._id === formData.department || user.department === formData.department)
+    : (users || [])
 
   // Fetch projects
   const fetchProjects = async () => {
@@ -163,22 +163,27 @@ export default function ProjectManagement() {
 
   // Handle team member toggle
   const handleTeamMemberToggle = (userId) => {
-    setFormData((prev) => ({
-      ...prev,
-      teamMembers: prev.teamMembers.includes(userId)
-        ? prev.teamMembers.filter((id) => id !== userId)
-        : [...prev.teamMembers, userId],
-    }))
+    setFormData((prev) => {
+      const currentMembers = prev.teamMembers || []
+      return {
+        ...prev,
+        teamMembers: currentMembers.includes(userId)
+          ? currentMembers.filter((id) => id !== userId)
+          : [...currentMembers, userId],
+      }
+    })
   }
 
   // Handle select all team members
   const handleSelectAllTeamMembers = () => {
-    if (formData.teamMembers.length === departmentUsers.length) {
+    const deptUsers = departmentUsers || []
+    const currentMembers = formData.teamMembers || []
+    if (currentMembers.length === deptUsers.length) {
       setFormData((prev) => ({ ...prev, teamMembers: [] }))
     } else {
       setFormData((prev) => ({
         ...prev,
-        teamMembers: departmentUsers.map((u) => u._id),
+        teamMembers: deptUsers.map((u) => u._id),
       }))
     }
   }
@@ -293,7 +298,7 @@ export default function ProjectManagement() {
   }
 
   // Filter projects
-  const filteredProjects = projects.filter((project) => {
+  const filteredProjects = (projects || []).filter((project) => {
     const matchesSearch =
       project.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       project.description?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -359,7 +364,7 @@ export default function ProjectManagement() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Departments</SelectItem>
-                {departments.map((dept) => (
+                {(departments || []).map((dept) => (
                   <SelectItem key={dept._id} value={dept._id}>
                     {dept.name}
                   </SelectItem>
@@ -604,7 +609,7 @@ export default function ProjectManagement() {
                     <SelectValue placeholder="Select department" />
                   </SelectTrigger>
                   <SelectContent>
-                    {departments.map((dept) => (
+                    {(departments || []).map((dept) => (
                       <SelectItem key={dept._id} value={dept._id}>
                         {dept.name}
                       </SelectItem>
@@ -625,17 +630,9 @@ export default function ProjectManagement() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Lead</SelectItem>
-                    {departmentUsers.map((user) => (
+                    {(departmentUsers || []).map((user) => (
                       <SelectItem key={user._id} value={user._id}>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-5 w-5">
-                            <AvatarImage src={user.profileImage} alt={user.name} />
-                            <AvatarFallback className="text-xs">
-                              {user.name?.charAt(0)?.toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          {user.name} {user.employeeId ? `(${user.employeeId})` : ""}
-                        </div>
+                        {user.name} {user.employeeId ? `(${user.employeeId})` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -645,9 +642,9 @@ export default function ProjectManagement() {
               <div className="sm:col-span-2 space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="teamMembers">
-                    Team Members {formData.teamMembers.length > 0 && `(${formData.teamMembers.length} selected)`}
+                    Team Members {(formData.teamMembers || []).length > 0 && `(${(formData.teamMembers || []).length} selected)`}
                   </Label>
-                  {formData.department && departmentUsers.length > 0 && (
+                  {formData.department && (departmentUsers || []).length > 0 && (
                     <Button
                       type="button"
                       variant="ghost"
@@ -655,7 +652,7 @@ export default function ProjectManagement() {
                       className="h-6 text-xs"
                       onClick={handleSelectAllTeamMembers}
                     >
-                      {formData.teamMembers.length === departmentUsers.length ? "Deselect All" : "Select All"}
+                      {(formData.teamMembers || []).length === (departmentUsers || []).length ? "Deselect All" : "Select All"}
                     </Button>
                   )}
                 </div>
@@ -663,21 +660,21 @@ export default function ProjectManagement() {
                   <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
                     Select a department first to choose team members
                   </div>
-                ) : departmentUsers.length === 0 ? (
+                ) : (departmentUsers || []).length === 0 ? (
                   <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
                     No employees found in this department
                   </div>
                 ) : (
                   <ScrollArea className="h-[150px] border rounded-md p-3">
                     <div className="space-y-2">
-                      {departmentUsers.map((user) => (
+                      {(departmentUsers || []).map((user) => (
                         <div
                           key={user._id}
                           className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer"
                           onClick={() => handleTeamMemberToggle(user._id)}
                         >
                           <Checkbox
-                            checked={formData.teamMembers.includes(user._id)}
+                            checked={(formData.teamMembers || []).includes(user._id)}
                             onCheckedChange={() => handleTeamMemberToggle(user._id)}
                           />
                           <Avatar className="h-7 w-7">
