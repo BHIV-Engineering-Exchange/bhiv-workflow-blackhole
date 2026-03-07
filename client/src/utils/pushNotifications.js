@@ -55,6 +55,12 @@ export async function requestNotificationPermission() {
 // Subscribe to push notifications
 export async function subscribeToPushNotifications(registration) {
   try {
+    // Check if VAPID key is valid before subscribing
+    if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.length < 10) {
+      console.warn("Push notifications skipped - VAPID public key not properly configured")
+      return null
+    }
+
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
@@ -63,8 +69,13 @@ export async function subscribeToPushNotifications(registration) {
     console.log("Push subscription:", subscription)
     return subscription
   } catch (error) {
+    // Handle specific push service errors gracefully
+    if (error.name === "AbortError" || error.message?.includes("push service")) {
+      console.warn("Push service unavailable - notifications disabled for this session")
+      return null
+    }
     console.error("Failed to subscribe to push notifications:", error)
-    throw error
+    return null
   }
 }
 
@@ -98,8 +109,8 @@ export async function sendSubscriptionToServer(subscription, userId) {
 export async function initializePushNotifications(userId) {
   try {
     // Check if VAPID key is configured
-    if (!VAPID_PUBLIC_KEY) {
-      console.warn("Push notifications not configured - VAPID public key missing")
+    if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.length < 10) {
+      console.warn("Push notifications not configured - VAPID public key missing or invalid")
       return null
     }
 
@@ -109,8 +120,13 @@ export async function initializePushNotifications(userId) {
       return null
     }
 
-    // Request permission
-    await requestNotificationPermission()
+    // Request permission - return null if denied
+    try {
+      await requestNotificationPermission()
+    } catch (permError) {
+      console.warn("Notification permission not granted:", permError.message)
+      return null
+    }
 
     // Register service worker
     const registration = await registerServiceWorker()
@@ -121,13 +137,18 @@ export async function initializePushNotifications(userId) {
     // Subscribe to push notifications
     const subscription = await subscribeToPushNotifications(registration)
 
-    // Send subscription to server
-    await sendSubscriptionToServer(subscription, userId)
+    // Only send to server if subscription was successful
+    if (subscription) {
+      await sendSubscriptionToServer(subscription, userId)
+      console.log("Push notifications initialized successfully")
+    } else {
+      console.warn("Push notifications: subscription failed, skipping server registration")
+    }
 
-    console.log("Push notifications initialized successfully")
     return subscription
   } catch (error) {
-    console.error("Failed to initialize push notifications:", error)
+    // Don't log as error - this is expected in some environments
+    console.warn("Push notifications unavailable:", error.message || error)
     return null
   }
 }
