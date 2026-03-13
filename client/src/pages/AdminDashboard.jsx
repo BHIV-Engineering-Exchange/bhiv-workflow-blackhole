@@ -115,8 +115,7 @@ const AdminDashboard = () => {
   }, [token])
 
   useEffect(() => {
-    fetchUsers()
-    fetchDepartments()
+    Promise.all([fetchUsers(), fetchDepartments()])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

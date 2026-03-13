@@ -206,7 +206,8 @@ function UserDashboard() {
     fetchUserDashboardData()
     const intervalId = setInterval(fetchUserDashboardData, 5 * 60 * 1000)
     return () => clearInterval(intervalId)
-  }, [user, toast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
 
   const getStatusColor = (status) => {
     switch (status) {

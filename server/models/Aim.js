@@ -90,6 +90,9 @@ const AimSchema = new mongoose.Schema({
   },
 })
 
+// Compound index for fast per-user per-date lookups
+AimSchema.index({ user: 1, date: 1 });
+
 // Update the updatedAt field before saving
 AimSchema.pre("save", function (next) {
   this.updatedAt = Date.now();
