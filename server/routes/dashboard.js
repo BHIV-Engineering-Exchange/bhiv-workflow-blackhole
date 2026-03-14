@@ -65,7 +65,7 @@ router.get("/stats", async (req, res) => {
 router.get("/departments", async (req, res) => {
   try {
     const branchQuery = getBranchQuery(req);
-    const departments = await Department.find().sort({ name: 1 }).lean()
+    const departments = await Department.find().sort({ name: 1 }).lean(); // Added .lean()
     const departmentIds = departments.map(d => d._id)
 
     // Optimized: single aggregation instead of N×2 countDocuments
@@ -265,12 +265,15 @@ router.get("/user-stats/:userId", async (req, res) => {
 // @access  Private
 router.get("/progress-stats", auth, async (req, res) => {
   try {
-    // Get tasks with due dates in the future
+    // Get tasks with due dates in the future (LIMIT to 100 for performance)
     const now = new Date();
     const upcomingTasks = await Task.find({
       dueDate: { $gt: now },
       status: { $ne: "Completed" },
-    }).populate("assignee", "name");
+    })
+    .populate("assignee", "name")
+    .limit(100) // ✅ Added limit
+    .lean(); // ✅ Added lean for performance
     
     // Calculate progress statistics
     const progressStats = upcomingTasks.map(task => {
@@ -422,7 +425,7 @@ router.get("/admin-report", auth, async (req, res) => {
     const users = await User.find({ stillExist: 1, ...branchQuery })
       .populate("department", "name")
       .select("name email role department branch")
-      .lean();
+      .lean(); // ✅ Added lean
 
     const userIdsList = users.map(u => u._id);
     const allAims = await Aim.find({
@@ -482,7 +485,8 @@ router.get("/admin-report", auth, async (req, res) => {
     })
       .populate("user", "name email role branch")
       .populate("task", "title status")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean(); // ✅ Added lean
 
     // Some progress records might have missing or deleted users/tasks.
     // Guard against null references so the report doesn't crash.
@@ -517,15 +521,19 @@ router.get("/admin-report", auth, async (req, res) => {
       user: { $in: branchUserIds }
     })
       .populate("user", "name email role department branch")
-      .sort({ startDayTime: 1 });
+      .sort({ startDayTime: 1 })
+      .lean(); // ✅ Added lean
     } else {
       // Lifetime: get all attendances - FILTERED BY BRANCH
+      // ✅ CRITICAL FIX: Add limit to prevent loading thousands of records
       dailyAttendances = await DailyAttendance.find({
         startDayTime: { $exists: true },
         user: { $in: branchUserIds }
       })
         .populate("user", "name email role department branch")
-        .sort({ startDayTime: 1 });
+        .sort({ startDayTime: -1 }) // Sort descending to get most recent first
+        .limit(1000) // ✅ Limit to 1000 most recent records for lifetime view
+        .lean(); // ✅ Added lean
     }
 
     let usersWithStartDay;

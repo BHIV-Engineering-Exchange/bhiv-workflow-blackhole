@@ -353,7 +353,13 @@ router.get("/:id/tasks", async (req, res) => {
     const filter = { assignee: req.params.id }
     if (status) filter.status = status
 
-    const tasks = await Task.find(filter).populate("department", "name color").populate("dependencies", "title status")
+    // ✅ FIX: Add limit and lean for performance
+    const tasks = await Task.find(filter)
+      .populate("department", "name color")
+      .populate("dependencies", "title status")
+      .sort({ createdAt: -1 }) // Most recent first
+      .limit(100) // Limit to 100 most recent tasks
+      .lean() // Use lean for better performance
 
     res.json(tasks)
   } catch (error) {
@@ -414,9 +420,12 @@ router.get("/:id/submissions", auth, async (req, res) => {
     // Try to find submissions, but handle the case where TaskSubmission model might not exist
     let submissions = []
     try {
+      // ✅ FIX: Add limit and lean for performance
       submissions = await TaskSubmission.find({ user: req.params.id })
         .populate("task", "title status")
         .sort({ createdAt: -1 })
+        .limit(50) // Limit to 50 most recent submissions
+        .lean() // Use lean for better performance
     } catch (submissionError) {
       console.log("TaskSubmission model not found or error:", submissionError.message)
       // Return empty array if TaskSubmission model doesn't exist

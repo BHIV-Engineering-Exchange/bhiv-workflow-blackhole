@@ -44,7 +44,8 @@ router.get('/attendance-summary', auth, async (req, res) => {
 
     let records = await DailyAttendance.find(query)
       .populate('user', 'name email department')
-      .sort({ date: -1 });
+      .sort({ date: -1 })
+      .lean(); // Use lean for better performance
 
     // Department filter
     if (departmentId) {
@@ -53,10 +54,27 @@ router.get('/attendance-summary', auth, async (req, res) => {
       );
     }
 
+    // ✅ FIX: Bulk fetch all employees and salaries at once (eliminates N+1 problem)
+    const userIds = records.map(r => r.user._id);
+    const [employees, salaries] = await Promise.all([
+      EmployeeMaster.find({ user: { $in: userIds } }).lean(),
+      Salary.find({ user: { $in: userIds } }).sort({ month: -1 }).lean()
+    ]);
+
+    // Create lookup maps for O(1) access
+    const employeeMap = new Map(employees.map(e => [e.user.toString(), e]));
+    const salaryMap = new Map();
+    salaries.forEach(s => {
+      const userId = s.user.toString();
+      if (!salaryMap.has(userId)) {
+        salaryMap.set(userId, s); // Keep only the latest salary per user
+      }
+    });
+
     // Format dashboard response
-    const dashboardData = await Promise.all(records.map(async (record) => {
-      const employee = await EmployeeMaster.findOne({ user: record.user._id });
-      const latestSalary = await Salary.findOne({ user: record.user._id }).sort({ month: -1 });
+    const dashboardData = records.map((record) => {
+      const employee = employeeMap.get(record.user._id.toString());
+      const latestSalary = salaryMap.get(record.user._id.toString());
 
       const mergeDetails = record.attendanceMergeDetails || {};
       const isWithinTolerance = !mergeDetails.remarks?.includes('MISMATCH_20+');
@@ -95,13 +113,13 @@ router.get('/attendance-summary', auth, async (req, res) => {
           hourlyRate: employee?.calculatedHourlyRate || 0,
           earnedToday: parseFloat((record.basicSalaryForDay || 0).toFixed(2)),
           currency: '₹',
-          formattedEarnings: this.formatCurrency(record.basicSalaryForDay || 0)
+          formattedEarnings: formatCurrency(record.basicSalaryForDay || 0)
         }
       };
-    }));
+    });
 
     // Calculate summary statistics
-    const summary = this.calculateSummaryStats(dashboardData);
+    const summary = calculateSummaryStats(dashboardData);
 
     res.json({
       success: true,
@@ -202,8 +220,8 @@ router.get('/merge-analysis', auth, async (req, res) => {
     }
 
     // Calculate statistics on time differences
-    const inStats = this.calculateStats(analysis.timeDifferences.inDiffStats);
-    const outStats = this.calculateStats(analysis.timeDifferences.outDiffStats);
+    const inStats = calculateStats(analysis.timeDifferences.inDiffStats);
+    const outStats = calculateStats(analysis.timeDifferences.outDiffStats);
 
     res.json({
       success: true,
@@ -282,7 +300,7 @@ router.get('/employee/:userId/monthly', auth, async (req, res) => {
         clockOut: record.biometricTimeOut ? moment(record.biometricTimeOut).format('HH:mm:ss') : null,
         workedHours: parseFloat((record.totalHoursWorked || 0).toFixed(2)),
         earned: parseFloat((record.basicSalaryForDay || 0).toFixed(2)),
-        formattedEarned: this.formatCurrency(record.basicSalaryForDay || 0),
+        formattedEarned: formatCurrency(record.basicSalaryForDay || 0),
         mergeRemarks: record.attendanceMergeDetails?.remarks || 'N/A'
       };
 
@@ -336,7 +354,7 @@ router.get('/employee/:userId/monthly', auth, async (req, res) => {
         totalHours: parseFloat(totalHours.toFixed(2)),
         mergesMismatched: mismatches,
         totalEarnings: parseFloat(totalEarned.toFixed(2)),
-        formattedTotalEarnings: this.formatCurrency(totalEarned),
+        formattedTotalEarnings: formatCurrency(totalEarned),
         currency: '₹'
       },
       dailyRecords: dayRecords
@@ -400,7 +418,7 @@ router.get('/mismatches', auth, async (req, res) => {
           remarks: merge.remarks,
           case: merge.case
         },
-        alertSeverity: this.calculateMismatchSeverity(merge.timeDifferences)
+        alertSeverity: calculateMismatchSeverity(merge.timeDifferences)
       };
     });
 

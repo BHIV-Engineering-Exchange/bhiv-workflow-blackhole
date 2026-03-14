@@ -693,9 +693,19 @@ const PORT = process.env.PORT || 5001;
 // Connect to MongoDB and start server
 async function startServer() {
   try {
-    // Connect to MongoDB first
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log("✅ Connected to MongoDB");
+    // Connect to MongoDB first with optimized connection pool settings
+    await mongoose.connect(process.env.MONGODB_URI, {
+      maxPoolSize: 50,           // Maximum number of connections in the pool
+      minPoolSize: 10,           // Minimum number of connections to maintain
+      maxIdleTimeMS: 30000,      // Close idle connections after 30 seconds
+      serverSelectionTimeoutMS: 5000,  // Timeout for selecting a server
+      socketTimeoutMS: 45000,    // Socket timeout
+      connectTimeoutMS: 10000,   // Connection timeout
+      retryWrites: true,         // Retry failed writes
+      retryReads: true,          // Retry failed reads
+      compressors: ['zlib'],     // Enable compression for network traffic
+    });
+    console.log("✅ Connected to MongoDB with optimized connection pool (10-50 connections)");
     
     // Initialize EMS email templates after MongoDB is connected
     const emsAutomation = require('./services/emsAutomation');
@@ -718,9 +728,12 @@ async function startServer() {
       console.log('🕐 Starting attendance persistence cron job (runs daily at 11:59 PM)...');
       startAttendancePersistenceCron();
       
+      // ✅ FIX: Disabled automatic sync on startup to prevent blocking DB on cold starts
       // Sync existing attendance data for the last 30 days
-      console.log('📊 Syncing historical attendance data for the last 30 days...');
-      await syncExistingAttendance();
+      // console.log('📊 Syncing historical attendance data for the last 30 days...');
+      // await syncExistingAttendance();
+      console.log('⚠️ Historical attendance sync disabled on startup for performance.');
+      console.log('💡 To manually sync, use: POST /api/admin/sync-attendance');
       console.log('✅ Server initialization complete');
     });
   } catch (err) {
