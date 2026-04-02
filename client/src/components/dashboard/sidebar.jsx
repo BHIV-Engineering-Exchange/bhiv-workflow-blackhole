@@ -77,6 +77,7 @@ export function DashboardSidebar() {
             { title: "Departments", href: "/departments", icon: Users },
             { title: "All Aims", href: "/all-aims", icon: Target },
             { title: "Completed Tasks", href: "/completedtask", icon: CheckCircle },
+            { title: "Test Tasks", href: "/tested-tasks", icon: FileText },
           ]
         },
         {
