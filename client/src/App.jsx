@@ -49,11 +49,16 @@ import BranchManagement from "./pages/BranchManagement";
 import ProjectManagement from "./pages/ProjectManagement";
 import ProjectDetails from "./pages/ProjectDetails";
 import MyTasks from "./pages/MyTasks";
+import TesterDashboard from "./pages/TesterDashboard";
+import TesterTasks from "./pages/TesterTasks";
+import TesterEvaluation from "./pages/TesterEvaluation";
+import TesterAlerts from "./pages/TesterAlerts";
 
 function AppContent() {
   const { user, loading } = useAuth();
   const isAdmin = user?.role === "Admin";
   const isProcurementAgent = user?.role === "Procurement Agent";
+  const isTester = user?.role === "Tester";
 
   const [recentReviews, setRecentReviews] = useState([]);
   const [hasNewReviews, setHasNewReviews] = useState(false);
@@ -165,6 +170,8 @@ function AppContent() {
                           <Navigate to="/dashboard" replace />
                         ) : isProcurementAgent ? (
                           <Navigate to="/procurement-dashboard" replace />
+                        ) : isTester ? (
+                          <Navigate to="/tester-dashboard" replace />
                         ) : (
                           <ProtectedRoute>
                             <Navigate to="/userdashboard" replace />
@@ -234,6 +241,39 @@ function AppContent() {
                         element={
                           <ProtectedRoute>
                             <MyTasks />
+                          </ProtectedRoute>
+                        }
+                      />
+
+                      <Route
+                        path="/tester-dashboard"
+                        element={
+                          <ProtectedRoute>
+                            <TesterDashboard />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/tester-tasks"
+                        element={
+                          <ProtectedRoute>
+                            <TesterTasks />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/tester-evaluation"
+                        element={
+                          <ProtectedRoute>
+                            <TesterEvaluation />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/tester-alerts"
+                        element={
+                          <ProtectedRoute>
+                            <TesterAlerts />
                           </ProtectedRoute>
                         }
                       />

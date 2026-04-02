@@ -130,7 +130,11 @@ export const AuthProvider = ({ children }) => {
       });
 
       // Navigate based on role
-      navigate(user.role === "User" ? "/userdashboard" : "/dashboard");
+      navigate(
+        user.role === "User" ? "/userdashboard" :
+        user.role === "Tester" ? "/tester-dashboard" :
+        "/dashboard"
+      );
     } catch (error) {
       toast({
         title: "Login failed",

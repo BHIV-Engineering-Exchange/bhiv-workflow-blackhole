@@ -161,6 +161,7 @@ const hourlyBasedSalaryRoutes = require('./routes/hourlyBasedSalary'); // Hourly
 const newSalaryRoutes = require('./routes/newSalaryManagement'); // New salary management system
 const branchRoutes = require('./routes/branchRoutes'); // Branch management routes
 const projectRoutes = require('./routes/projects'); // Project management routes
+const testerRoutes = require('./routes/tester'); // Tester routes
 const { startAttendancePersistenceCron, syncExistingAttendance } = require('./services/attendanceCronJobs'); // Attendance persistence cron
 // Middleware imports
 const auth = require('./middleware/auth');
@@ -380,6 +381,7 @@ app.use('/api/hourly-salary', hourlyBasedSalaryRoutes); // Hourly-based salary m
 app.use('/api/new-salary', newSalaryRoutes); // New salary management system
 app.use('/api/branches', branchRoutes); // Branch management routes
 app.use('/api/projects', projectRoutes); // Project management routes
+app.use('/api/tester', testerRoutes); // Tester routes
 
 // app.use('/api/new/ai',aiRoutePy)
 

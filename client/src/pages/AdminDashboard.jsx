@@ -52,6 +52,7 @@ const roleOptions = [
   { value: "Admin", label: "Admin" },
   { value: "Manager", label: "Manager" },
   { value: "User", label: "User" },
+  { value: "Tester", label: "Tester" },
 ]
 
 const AdminDashboard = () => {

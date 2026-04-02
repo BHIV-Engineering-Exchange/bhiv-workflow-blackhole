@@ -21,5 +21,15 @@ export const ProtectedRoute = ({ children }) => {
     }
   }
 
+  if (user.role === "Tester") {
+    const testerAllowed = ["/tester-dashboard", "/tester-tasks", "/tester-evaluation", "/tester-alerts", "/settings"]
+    const isAllowed = testerAllowed.some(
+      (p) => location.pathname === p || location.pathname.startsWith(p + "/")
+    ) || location.pathname.startsWith("/tasks/")
+    if (!isAllowed) {
+      return <Navigate to="/tester-dashboard" replace />
+    }
+  }
+
   return children
 }

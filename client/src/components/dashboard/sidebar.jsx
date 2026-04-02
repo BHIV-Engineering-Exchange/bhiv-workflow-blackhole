@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation, Link } from "react-router-dom";
-import { LayoutDashboard, CheckSquare, Network, Users, Sparkles, Settings, LogOut, CheckCircle, BarChart, Airplay, LayoutDashboardIcon, Target, Monitor, DollarSign, Calendar, Clock, UserCog, UserCheck, ShoppingCart, Mail, ChevronLeft, ChevronRight, Building2, FolderKanban } from "lucide-react";
+import { LayoutDashboard, CheckSquare, Network, Users, Sparkles, Settings, LogOut, CheckCircle, BarChart, Airplay, LayoutDashboardIcon, Target, Monitor, DollarSign, Calendar, Clock, UserCog, UserCheck, ShoppingCart, Mail, ChevronLeft, ChevronRight, Building2, FolderKanban, ClipboardCheck, AlertTriangle } from "lucide-react";
 import { useAuth } from "../../context/auth-context";
 
 export function DashboardSidebar() {
@@ -99,6 +99,30 @@ export function DashboardSidebar() {
             { title: "Procurement", href: "/procurement-dashboard", icon: ShoppingCart },
             { title: "EMS Dashboard", href: "/ems-dashboard", icon: Mail },
             { title: "Branch Management", href: "/branch-management", icon: Building2 },
+          ]
+        }
+      ];
+    }
+
+    if (role === "Tester") {
+      return [
+        {
+          title: "Main",
+          routes: [
+            { title: "Dashboard", href: "/tester-dashboard", icon: LayoutDashboard },
+          ]
+        },
+        {
+          title: "Testing",
+          routes: [
+            { title: "Tasks", href: "/tester-tasks", icon: CheckSquare },
+            { title: "Task Evaluation", href: "/tester-evaluation", icon: ClipboardCheck },
+          ]
+        },
+        {
+          title: "Monitoring",
+          routes: [
+            { title: "Alerts", href: "/tester-alerts", icon: AlertTriangle },
           ]
         }
       ];

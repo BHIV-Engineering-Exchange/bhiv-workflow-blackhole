@@ -2,6 +2,7 @@ const express = require("express")
 const router = express.Router()
 const Task = require("../models/Task")
 const User = require("../models/User")
+const Department = require("../models/Department")
 const auth = require("../middleware/auth")
 const multer = require("multer")
 const { uploadToCloudinary } = require("../utils/cloudinary")
@@ -294,6 +295,23 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
         message: `You have been assigned a new task: '${title}'.`,
         task: savedTask._id,
       });
+    }
+
+    // Notify all testers about new task
+    try {
+      const dept = await Department.findById(department).select("name");
+      const testers = await User.find({ role: "Tester", stillExist: 1 });
+      for (const tester of testers) {
+        await Notification.create({
+          recipient: tester._id,
+          type: "task_created_for_tester",
+          title: "New Task Created",
+          message: `New task "${title}" created in ${dept?.name || "Unknown"} department`,
+          task: savedTask._id,
+        });
+      }
+    } catch (notifErr) {
+      console.error("Error notifying testers:", notifErr);
     }
 
     // Populate fields for response

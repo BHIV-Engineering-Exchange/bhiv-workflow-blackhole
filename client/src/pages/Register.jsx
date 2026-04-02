@@ -717,6 +717,9 @@ export default function Register() {
                     <SelectItem value="User" className="hover:bg-muted focus:bg-muted transition-colors">
                       User
                     </SelectItem>
+                    <SelectItem value="Tester" className="hover:bg-muted focus:bg-muted transition-colors">
+                      Tester
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 {errors.role && (
