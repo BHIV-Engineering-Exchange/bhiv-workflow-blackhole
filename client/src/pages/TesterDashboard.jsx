@@ -12,6 +12,7 @@ import {
 import { useAuth } from "../context/auth-context"
 import { useToast } from "../hooks/use-toast"
 import { api } from "../lib/api"
+import { formatDate } from "../lib/dateFormat"
 import { useNavigate } from "react-router-dom"
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend
@@ -266,7 +267,7 @@ function TesterDashboard() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {new Date(ev.createdAt).toLocaleDateString()}
+                        {formatDate(ev.createdAt)}
                       </TableCell>
                     </TableRow>
                   ))}

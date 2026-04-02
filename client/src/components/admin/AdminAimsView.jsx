@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Progress } from '../ui/progress';
 import api from '../../lib/api';
+import { formatDateTime } from '../../lib/dateFormat';
 import { toast } from 'react-hot-toast';
 
 const AdminAimsView = () => {
@@ -469,7 +470,7 @@ const AdminAimsView = () => {
 
                       <div className="flex items-center justify-between text-sm text-gray-500">
                         <span>{aim.user?.email}</span>
-                        <span>Updated: {new Date(aim.updatedAt).toLocaleString()}</span>
+                        <span>Updated: {formatDateTime(aim.updatedAt)}</span>
                       </div>
                     </div>
 

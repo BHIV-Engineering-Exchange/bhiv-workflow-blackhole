@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { formatDate } from '../../lib/dateFormat';
 
 const LeaveHistory = ({ leaves, onCancel, onView }) => {
   const [filter, setFilter] = useState('all');
@@ -141,7 +142,7 @@ const LeaveHistory = ({ leaves, onCancel, onView }) => {
                     <div className="space-y-1 text-sm text-gray-600">
                       <div className="flex items-center gap-4">
                         <span>
-                          <strong>Duration:</strong> {new Date(leave.startDate).toLocaleDateString()} - {new Date(leave.endDate).toLocaleDateString()}
+                          <strong>Duration:</strong> {formatDate(leave.startDate)} - {formatDate(leave.endDate)}
                         </span>
                         <span>
                           <strong>Days:</strong> {leave.totalDays} day{leave.totalDays !== 1 ? 's' : ''}
@@ -159,9 +160,9 @@ const LeaveHistory = ({ leaves, onCancel, onView }) => {
                       )}
                       
                       <div className="text-xs text-gray-500">
-                        Submitted on {new Date(leave.createdAt).toLocaleDateString()}
+                        Submitted on {formatDate(leave.createdAt)}
                         {leave.approvedAt && (
-                          <span> • Processed on {new Date(leave.approvedAt).toLocaleDateString()}</span>
+                          <span> • Processed on {formatDate(leave.approvedAt)}</span>
                         )}
                       </div>
                     </div>

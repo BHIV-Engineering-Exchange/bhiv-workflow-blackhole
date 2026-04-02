@@ -21,6 +21,7 @@ import {
 import { useAuth } from "../context/auth-context"
 import { useToast } from "../hooks/use-toast"
 import { api } from "../lib/api"
+import { formatDate } from "../lib/dateFormat"
 
 const INITIAL_FORM = {
   projectName: "",
@@ -588,7 +589,7 @@ function TesterEvaluation() {
                           <Badge className={getVerdictBadgeColor(ev.finalVerdict)}>{ev.finalVerdict}</Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {new Date(ev.createdAt).toLocaleDateString()}
+                          {formatDate(ev.createdAt)}
                         </TableCell>
                         <TableCell>
                           <Button variant="ghost" size="sm" onClick={() => setViewEvaluation(ev)}>
@@ -647,7 +648,7 @@ function TesterEvaluation() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground text-xs">Date</Label>
-                  <p className="font-medium">{new Date(viewEvaluation.createdAt).toLocaleDateString()}</p>
+                  <p className="font-medium">{formatDate(viewEvaluation.createdAt)}</p>
                 </div>
               </div>
 

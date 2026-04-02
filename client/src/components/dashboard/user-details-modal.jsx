@@ -25,6 +25,7 @@ import {
   Activity
 } from 'lucide-react';
 import { getUserDetails, getUserTasks, getUserPerformance } from '@/lib/user-api';
+import { formatDate } from '@/lib/dateFormat';
 
 export function UserDetailsModal({ user, isOpen, onClose }) {
   const [userDetails, setUserDetails] = useState(null);
@@ -188,7 +189,7 @@ export function UserDetailsModal({ user, isOpen, onClose }) {
                       <div className="flex items-center gap-2">
                         <Calendar className="h-4 w-4 text-primary" />
                         <span className="text-muted-foreground">
-                          Joined {new Date(userDetails.joinDate).toLocaleDateString()}
+                          Joined {formatDate(userDetails.joinDate)}
                         </span>
                       </div>
                     </div>
@@ -273,7 +274,7 @@ export function UserDetailsModal({ user, isOpen, onClose }) {
                             <Badge className={getPriorityColor(task.priority)}>
                               {task.priority}
                             </Badge>
-                            <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
+                            <span>Due: {formatDate(task.dueDate)}</span>
                             <span>{task.department?.name || task.department || 'No Department'}</span>
                           </div>
                           {task.progress && (
@@ -313,7 +314,7 @@ export function UserDetailsModal({ user, isOpen, onClose }) {
                         <div className="flex-1">
                           <p className="text-sm text-foreground">{activity.action}</p>
                           <p className="text-xs text-muted-foreground">
-                            {new Date(activity.date).toLocaleDateString()}
+                            {formatDate(activity.date)}
                           </p>
                         </div>
                       </div>

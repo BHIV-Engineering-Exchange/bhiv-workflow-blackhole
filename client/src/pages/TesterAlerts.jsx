@@ -11,6 +11,7 @@ import {
 import { useNavigate } from "react-router-dom"
 import { useToast } from "../hooks/use-toast"
 import { api } from "../lib/api"
+import { formatDate } from "../lib/dateFormat"
 
 const getStatusColor = (status) => {
   switch (status) {
@@ -110,7 +111,7 @@ function TesterAlerts() {
                 {task.dueDate && (
                   <span className="text-muted-foreground">
                     <Calendar className="inline h-3 w-3 mr-1" />
-                    Due: {new Date(task.dueDate).toLocaleDateString()}
+                    Due: {formatDate(task.dueDate)}
                   </span>
                 )}
                 {type === "overdue" && task.dueDate && (

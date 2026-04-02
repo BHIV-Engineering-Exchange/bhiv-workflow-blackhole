@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import * as d3 from "d3"
 import { Loader2 } from "lucide-react"
 import { api } from "../../lib/api"
+import { formatDate } from "../../lib/dateFormat"
 import { useToast } from "../../hooks/use-toast"
 import { useIsMobile } from "../../hooks/use-mobile"
 
@@ -238,8 +239,8 @@ export function DependencyGantt() {
               <span style="color: #64748b;">Department: ${d.department?.name || "Unknown"}</span><br/>
               <span style="color: ${getStatusColor(d.status)};">Status: ${d.status}</span><br/>
               <span style="color: #64748b;">Duration: ${d.duration} days</span><br/>
-              <span style="color: #64748b; font-size: 11px;">Start: ${d.startDate.toLocaleDateString()}</span><br/>
-              <span style="color: #64748b; font-size: 11px;">End: ${d.endDate.toLocaleDateString()}</span><br/>
+              <span style="color: #64748b; font-size: 11px;">Start: ${formatDate(d.startDate)}</span><br/>
+              <span style="color: #64748b; font-size: 11px;">End: ${formatDate(d.endDate)}</span><br/>
               <span style="color: #64748b; font-size: 11px;">Dependencies: ${deps}</span>
             </div>`,
           )

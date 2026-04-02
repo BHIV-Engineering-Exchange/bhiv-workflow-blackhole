@@ -25,6 +25,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Input } from '../ui/input';
+import { formatDate } from '../../lib/dateFormat';
 // Fix for default markers in react-leaflet
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -507,7 +508,7 @@ const LiveAttendanceMap = ({ attendance }) => {
                           End: {disc.endLocation?.address || 'Unknown'}
                         </p>
                         <p className="text-xs text-gray-500 mt-1">
-                          {new Date(disc.date).toLocaleDateString()}
+                          {formatDate(disc.date)}
                         </p>
                       </div>
                     </div>

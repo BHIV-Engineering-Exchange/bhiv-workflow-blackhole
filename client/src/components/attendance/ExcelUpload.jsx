@@ -19,6 +19,7 @@ import { Badge } from '../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { useAttendance } from '../../hooks/use-attendance';
 import { toast } from '../../hooks/use-toast';
+import { formatDate } from '../../lib/dateFormat';
 
 const ExcelUpload = ({ isOpen, onClose, onUpload }) => {
   const [dragActive, setDragActive] = useState(false);
@@ -90,7 +91,7 @@ const ExcelUpload = ({ isOpen, onClose, onUpload }) => {
       const preview = {
         name: file.name,
         size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-        lastModified: new Date(file.lastModified).toLocaleDateString(),
+        lastModified: formatDate(file.lastModified),
         type: file.type.includes('sheet') ? 'Excel Workbook (.xlsx)' : 'Excel 97-2003 (.xls)',
         estimatedRows: Math.floor(Math.random() * 1000) + 100 // Mock data
       };

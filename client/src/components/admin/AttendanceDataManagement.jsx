@@ -28,6 +28,7 @@ import { Badge } from '../ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { useAuth } from '../../context/auth-context';
 import api from '../../lib/api';
+import { formatDate } from '../../lib/dateFormat';
 import { toast } from 'react-hot-toast';
 
 const AttendanceDataManagement = () => {
@@ -294,8 +295,8 @@ const AttendanceDataManagement = () => {
                     <div className="bg-gray-50 rounded-lg p-4 border">
                       <h4 className="font-semibold text-gray-900 mb-2">Data Date Range</h4>
                       <div className="text-sm text-gray-600">
-                        <p>Oldest Record: {dataStats.dateRange.oldest ? new Date(dataStats.dateRange.oldest).toLocaleDateString() : 'N/A'}</p>
-                        <p>Newest Record: {dataStats.dateRange.newest ? new Date(dataStats.dateRange.newest).toLocaleDateString() : 'N/A'}</p>
+                        <p>Oldest Record: {dataStats.dateRange.oldest ? formatDate(dataStats.dateRange.oldest) : 'N/A'}</p>
+                        <p>Newest Record: {dataStats.dateRange.newest ? formatDate(dataStats.dateRange.newest) : 'N/A'}</p>
                       </div>
                     </div>
                   )}

@@ -38,6 +38,7 @@ import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"
 import { SubmissionFeedbackCard } from "../components/dashboard/SubmissionFeedbackCard"
 import { DashboardProvider } from "../context/DashboardContext" // New import
 import { api } from "@/lib/api"
+import { formatDate, formatTime } from "@/lib/dateFormat"
 import { WorkHoursManager } from "../components/monitoring/WorkHoursManager"
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts'
 
@@ -421,7 +422,7 @@ function UserDashboard() {
                         <div>
                           <p className="font-medium text-sm">{task.title}</p>
                           <p className="text-xs text-muted-foreground">
-                            Due: {new Date(task.dueDate).toLocaleDateString()}
+                            Due: {formatDate(task.dueDate)}
                           </p>
                         </div>
                         <Badge className={getPriorityColor(task.priority)}>{task.priority}</Badge>
@@ -626,7 +627,7 @@ function UserDashboard() {
                                     <Badge className={getPriorityColor(task.priority)}>{task.priority}</Badge>
                                   </TableCell>
                                   <TableCell>
-                                    {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "No date"}
+                                    {task.dueDate ? formatDate(task.dueDate) : "No date"}
                                   </TableCell>
                                 </TableRow>
                               ))}
@@ -689,7 +690,7 @@ function UserDashboard() {
                         {submissions.map((submission) => (
                           <TableRow key={submission._id} className="hover:bg-muted/50">
                             <TableCell className="font-medium">{submission.task?.title || "Unknown Task"}</TableCell>
-                            <TableCell>{new Date(submission.createdAt).toLocaleDateString()}</TableCell>
+                            <TableCell>{formatDate(submission.createdAt)}</TableCell>
                             <TableCell>{getSubmissionStatusBadge(submission.status)}</TableCell>
                             <TableCell>
                               <div className="flex gap-2">
@@ -763,11 +764,7 @@ function UserDashboard() {
                       <div>
                         <span className="font-medium text-gray-600 dark:text-gray-400 text-xs">Submitted on</span>
                         <p className="text-gray-900 dark:text-white font-semibold">
-                          {new Date(selectedSubmission.createdAt).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric'
-                          })}
+                          {formatDate(selectedSubmission.createdAt)}
                         </p>
                       </div>
                     </div>
@@ -778,10 +775,7 @@ function UserDashboard() {
                       <div>
                         <span className="font-medium text-gray-600 dark:text-gray-400 text-xs">Time</span>
                         <p className="text-gray-900 dark:text-white font-semibold">
-                          {new Date(selectedSubmission.createdAt).toLocaleTimeString('en-US', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
+                          {formatTime(selectedSubmission.createdAt)}
                         </p>
                       </div>
                     </div>

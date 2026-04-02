@@ -593,6 +593,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar"
 import { TaskSubmissionDialog } from "../components/tasks/task-submission-dialog"
 import { Skeleton } from "../components/ui/skeleton"
 import { API_URL } from "@/lib/api"
+import { formatDate } from "@/lib/dateFormat"
 
 function TaskDetails() {
   const { id } = useParams()
@@ -999,11 +1000,11 @@ function TaskDetails() {
                           </div>
                         )}
                         <div className="flex items-center justify-between text-xs text-muted-foreground pt-2">
-                          <span>Submitted on {new Date(submission.createdAt).toLocaleDateString()}</span>
+                          <span>Submitted on {formatDate(submission.createdAt)}</span>
                           {submission.resubmittedAt && (
                             <Badge className="bg-blue-500/10 text-blue-500 text-xs">
                               <RefreshCw className="h-3 w-3 mr-1" />
-                              Resubmitted {new Date(submission.resubmittedAt).toLocaleDateString()}
+                              Resubmitted {formatDate(submission.resubmittedAt)}
                             </Badge>
                           )}
                         </div>
@@ -1052,7 +1053,7 @@ function TaskDetails() {
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">
-                Created on {new Date(task.createdAt).toLocaleDateString()}
+                Created on {formatDate(task.createdAt)}
               </span>
             </div>
             {isAssignedToCurrentUser && !submission && (
@@ -1078,7 +1079,7 @@ function TaskDetails() {
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span>
-                    Due: {new Date(task.dueDate).toLocaleDateString()}
+                    Due: {formatDate(task.dueDate)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1111,7 +1112,7 @@ function TaskDetails() {
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm">
-                  Updated: {new Date(task.updatedAt).toLocaleDateString()}
+                  Updated: {formatDate(task.updatedAt)}
                 </span>
               </div>
             </CardContent>

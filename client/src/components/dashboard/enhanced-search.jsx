@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { searchUsers } from '@/lib/user-api';
 import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/dateFormat';
 
 export function EnhancedSearch({ onUserSelect }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -379,7 +380,7 @@ export function EnhancedSearch({ onUserSelect }) {
                           {/* Join Date */}
                           <div className="flex items-center gap-1.5 text-muted-foreground px-2 py-1 rounded-lg bg-muted/20">
                             <Calendar className="h-3 w-3 flex-shrink-0" />
-                            <span className="font-medium">Joined {new Date(user.joinDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            <span className="font-medium">Joined {formatDate(user.joinDate)}</span>
                           </div>
                         </div>
                       </div>

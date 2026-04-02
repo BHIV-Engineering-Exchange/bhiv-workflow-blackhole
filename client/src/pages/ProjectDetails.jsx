@@ -27,6 +27,7 @@ import { Badge } from "../components/ui/badge"
 import { Progress } from "../components/ui/progress"
 import { useToast } from "../hooks/use-toast"
 import { api } from "../lib/api"
+import { formatDate } from "../lib/dateFormat"
 import {
   Dialog,
   DialogContent,
@@ -659,7 +660,7 @@ export default function ProjectDetails() {
                                   : ""
                               }
                             >
-                              {new Date(task.dueDate).toLocaleDateString()}
+                              {formatDate(task.dueDate)}
                             </span>
                           ) : (
                             <span className="text-muted-foreground">-</span>
@@ -721,7 +722,7 @@ export default function ProjectDetails() {
                 <div>
                   <p className="text-sm text-muted-foreground">Start Date</p>
                   <p className="font-medium">
-                    {new Date(project.startDate).toLocaleDateString()}
+                    {formatDate(project.startDate)}
                   </p>
                 </div>
               )}
@@ -736,7 +737,7 @@ export default function ProjectDetails() {
                         : ""
                     }`}
                   >
-                    {new Date(project.dueDate).toLocaleDateString()}
+                    {formatDate(project.dueDate)}
                   </p>
                 </div>
               )}
@@ -744,7 +745,7 @@ export default function ProjectDetails() {
                 <div>
                   <p className="text-sm text-muted-foreground">Completed Date</p>
                   <p className="font-medium text-green-600">
-                    {new Date(project.completedDate).toLocaleDateString()}
+                    {formatDate(project.completedDate)}
                   </p>
                 </div>
               )}

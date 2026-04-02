@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-reac
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { formatDate } from '../../lib/dateFormat';
 
 const LeaveCalendar = ({ leaves = [] }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -198,7 +199,7 @@ const LeaveCalendar = ({ leaves = [] }) => {
                       <div>
                         <span className="font-medium text-sm">{leave.leaveType}</span>
                         <span className="text-xs text-gray-600 ml-2">
-                          {new Date(leave.startDate).toLocaleDateString()} - {new Date(leave.endDate).toLocaleDateString()}
+                          {formatDate(leave.startDate)} - {formatDate(leave.endDate)}
                         </span>
                       </div>
                       <Badge className={

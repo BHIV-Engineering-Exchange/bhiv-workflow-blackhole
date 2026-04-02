@@ -23,6 +23,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import api from '../../lib/api';
 import { useToast } from '../../hooks/use-toast';
+import { formatDate } from '../../lib/dateFormat';
 
 const EmployeeAttendanceHistory = ({ userId, userName, onClose }) => {
   const [historyData, setHistoryData] = useState(null);
@@ -74,15 +75,6 @@ const EmployeeAttendanceHistory = ({ userId, userName, onClose }) => {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
-    });
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
     });
   };
 
@@ -298,7 +290,7 @@ const EmployeeAttendanceHistory = ({ userId, userName, onClose }) => {
                               {new Date(day.date).getDate()}
                             </p>
                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                              {new Date(day.date).toLocaleDateString('en-US', { month: 'short' })}
+                              {formatDate(day.date)}
                             </p>
                           </div>
 

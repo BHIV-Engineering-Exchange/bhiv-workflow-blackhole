@@ -26,6 +26,7 @@ import {
 import { useToast } from "../hooks/use-toast"
 import { useAuth } from "../context/auth-context"
 import { API_URL } from "@/lib/api"
+import { formatDate } from "@/lib/dateFormat"
 import axios from "axios"
 import { TaskSubmissionDialog } from "../components/tasks/task-submission-dialog"
 
@@ -390,7 +391,7 @@ function MyTasks() {
                           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
                               <Calendar className="h-4 w-4" />
-                              <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
+                              <span>Due: {formatDate(task.dueDate)}</span>
                               {daysRemaining <= 2 && daysRemaining >= 0 && (
                                 <Badge variant="destructive" className="ml-1 text-xs">
                                   {daysRemaining === 0 ? "Due Today" : `${daysRemaining}d left`}

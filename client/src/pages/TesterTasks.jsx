@@ -17,6 +17,7 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "../context/auth-context"
 import { useToast } from "../hooks/use-toast"
 import { api } from "../lib/api"
+import { formatDate, formatDateTime } from "../lib/dateFormat"
 
 const getStatusColor = (status) => {
   switch (status) {
@@ -161,7 +162,7 @@ function TesterTasks() {
               <Badge className={getStatusColor(task.status)}>{task.status}</Badge>
             </TableCell>
             <TableCell className="text-muted-foreground">
-              {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "—"}
+              {task.dueDate ? formatDate(task.dueDate) : "—"}
             </TableCell>
           </TableRow>
         ))}
@@ -423,12 +424,12 @@ function TesterTasks() {
                       <div className="flex items-center gap-4 text-sm">
                         <span className="text-muted-foreground">
                           <Calendar className="inline h-3 w-3 mr-1" />
-                          Created: {new Date(task.createdAt).toLocaleString()}
+                          Created: {formatDateTime(task.createdAt)}
                         </span>
                         {task.dueDate && (
                           <span className="text-muted-foreground">
                             <Clock className="inline h-3 w-3 mr-1" />
-                            Due: {new Date(task.dueDate).toLocaleDateString()}
+                            Due: {formatDate(task.dueDate)}
                           </span>
                         )}
                       </div>

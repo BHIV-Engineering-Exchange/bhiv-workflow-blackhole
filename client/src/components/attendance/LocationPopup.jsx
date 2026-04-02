@@ -15,6 +15,7 @@ import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { toast } from 'react-hot-toast';
+import { formatDate } from '../../lib/dateFormat';
 
 const OFFICE_COORDINATES = {
   latitude: 19.165492,
@@ -181,11 +182,7 @@ const LocationPopup = ({ isOpen, onClose, onLocationConfirmed, loading }) => {
               })}
             </div>
             <p className="text-sm text-gray-600 mt-1">
-              {new Date().toLocaleDateString('en-US', {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric'
-              })}
+              {formatDate(new Date())}
             </p>
           </div>
 

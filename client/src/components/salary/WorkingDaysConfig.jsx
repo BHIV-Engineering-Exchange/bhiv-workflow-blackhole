@@ -8,6 +8,7 @@ import { Label } from '../ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { useSalary } from '../../hooks/use-salary';
+import { formatDate } from '../../lib/dateFormat';
 
 const WorkingDaysConfig = ({ isOpen, onClose, onSuccess }) => {
   const { setWorkingDays, loading } = useSalary();
@@ -210,7 +211,7 @@ const WorkingDaysConfig = ({ isOpen, onClose, onSuccess }) => {
                           <div>
                             <span className="font-medium">{holiday.name}</span>
                             <span className="text-sm text-gray-600 ml-2">
-                              {new Date(holiday.date).toLocaleDateString()}
+                              {formatDate(holiday.date)}
                             </span>
                           </div>
                           <Badge variant="outline" className={

@@ -27,6 +27,7 @@ import { isValid, parse, format } from "date-fns";
 import { CalendarIcon, X, Search } from "lucide-react";
 import "react-toastify/dist/ReactToastify.css";
 import { useAuth } from "@/context/auth-context";
+import { formatDate } from "@/lib/dateFormat";
 import { getUserTasks } from "@/lib/user-api";
 
 export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null }) {
@@ -588,7 +589,7 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null })
                             </div>
                           </div>
                           <div className="text-xs text-muted-foreground dark:text-slate-400 ml-2">
-                            {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No date'}
+                            {task.dueDate ? formatDate(task.dueDate) : 'No date'}
                           </div>
                         </div>
                       ))}
