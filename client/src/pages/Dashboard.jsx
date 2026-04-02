@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
-import { Plus, Loader2, Mail, FileText, Target, Bell, AlertCircle } from 'lucide-react'
+import { Plus, Loader2, Mail, FileText, Target, Bell, AlertCircle, ClipboardCheck } from 'lucide-react'
 import { CreateTaskDialog } from "../components/tasks/create-task-dialog"
 import { DepartmentStats } from "../components/dashboard/department-stats"
 import { DepartmentDetails } from "../components/departments/DepartmentDetails"
@@ -30,6 +30,7 @@ function Dashboard() {
     completedTasks: 0,
     inProgressTasks: 0,
     pendingTasks: 0,
+    testerApprovalCount: 0,
     totalTasksChange: 0,
     completedTasksChange: 0,
     inProgressTasksChange: 0,
@@ -247,7 +248,7 @@ function Dashboard() {
       </div>
 
       {/* Enhanced Cyber Stats Cards */}
-      <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-5">
         <Card className="neo-card hover-neo group relative overflow-hidden border-primary/20">
           <div className="absolute inset-0 bg-cyber-grid opacity-20"></div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 relative z-10">
@@ -375,6 +376,21 @@ function Dashboard() {
             <p className="text-xs text-muted-foreground">
               {stats.pendingTasksChange > 0 ? "+" : ""}
               {stats.pendingTasksChange} tasks since yesterday
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="card-modern hover-lift group border-blue-500/10 hover:border-blue-500/20 transition-all duration-300">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Tested Approved</CardTitle>
+            <div className="p-2 bg-gradient-to-br from-blue-500/10 to-blue-600/10 rounded-lg group-hover:from-blue-500/20 group-hover:to-blue-600/20 transition-all duration-300">
+              <ClipboardCheck className="h-5 w-5 text-blue-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.testerApprovalCount || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              Tester approvals (approved + minor fixes)
             </p>
           </CardContent>
         </Card>

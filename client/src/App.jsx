@@ -53,6 +53,7 @@ import TesterDashboard from "./pages/TesterDashboard";
 import TesterTasks from "./pages/TesterTasks";
 import TesterEvaluation from "./pages/TesterEvaluation";
 import TesterAlerts from "./pages/TesterAlerts";
+import TestedTasks from "./pages/TestedTasks";
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -274,6 +275,14 @@ function AppContent() {
                         element={
                           <ProtectedRoute>
                             <TesterAlerts />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/tested-tasks"
+                        element={
+                          <ProtectedRoute>
+                            <TestedTasks />
                           </ProtectedRoute>
                         }
                       />

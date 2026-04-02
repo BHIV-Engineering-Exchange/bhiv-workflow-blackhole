@@ -7,6 +7,7 @@ const Department = require("../models/Department")
 const Aim = require("../models/Aim")
 const Progress = require("../models/Progress")
 const DailyAttendance = require("../models/DailyAttendance")
+const TaskEvaluation = require("../models/TaskEvaluation")
 const auth = require("../middleware/auth")
 const { branchFilter } = require("../middleware/branchMiddleware")
 
@@ -38,6 +39,10 @@ router.get("/stats", async (req, res) => {
     const completedTasks = taskStats?.completed[0]?.count || 0
     const inProgressTasks = taskStats?.inProgress[0]?.count || 0
     const pendingTasks = taskStats?.pending[0]?.count || 0
+    const testerApprovalCount = await TaskEvaluation.countDocuments({
+      ...branchQuery,
+      finalVerdict: { $in: ["APPROVED", "APPROVED WITH MINOR FIXES"] },
+    })
 
     // Get change percentages (mock data - in a real app, you'd compare with historical data)
     const totalTasksChange = 12 // +12% from last month
@@ -50,6 +55,7 @@ router.get("/stats", async (req, res) => {
       completedTasks,
       inProgressTasks,
       pendingTasks,
+      testerApprovalCount,
       totalTasksChange,
       completedTasksChange,
       inProgressTasksChange,

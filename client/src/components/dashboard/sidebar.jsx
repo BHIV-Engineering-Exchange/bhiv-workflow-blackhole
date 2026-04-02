@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation, Link } from "react-router-dom";
-import { LayoutDashboard, CheckSquare, Network, Users, Sparkles, Settings, LogOut, CheckCircle, BarChart, Airplay, LayoutDashboardIcon, Target, Monitor, DollarSign, Calendar, Clock, UserCog, UserCheck, ShoppingCart, Mail, ChevronLeft, ChevronRight, Building2, FolderKanban, ClipboardCheck, AlertTriangle } from "lucide-react";
+import { LayoutDashboard, CheckSquare, Network, Users, Sparkles, Settings, LogOut, CheckCircle, BarChart, Airplay, LayoutDashboardIcon, Target, Monitor, DollarSign, Calendar, Clock, UserCog, UserCheck, ShoppingCart, Mail, ChevronLeft, ChevronRight, Building2, FolderKanban, ClipboardCheck, AlertTriangle, FileText } from "lucide-react";
 import { useAuth } from "../../context/auth-context";
 
 export function DashboardSidebar() {
@@ -47,6 +47,7 @@ export function DashboardSidebar() {
             { title: "Tasks", href: "/tasks", icon: CheckSquare },
             { title: "All Aims", href: "/all-aims", icon: Target },
             { title: "Completed Tasks", href: "/completedtask", icon: CheckCircle },
+            { title: "Test Tasks", href: "/tested-tasks", icon: FileText },
           ]
         },
         {
@@ -117,6 +118,7 @@ export function DashboardSidebar() {
           routes: [
             { title: "Tasks", href: "/tester-tasks", icon: CheckSquare },
             { title: "Task Evaluation", href: "/tester-evaluation", icon: ClipboardCheck },
+            { title: "Test Tasks", href: "/tested-tasks", icon: FileText },
           ]
         },
         {
