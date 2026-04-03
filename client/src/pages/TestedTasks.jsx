@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Loader2, Link as LinkIcon, RefreshCw, FileText, Calendar } from "lucide-react"
 import { api } from "../lib/api"
 import { useToast } from "../hooks/use-toast"
-import { formatDate, formatDateTime } from "../lib/dateFormat"
+import { formatDate } from "../lib/dateFormat"
 
 const getVerdictBadgeColor = (verdict) => {
   switch (verdict) {
@@ -28,11 +28,47 @@ const getVerdictBadgeColor = (verdict) => {
   }
 }
 
+const getStageMeta = (evaluation) => {
+  if (!evaluation) {
+    return {
+      label: "Waiting Tester",
+      className: "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300",
+    }
+  }
+
+  switch (evaluation.finalVerdict) {
+    case "APPROVED":
+      return {
+        label: "Tester Approved",
+        className: "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300",
+      }
+    case "APPROVED WITH MINOR FIXES":
+      return {
+        label: "Tester Minor Fixes",
+        className: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300",
+      }
+    case "REVISION REQUIRED":
+      return {
+        label: "Tester Revision Required",
+        className: "bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300",
+      }
+    case "REJECTED":
+      return {
+        label: "Tester Rejected",
+        className: "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300",
+      }
+    default:
+      return {
+        label: "Tester Evaluated",
+        className: "bg-gray-100 text-gray-800 dark:bg-gray-900/50 dark:text-gray-300",
+      }
+  }
+}
+
 function TestedTasks() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(true)
-  const [submissions, setSubmissions] = useState([])
-  const [evaluations, setEvaluations] = useState([])
+  const [rowsData, setRowsData] = useState([])
   const [search, setSearch] = useState("")
   const [fromDate, setFromDate] = useState("")
   const [toDate, setToDate] = useState("")
@@ -41,12 +77,8 @@ function TestedTasks() {
   const fetchData = async () => {
     try {
       setIsLoading(true)
-      const [subs, evals] = await Promise.all([
-        api.get("/submissions"),
-        api.tester.getEvaluations(),
-      ])
-      setSubmissions(subs || [])
-      setEvaluations(evals || [])
+      const rows = await api.tester.getTestedTasksFeed()
+      setRowsData(rows || [])
     } catch (error) {
       console.error("Error loading tested tasks:", error)
       toast({
@@ -63,26 +95,8 @@ function TestedTasks() {
     fetchData()
   }, [])
 
-  const latestEvalByTask = useMemo(() => {
-    const map = new Map()
-    for (const e of evaluations) {
-      if (!e?.task?._id && !e?.task) continue
-      const taskId = e.task?._id || e.task
-      const prev = map.get(taskId)
-      if (!prev || new Date(e.createdAt) > new Date(prev.createdAt)) {
-        map.set(taskId, e)
-      }
-    }
-    return map
-  }, [evaluations])
-
   const rows = useMemo(() => {
-    const filtered = submissions
-      .map((s) => {
-        const taskId = s.task?._id || s.task
-        const evaluation = latestEvalByTask.get(taskId)
-        return { submission: s, evaluation }
-      })
+    const filtered = rowsData
       .filter(({ submission, evaluation }) => {
         const q = search.trim().toLowerCase()
         const taskTitle = submission.task?.title?.toLowerCase() || ""
@@ -102,7 +116,7 @@ function TestedTasks() {
       .sort((a, b) => new Date(b.submission.createdAt) - new Date(a.submission.createdAt))
 
     return filtered
-  }, [submissions, latestEvalByTask, search, fromDate, toDate, verdictFilter])
+  }, [rowsData, search, fromDate, toDate, verdictFilter])
 
   const evaluatedRows = rows.filter((r) => r.evaluation)
   const pendingRows = rows.filter((r) => !r.evaluation)
@@ -187,6 +201,7 @@ function TestedTasks() {
                       <TableHead>Submitted By</TableHead>
                       <TableHead>Repo</TableHead>
                       <TableHead>Document</TableHead>
+                      <TableHead>Stage</TableHead>
                       <TableHead>Evaluation</TableHead>
                       <TableHead>Evaluated Date</TableHead>
                     </TableRow>
@@ -228,6 +243,12 @@ function TestedTasks() {
                           )}
                         </TableCell>
                         <TableCell>
+                          {(() => {
+                            const stage = getStageMeta(evaluation)
+                            return <Badge className={stage.className}>{stage.label}</Badge>
+                          })()}
+                        </TableCell>
+                        <TableCell>
                           {evaluation ? (
                             <Badge className={getVerdictBadgeColor(evaluation.finalVerdict)}>
                               {evaluation.finalVerdict}
@@ -241,7 +262,7 @@ function TestedTasks() {
                     ))}
                     {tab.data.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                        <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
                           No submissions found for selected filters
                         </TableCell>
                       </TableRow>

@@ -732,6 +732,7 @@ const tester = {
   getTasks: (params = {}) => fetchAPI("/tester/tasks", { params }),
   getDepartments: () => fetchAPI("/tester/departments"),
   getUsers: () => fetchAPI("/tester/users"),
+  getTestedTasksFeed: () => fetchAPI("/tester/tested-tasks-feed"),
   getEvaluations: () => fetchAPI("/tester/evaluations"),
   getEvaluation: (id) => fetchAPI(`/tester/evaluations/${id}`),
   createEvaluation: (data) => fetchAPI("/tester/evaluations", { method: "POST", body: JSON.stringify(data) }),

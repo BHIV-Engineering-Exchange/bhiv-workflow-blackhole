@@ -107,6 +107,56 @@ router.get("/users", auth, testerAuth, async (req, res) => {
   }
 })
 
+// ─── TEST TASKS FEED (repo submissions) ────────────────────────────
+// Tester: sees all repo submissions
+// Admin/Manager: sees only tester-final APPROVED submissions
+router.get("/tested-tasks-feed", auth, testerAuth, async (req, res) => {
+  try {
+    const submissions = await TaskSubmission.find({
+      githubLink: { $exists: true, $ne: "" },
+    })
+      .populate("task", "title status department assignee")
+      .populate({
+        path: "user",
+        select: "name email stillExist",
+        match: { stillExist: 1 },
+      })
+      .sort({ createdAt: -1 })
+
+    // Filter out submissions where user is inactive
+    const activeSubmissions = submissions.filter((s) => s.user)
+
+    const evaluations = await TaskEvaluation.find()
+      .sort({ createdAt: -1 })
+      .select("task finalVerdict createdAt evaluatedBy")
+      .lean()
+
+    const latestEvalByTask = new Map()
+    for (const e of evaluations) {
+      const taskId = e.task?.toString?.() || String(e.task)
+      if (!taskId) continue
+      if (!latestEvalByTask.has(taskId)) {
+        latestEvalByTask.set(taskId, e)
+      }
+    }
+
+    let rows = activeSubmissions.map((submission) => {
+      const taskId = submission.task?._id?.toString?.() || String(submission.task)
+      const evaluation = latestEvalByTask.get(taskId) || null
+      return { submission, evaluation }
+    })
+
+    if (req.user.role === "Admin" || req.user.role === "Manager") {
+      rows = rows.filter((r) => r.evaluation?.finalVerdict === "APPROVED")
+    }
+
+    res.json(rows)
+  } catch (error) {
+    console.error("Error fetching tested tasks feed:", error)
+    res.status(500).json({ error: "Server error" })
+  }
+})
+
 // ─── EVALUATIONS CRUD ───────────────────────────────────────────
 router.post("/evaluations", auth, testerAuth, async (req, res) => {
   try {
@@ -116,15 +166,18 @@ router.post("/evaluations", auth, testerAuth, async (req, res) => {
     })
     await evaluation.save()
 
-    const admins = await User.find({ role: "Admin", stillExist: 1 })
-    for (const admin of admins) {
-      await Notification.create({
-        recipient: admin._id,
-        type: "evaluation_submitted",
-        title: "New Task Evaluation",
-        message: `Tester submitted evaluation for: ${req.body.projectName || "Unknown Project"}`,
-        task: req.body.task,
-      })
+    // Notify admin only when tester gives final APPROVED
+    if (evaluation.finalVerdict === "APPROVED") {
+      const admins = await User.find({ role: "Admin", stillExist: 1 })
+      for (const admin of admins) {
+        await Notification.create({
+          recipient: admin._id,
+          type: "evaluation_submitted",
+          title: "Tester Final Approved",
+          message: `Tester approved task: ${req.body.projectName || "Unknown Project"}. It is now visible in Test Tasks.`,
+          task: req.body.task,
+        })
+      }
     }
 
     res.status(201).json(evaluation)
@@ -167,12 +220,29 @@ router.get("/evaluations/:id", auth, testerAuth, async (req, res) => {
 
 router.put("/evaluations/:id", auth, testerAuth, async (req, res) => {
   try {
+    const existing = await TaskEvaluation.findById(req.params.id)
+    if (!existing) return res.status(404).json({ error: "Evaluation not found" })
+
     const evaluation = await TaskEvaluation.findByIdAndUpdate(
       req.params.id,
       { ...req.body, updatedAt: Date.now() },
       { new: true }
     )
-    if (!evaluation) return res.status(404).json({ error: "Evaluation not found" })
+
+    // Notify admin when status moves to final APPROVED
+    if (existing.finalVerdict !== "APPROVED" && evaluation.finalVerdict === "APPROVED") {
+      const admins = await User.find({ role: "Admin", stillExist: 1 })
+      for (const admin of admins) {
+        await Notification.create({
+          recipient: admin._id,
+          type: "evaluation_submitted",
+          title: "Tester Final Approved",
+          message: `Tester approved task evaluation. It is now visible in Test Tasks.`,
+          task: evaluation.task,
+        })
+      }
+    }
+
     res.json(evaluation)
   } catch (error) {
     console.error("Error updating evaluation:", error)
