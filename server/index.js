@@ -129,6 +129,7 @@ const http = require("http");
 const socketIo = require("socket.io");
 const jwt = require("jsonwebtoken");
 const path = require("path");
+require("dotenv").config();
 const userNotificationRoutes = require('./routes/user-notifications');
 const taskRoutes = require("./routes/tasks");
 const departmentRoutes = require("./routes/departments");
@@ -171,25 +172,32 @@ const adminAuth = require('./middleware/adminAuth');
 const app = express();
 
 // Create HTTP server and initialize Socket.IO
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true
+
+  const exactAllowed = [
+    "https://niyantran.blackholeinfiverse.com",
+    "https://blackhole-workflow.vercel.app",
+    "https://main-workflow.vercel.app",
+    "https://blackholeworkflow.onrender.com",
+    process.env.FRONTEND_URL,
+  ].filter(Boolean)
+
+  if (exactAllowed.includes(origin)) return true
+  if (/^https:\/\/([a-z0-9-]+\.)*blackholeinfiverse\.com$/i.test(origin)) return true
+  if (/^https:\/\/([a-z0-9-]+\.)*vercel\.app$/i.test(origin)) return true
+  if (/^http:\/\/localhost:\d+$/.test(origin)) return true
+  if (/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) return true
+  if (/^http:\/\/192\.168\.\d+\.\d+:\d+$/.test(origin)) return true
+
+  return false
+}
+
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: (origin, callback) => {
-      const allowed = [
-        'https://niyantran.blackholeinfiverse.com',
-        'https://blackhole-workflow.vercel.app',
-        'https://main-workflow.vercel.app',
-        'https://blackholeworkflow.onrender.com',
-        process.env.FRONTEND_URL,
-      ].filter(Boolean);
-      const isLocalhost = origin && /^http:\/\/localhost:\d+$/.test(origin);
-      if (!origin || isLocalhost || allowed.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(null, false);
-      }
-    },
-    methods: ['GET', 'POST'],
+    origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
+    methods: ["GET", "POST"],
     credentials: true,
   },
 });
@@ -197,28 +205,7 @@ const io = socketIo(server, {
 // CORS Configuration
 const corsOptions = {
   origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    // Define allowed origins
-    const allowedOrigins = [
-      'https://niyantran.blackholeinfiverse.com',
-      'https://blackhole-workflow.vercel.app',
-      'https://main-workflow.vercel.app',
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://localhost:8080',
-      'http://localhost:8081',
-      'http://127.0.0.1:3000',
-      'http://192.168.1.2:5173'
-    ];
-    
-    // Check if the origin is in the allowed list
-    const isAllowed = allowedOrigins.includes(origin);
-    callback(null, isAllowed);
+    callback(null, isAllowedOrigin(origin))
   },
   credentials: true,
   optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
@@ -227,11 +214,9 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 app.use(express.json());
-
-// Connect to MongoDB
-require('dotenv').config();  // Add this line at the top
 
 // Socket.IO connection
 io.on("connection", (socket) => {
