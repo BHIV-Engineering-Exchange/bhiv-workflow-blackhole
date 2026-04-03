@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
-import { Plus, Loader2, Mail, FileText, Target, Bell, AlertCircle, ClipboardCheck } from 'lucide-react'
+import { Plus, Loader2, Mail, FileText, Target, Bell, AlertCircle, ClipboardCheck, BarChart3 } from 'lucide-react'
 import { CreateTaskDialog } from "../components/tasks/create-task-dialog"
 import { DepartmentStats } from "../components/dashboard/department-stats"
 import { DepartmentDetails } from "../components/departments/DepartmentDetails"
@@ -18,6 +18,7 @@ import { useAuth } from "../context/auth-context"
 import AdminChatbot from "../components/admin/admin-chatbot"
 import { AdminReportDialog } from "../components/admin/AdminReportDialog"
 import OverdueTasks from "../components/admin/OverdueTasks"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from "recharts"
 
 
 
@@ -42,6 +43,7 @@ function Dashboard() {
   const [selectedDepartment, setSelectedDepartment] = useState(null)
   const [showReportDialog, setShowReportDialog] = useState(false)
   const [showOverdueTasksDialog, setShowOverdueTasksDialog] = useState(false)
+  const [testedTaskRows, setTestedTaskRows] = useState([])
 
   const isAdmin = user && (user.role === "Admin" || user.role === "Manager")
 
@@ -57,8 +59,12 @@ function Dashboard() {
     const fetchDashboardData = async () => {
       try {
         setIsLoading(true)
-        const dashboardStats = await api.dashboard.getStats()
+        const [dashboardStats, testedRows] = await Promise.all([
+          api.dashboard.getStats(),
+          api.tester.getTestedTasksFeed(),
+        ])
         setStats(dashboardStats)
+        setTestedTaskRows(Array.isArray(testedRows) ? testedRows : [])
       } catch (error) {
         console.error("Error fetching dashboard stats:", error)
         toast({
@@ -130,6 +136,31 @@ function Dashboard() {
     } finally {
       setIsSendingAimReminders(false)
     }
+  }
+
+  const testingStageChartData = useMemo(() => {
+    const stageCounts = testedTaskRows.reduce((acc, row) => {
+      const stage = row?.stage || "Unknown"
+      acc[stage] = (acc[stage] || 0) + 1
+      return acc
+    }, {})
+
+    const orderedStages = ["Waiting Tester", "Tester Approved", "Unknown"]
+    const knownRows = orderedStages
+      .filter((stage) => stageCounts[stage])
+      .map((stage) => ({ stage, count: stageCounts[stage] }))
+
+    const otherRows = Object.entries(stageCounts)
+      .filter(([stage]) => !orderedStages.includes(stage))
+      .map(([stage, count]) => ({ stage, count }))
+
+    return [...knownRows, ...otherRows]
+  }, [testedTaskRows])
+
+  const stageBarColors = {
+    "Waiting Tester": "#f59e0b",
+    "Tester Approved": "#22c55e",
+    Unknown: "#6b7280",
   }
   
 
@@ -395,6 +426,38 @@ function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {isAdmin && (
+        <Card className="neo-card border-primary/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-primary" />
+              Testing Pipeline
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {testingStageChartData.length > 0 ? (
+              <div className="h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={testingStageChartData} margin={{ top: 10, right: 20, left: 0, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="stage" tick={{ fontSize: 12 }} interval={0} angle={-8} dy={8} />
+                    <YAxis allowDecimals={false} />
+                    <RechartsTooltip formatter={(value) => [value, "Tasks"]} />
+                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                      {testingStageChartData.map((entry) => (
+                        <Cell key={entry.stage} fill={stageBarColors[entry.stage] || "#3b82f6"} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground py-8 text-center">No testing tasks available yet.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Procurement Alerts for Admins */}
       {isAdmin && <ProcurementAlerts />}
