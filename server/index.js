@@ -214,7 +214,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+// Express/path-to-regexp in this runtime rejects "*" string route; regex safely matches all OPTIONS preflights.
+app.options(/.*/, cors(corsOptions));
 
 app.use(express.json());
 
