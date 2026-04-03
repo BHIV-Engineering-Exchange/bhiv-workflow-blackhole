@@ -18,7 +18,7 @@ import { useAuth } from "../context/auth-context"
 import AdminChatbot from "../components/admin/admin-chatbot"
 import { AdminReportDialog } from "../components/admin/AdminReportDialog"
 import OverdueTasks from "../components/admin/OverdueTasks"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, LineChart, Line } from "recharts"
 
 
 
@@ -138,30 +138,62 @@ function Dashboard() {
     }
   }
 
-  const testingStageChartData = useMemo(() => {
-    const stageCounts = testedTaskRows.reduce((acc, row) => {
-      const stage = row?.stage || "Unknown"
-      acc[stage] = (acc[stage] || 0) + 1
-      return acc
-    }, {})
+  const testingTrendData = useMemo(() => {
+    const days = 7
+    const now = new Date()
+    const buckets = []
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date(now)
+      date.setDate(now.getDate() - i)
+      const key = date.toISOString().slice(0, 10)
+      buckets.push({
+        key,
+        label: date.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit" }),
+        tested: 0,
+      })
+    }
 
-    const orderedStages = ["Waiting Tester", "Tester Approved", "Unknown"]
-    const knownRows = orderedStages
-      .filter((stage) => stageCounts[stage])
-      .map((stage) => ({ stage, count: stageCounts[stage] }))
+    const map = new Map(buckets.map((b) => [b.key, b]))
+    testedTaskRows.forEach((row) => {
+      const rawDate = row?.submission?.createdAt || row?.submission?.updatedAt || row?.evaluation?.updatedAt
+      if (!rawDate) return
+      const key = new Date(rawDate).toISOString().slice(0, 10)
+      if (map.has(key)) {
+        map.get(key).tested += 1
+      }
+    })
 
-    const otherRows = Object.entries(stageCounts)
-      .filter(([stage]) => !orderedStages.includes(stage))
-      .map(([stage, count]) => ({ stage, count }))
-
-    return [...knownRows, ...otherRows]
+    return buckets
   }, [testedTaskRows])
 
-  const stageBarColors = {
-    "Waiting Tester": "#f59e0b",
-    "Tester Approved": "#22c55e",
-    Unknown: "#6b7280",
-  }
+  const testingStatusData = useMemo(() => {
+    let waiting = 0
+    let approved = 0
+    let rejected = 0
+
+    testedTaskRows.forEach((row) => {
+      const verdict = row?.evaluation?.finalVerdict
+      if (!verdict) {
+        waiting += 1
+        return
+      }
+      if (verdict === "APPROVED" || verdict === "APPROVED WITH MINOR FIXES") {
+        approved += 1
+        return
+      }
+      if (verdict === "REJECTED" || verdict === "REVISION REQUIRED") {
+        rejected += 1
+        return
+      }
+      waiting += 1
+    })
+
+    return [
+      { status: "Waiting", count: waiting, color: "#f59e0b" },
+      { status: "Approved", count: approved, color: "#22c55e" },
+      { status: "Rejected", count: rejected, color: "#ef4444" },
+    ]
+  }, [testedTaskRows])
   
 
   if (isLoading) {
@@ -428,35 +460,55 @@ function Dashboard() {
       </div>
 
       {isAdmin && (
-        <Card className="neo-card border-primary/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-primary" />
-              Testing Pipeline
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {testingStageChartData.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="neo-card border-primary/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-primary" />
+                Time-wise Testing Trend (Last 7 Days)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
               <div className="h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={testingStageChartData} margin={{ top: 10, right: 20, left: 0, bottom: 8 }}>
+                  <LineChart data={testingTrendData} margin={{ top: 10, right: 20, left: 0, bottom: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="stage" tick={{ fontSize: 12 }} interval={0} angle={-8} dy={8} />
+                    <XAxis dataKey="label" />
+                    <YAxis allowDecimals={false} />
+                    <RechartsTooltip formatter={(value) => [value, "Tested"]} />
+                    <Line type="monotone" dataKey="tested" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="neo-card border-primary/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-primary" />
+                Testing Status (Waiting / Rejected / Approved)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={testingStatusData} margin={{ top: 10, right: 20, left: 0, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="status" />
                     <YAxis allowDecimals={false} />
                     <RechartsTooltip formatter={(value) => [value, "Tasks"]} />
                     <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                      {testingStageChartData.map((entry) => (
-                        <Cell key={entry.stage} fill={stageBarColors[entry.stage] || "#3b82f6"} />
+                      {testingStatusData.map((entry) => (
+                        <Cell key={entry.status} fill={entry.color} />
                       ))}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground py-8 text-center">No testing tasks available yet.</p>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Procurement Alerts for Admins */}
