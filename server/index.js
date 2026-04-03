@@ -172,41 +172,21 @@ const adminAuth = require('./middleware/adminAuth');
 const app = express();
 
 // Create HTTP server and initialize Socket.IO
-const isAllowedOrigin = (origin) => {
-  if (!origin) return true
-
-  const exactAllowed = [
-    "https://niyantran.blackholeinfiverse.com",
-    "https://blackhole-workflow.vercel.app",
-    "https://main-workflow.vercel.app",
-    "https://blackholeworkflow.onrender.com",
-    process.env.FRONTEND_URL,
-  ].filter(Boolean)
-
-  if (exactAllowed.includes(origin)) return true
-  if (/^https:\/\/([a-z0-9-]+\.)*blackholeinfiverse\.com$/i.test(origin)) return true
-  if (/^https:\/\/([a-z0-9-]+\.)*vercel\.app$/i.test(origin)) return true
-  if (/^http:\/\/localhost:\d+$/.test(origin)) return true
-  if (/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) return true
-  if (/^http:\/\/192\.168\.\d+\.\d+:\d+$/.test(origin)) return true
-
-  return false
-}
+// NOTE: Keep CORS permissive to avoid cross-domain breaks across webapp deployments.
+const isAllowedOrigin = () => true
 
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
   },
 });
 
 // CORS Configuration
 const corsOptions = {
-  origin: function(origin, callback) {
-    callback(null, isAllowedOrigin(origin))
-  },
+  origin: true, // reflect request Origin header
   credentials: true,
   optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -216,6 +196,21 @@ const corsOptions = {
 app.use(cors(corsOptions));
 // Express/path-to-regexp in this runtime rejects "*" string route; regex safely matches all OPTIONS preflights.
 app.options(/.*/, cors(corsOptions));
+app.use((req, res, next) => {
+  // Extra safety for proxies/platform edge cases where CORS middleware may be bypassed on failures.
+  const origin = req.headers.origin
+  if (origin) {
+    res.header("Access-Control-Allow-Origin", origin)
+    res.header("Vary", "Origin")
+  }
+  res.header("Access-Control-Allow-Credentials", "true")
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-auth-token, Authorization, X-Branch, x-branch")
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204)
+  }
+  next()
+})
 
 app.use(express.json());
 
