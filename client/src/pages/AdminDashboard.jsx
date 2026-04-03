@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import axios from "axios"
 import { useAuth } from "@/context/auth-context"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Building2, Users, Plus, Trash2, RefreshCw, Search, Edit, UserPlus, UserCog, KeyRound, Eye, EyeOff, Target, AlertCircle } from "lucide-react"
+import { Building2, Users, Plus, Trash2, RefreshCw, Search, Edit, UserPlus, UserCog, KeyRound, Eye, EyeOff, Target, AlertCircle, BarChart3 } from "lucide-react"
 import AdminChatbot from "@/components/admin/admin-chatbot"
 import LiveAttendanceAdminPanel from "@/components/admin/LiveAttendanceAdminPanel"
 import SetAimsPanel from "@/components/admin/SetAimsPanel"
@@ -29,6 +29,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { useToast } from "../hooks/use-toast"
 import { API_URL } from "@/lib/api"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts"
 
 // Configure axios with base URL
 const api = axios.create({
@@ -107,6 +108,7 @@ const AdminDashboard = () => {
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [showOverdueTasksDialog, setShowOverdueTasksDialog] = useState(false)
+  const [testedTaskRows, setTestedTaskRows] = useState([])
 
   // Set auth header for all requests
   useEffect(() => {
@@ -116,9 +118,19 @@ const AdminDashboard = () => {
   }, [token])
 
   useEffect(() => {
-    Promise.all([fetchUsers(), fetchDepartments()])
+    Promise.all([fetchUsers(), fetchDepartments(), fetchTestedTasksFeed()])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const fetchTestedTasksFeed = async () => {
+    try {
+      const response = await api.get("/tester/tested-tasks-feed")
+      setTestedTaskRows(Array.isArray(response.data) ? response.data : [])
+    } catch (err) {
+      console.error("Error fetching tested tasks feed:", err)
+      setTestedTaskRows([])
+    }
+  }
 
   const fetchUsers = async () => {
     try {
@@ -477,6 +489,31 @@ const AdminDashboard = () => {
     return users.find((user) => user._id === leadId)
   }
 
+  const testingStageChartData = useMemo(() => {
+    const stageCounts = testedTaskRows.reduce((acc, row) => {
+      const stage = row?.stage || "Unknown"
+      acc[stage] = (acc[stage] || 0) + 1
+      return acc
+    }, {})
+
+    const orderedStages = ["Waiting Tester", "Tester Approved", "Unknown"]
+    const knownRows = orderedStages
+      .filter((stage) => stageCounts[stage])
+      .map((stage) => ({ stage, count: stageCounts[stage] }))
+
+    const otherRows = Object.entries(stageCounts)
+      .filter(([stage]) => !orderedStages.includes(stage))
+      .map(([stage, count]) => ({ stage, count }))
+
+    return [...knownRows, ...otherRows]
+  }, [testedTaskRows])
+
+  const stageBarColors = {
+    "Waiting Tester": "#f59e0b",
+    "Tester Approved": "#22c55e",
+    Unknown: "#6b7280",
+  }
+
   return (
     <>
       {/* Admin Chatbot */}
@@ -496,6 +533,7 @@ const AdminDashboard = () => {
             onClick={() => {
               fetchUsers()
               fetchDepartments()
+              fetchTestedTasksFeed()
             }}
             className="border-border hover:bg-primary/5 hover:text-primary transition-all duration-300"
           >
@@ -637,6 +675,48 @@ const AdminDashboard = () => {
               </CardContent>
             </Card>
           </div>
+
+          <Card className="mt-6 border border-border/60 bg-card/80 shadow-md">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-primary" />
+                Testing Pipeline
+              </CardTitle>
+              <CardDescription>
+                Stage-wise distribution of tasks in testing workflow
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {testingStageChartData.length > 0 ? (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={testingStageChartData} margin={{ top: 10, right: 24, left: 8, bottom: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="stage" tick={{ fontSize: 12 }} interval={0} angle={-10} dy={8} />
+                      <YAxis allowDecimals={false} />
+                      <Tooltip
+                        formatter={(value) => [value, "Tasks"]}
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--background))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "8px",
+                        }}
+                      />
+                      <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                        {testingStageChartData.map((entry) => (
+                          <Cell key={entry.stage} fill={stageBarColors[entry.stage] || "#3b82f6"} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground py-10 text-center">
+                  No testing tasks available yet.
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </CardContent>
       </Card>
 
