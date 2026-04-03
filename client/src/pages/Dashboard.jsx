@@ -459,6 +459,15 @@ function Dashboard() {
         </Card>
       </div>
 
+      {/* Procurement Alerts for Admins */}
+      {isAdmin && <ProcurementAlerts />}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <DepartmentStats onDepartmentSelect={handleDepartmentSelect} />
+        <TasksOverview />
+        <AIInsights />
+      </div>
+
       {isAdmin && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card className="neo-card border-primary/20">
@@ -510,15 +519,6 @@ function Dashboard() {
           </Card>
         </div>
       )}
-
-      {/* Procurement Alerts for Admins */}
-      {isAdmin && <ProcurementAlerts />}
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <DepartmentStats onDepartmentSelect={handleDepartmentSelect} />
-        <TasksOverview />
-        <AIInsights />
-      </div>
 
       <CreateTaskDialog open={isCreateTaskOpen} onOpenChange={setIsCreateTaskOpen} />
       
