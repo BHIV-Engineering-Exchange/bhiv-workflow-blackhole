@@ -55,12 +55,17 @@ function TesterDashboard() {
     recentEvaluations: [],
     verdictStats: [],
   })
+  const [testBucketRows, setTestBucketRows] = useState([])
 
   const fetchDashboardData = async () => {
     try {
       setIsLoading(true)
-      const data = await api.tester.getDashboardStats()
+      const [data, feedRows] = await Promise.all([
+        api.tester.getDashboardStats(),
+        api.tester.getTestedTasksFeed(),
+      ])
       setStats(data)
+      setTestBucketRows((feedRows || []).filter((row) => !row.evaluation))
     } catch (error) {
       console.error("Error fetching tester dashboard:", error)
       toast({
@@ -81,6 +86,20 @@ function TesterDashboard() {
     name: v._id || "PENDING",
     count: v.count,
   }))
+
+  const openEvaluationFromBucket = (row) => {
+    const submission = row?.submission
+    const taskId = submission?.task?._id || submission?.task
+    const submissionId = submission?._id
+    const submittedBy = submission?.user?._id || ""
+    const taskTitle = submission?.task?.title || ""
+    const params = new URLSearchParams()
+    if (taskId) params.set("taskId", taskId)
+    if (submissionId) params.set("submissionId", submissionId)
+    if (submittedBy) params.set("submittedBy", submittedBy)
+    if (taskTitle) params.set("taskTitle", taskTitle)
+    navigate(`/tester-evaluation?${params.toString()}`)
+  }
 
   if (isLoading) {
     return (
@@ -291,6 +310,52 @@ function TesterDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="neo-card shadow-lg border-l-4 border-l-amber-500">
+        <CardHeader className="border-b bg-gradient-to-r from-amber-500/5 to-transparent">
+          <CardTitle className="text-xl flex items-center justify-between gap-2">
+            <span>Test Bucket ({testBucketRows.length})</span>
+            <Button variant="outline" size="sm" onClick={() => navigate("/tested-tasks")}>
+              Open Test Tasks
+            </Button>
+          </CardTitle>
+          <CardDescription>
+            Newly submitted repo tasks waiting for tester evaluation
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          {testBucketRows.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Submitted Date</TableHead>
+                  <TableHead>Task</TableHead>
+                  <TableHead>Submitted By</TableHead>
+                  <TableHead>Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {testBucketRows.slice(0, 8).map((row) => (
+                  <TableRow key={row.submission?._id}>
+                    <TableCell>{formatDate(row.submission?.createdAt)}</TableCell>
+                    <TableCell className="font-medium">{row.submission?.task?.title || "—"}</TableCell>
+                    <TableCell>{row.submission?.user?.name || "—"}</TableCell>
+                    <TableCell>
+                      <Button size="sm" onClick={() => openEvaluationFromBucket(row)}>
+                        Evaluate
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-10 text-muted-foreground">
+              No tasks in test bucket
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

@@ -22,11 +22,13 @@ import { useAuth } from "../context/auth-context"
 import { useToast } from "../hooks/use-toast"
 import { api } from "../lib/api"
 import { formatDate } from "../lib/dateFormat"
+import { useSearchParams } from "react-router-dom"
 
 const INITIAL_FORM = {
   projectName: "",
   moduleName: "",
   task: "",
+  submission: "",
   submittedBy: "",
   testingLevel: "Task",
   testConductedBy: "",
@@ -116,6 +118,7 @@ const getVerdictBadgeColor = (verdict) => {
 function TesterEvaluation() {
   const { toast } = useToast()
   const { user } = useAuth()
+  const [searchParams] = useSearchParams()
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [tasks, setTasks] = useState([])
@@ -124,10 +127,34 @@ function TesterEvaluation() {
   const [form, setForm] = useState({ ...INITIAL_FORM, testConductedBy: user?.name || "" })
   const [expanded, setExpanded] = useState({ 1: true })
   const [viewEvaluation, setViewEvaluation] = useState(null)
+  const [prefillApplied, setPrefillApplied] = useState(false)
 
   useEffect(() => {
     fetchData()
   }, [])
+
+  useEffect(() => {
+    if (!tasks.length || prefillApplied) return
+
+    const taskId = searchParams.get("taskId")
+    if (!taskId) return
+
+    const submissionId = searchParams.get("submissionId") || ""
+    const submittedBy = searchParams.get("submittedBy") || ""
+    const taskTitle = searchParams.get("taskTitle") || ""
+
+    setForm((prev) => ({
+      ...prev,
+      task: taskId,
+      submission: submissionId,
+      submittedBy: submittedBy || prev.submittedBy,
+      moduleName: prev.moduleName || taskTitle || prev.moduleName,
+      projectName: prev.projectName || "Test Bucket Evaluation",
+      testConductedBy: prev.testConductedBy || user?.name || "",
+    }))
+    setExpanded({ 1: true, 3: true, 12: true })
+    setPrefillApplied(true)
+  }, [tasks, prefillApplied, searchParams, user?.name])
 
   const fetchData = async () => {
     try {
@@ -374,6 +401,10 @@ function TesterEvaluation() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Linked Submission</Label>
+                <Input value={form.submission || "—"} readOnly />
               </div>
               <div className="space-y-2">
                 <Label>Submitted By</Label>

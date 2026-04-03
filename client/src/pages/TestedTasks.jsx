@@ -12,6 +12,8 @@ import { Loader2, Link as LinkIcon, RefreshCw, FileText, Calendar } from "lucide
 import { api } from "../lib/api"
 import { useToast } from "../hooks/use-toast"
 import { formatDate } from "../lib/dateFormat"
+import { useNavigate } from "react-router-dom"
+import { useAuth } from "../context/auth-context"
 
 const getVerdictBadgeColor = (verdict) => {
   switch (verdict) {
@@ -67,6 +69,8 @@ const getStageMeta = (evaluation) => {
 
 function TestedTasks() {
   const { toast } = useToast()
+  const { user } = useAuth()
+  const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(true)
   const [rowsData, setRowsData] = useState([])
   const [search, setSearch] = useState("")
@@ -120,6 +124,20 @@ function TestedTasks() {
 
   const evaluatedRows = rows.filter((r) => r.evaluation)
   const pendingRows = rows.filter((r) => !r.evaluation)
+  const showEvaluateAction = user?.role === "Tester" || user?.role === "Admin" || user?.role === "Manager"
+
+  const openEvaluation = ({ submission }) => {
+    const taskId = submission?.task?._id || submission?.task
+    const submissionId = submission?._id
+    const submittedBy = submission?.user?._id || ""
+    const taskTitle = submission?.task?.title || ""
+    const params = new URLSearchParams()
+    if (taskId) params.set("taskId", taskId)
+    if (submissionId) params.set("submissionId", submissionId)
+    if (submittedBy) params.set("submittedBy", submittedBy)
+    if (taskTitle) params.set("taskTitle", taskTitle)
+    navigate(`/tester-evaluation?${params.toString()}`)
+  }
 
   if (isLoading) {
     return (
@@ -178,6 +196,63 @@ function TestedTasks() {
         </CardContent>
       </Card>
 
+      <Card className="border-l-4 border-l-amber-500">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">
+            Test Bucket ({pendingRows.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Submitted Date</TableHead>
+                <TableHead>Task</TableHead>
+                <TableHead>Submitted By</TableHead>
+                <TableHead>Repo</TableHead>
+                {showEvaluateAction && <TableHead>Action</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pendingRows.slice(0, 10).map(({ submission }) => (
+                <TableRow key={submission._id}>
+                  <TableCell>{formatDate(submission.createdAt)}</TableCell>
+                  <TableCell className="font-medium">{submission.task?.title || "—"}</TableCell>
+                  <TableCell>{submission.user?.name || "—"}</TableCell>
+                  <TableCell>
+                    {submission.githubLink ? (
+                      <a
+                        href={submission.githubLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                      >
+                        <LinkIcon className="h-3 w-3" />
+                        Repo
+                      </a>
+                    ) : "—"}
+                  </TableCell>
+                  {showEvaluateAction && (
+                    <TableCell>
+                      <Button size="sm" onClick={() => openEvaluation({ submission })}>
+                        Evaluate
+                      </Button>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+              {pendingRows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={showEvaluateAction ? 5 : 4} className="text-center py-8 text-muted-foreground">
+                    No tasks in test bucket
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
       <Tabs defaultValue="all" className="w-full">
         <TabsList className="h-auto p-0 bg-transparent flex gap-1 mb-4">
           <TabsTrigger value="all">All ({rows.length})</TabsTrigger>
@@ -204,6 +279,7 @@ function TestedTasks() {
                       <TableHead>Stage</TableHead>
                       <TableHead>Evaluation</TableHead>
                       <TableHead>Evaluated Date</TableHead>
+                      {showEvaluateAction && <TableHead>Action</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -258,11 +334,22 @@ function TestedTasks() {
                           )}
                         </TableCell>
                         <TableCell>{evaluation ? formatDate(evaluation.createdAt) : "—"}</TableCell>
+                        {showEvaluateAction && (
+                          <TableCell>
+                            {!evaluation ? (
+                              <Button size="sm" onClick={() => openEvaluation({ submission })}>
+                                Evaluate
+                              </Button>
+                            ) : (
+                              "—"
+                            )}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                     {tab.data.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                        <TableCell colSpan={showEvaluateAction ? 9 : 8} className="text-center py-10 text-muted-foreground">
                           No submissions found for selected filters
                         </TableCell>
                       </TableRow>
