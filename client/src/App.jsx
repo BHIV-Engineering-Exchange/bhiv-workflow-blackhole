@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "./components/theme-provider";
 import { SidebarProvider } from "./components/ui/sidebar";
@@ -64,10 +64,12 @@ function AppContent() {
   const [recentReviews, setRecentReviews] = useState([]);
   const [hasNewReviews, setHasNewReviews] = useState(false);
   const { subscribe } = usePushNotifications()
+  const autoPushSubscribedForUser = useRef(null)
 
   useEffect(() => {
-    // Auto-subscribe to push notifications if user is logged in
-    if (user?.id) {
+    // Auto-subscribe once per user session to prevent repeated registration storms
+    if (user?.id && autoPushSubscribedForUser.current !== user.id) {
+      autoPushSubscribedForUser.current = user.id
       subscribe().catch(console.error)
     }
   }, [user?.id, subscribe])
