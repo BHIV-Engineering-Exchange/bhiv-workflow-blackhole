@@ -170,48 +170,78 @@ const adminAuth = require('./middleware/adminAuth');
 // const aiRoutePy = require('./routes/aiRoutePy')
 // Create Express app
 const app = express();
+app.set("trust proxy", 1);
 
 // Create HTTP server and initialize Socket.IO
-const ALLOWED_ORIGINS = new Set([
-  "https://niyantran.blackholeinfiverse.com",
-  "http://localhost:5173",
-])
+const ALLOWED_ORIGINS = new Set(
+  [
+    "https://niyantran.blackholeinfiverse.com",
+    "https://blackhole-workflow.vercel.app",
+    "http://localhost:5173",
+  ].filter(Boolean)
+);
 
 const isAllowedOrigin = (origin) => {
-  // Allow non-browser/server-to-server requests that do not send Origin.
-  if (!origin) return true
-  return ALLOWED_ORIGINS.has(origin)
+  // Allow non-browser/server-to-server clients (Postman, cron, health checks)
+  if (!origin) return true;
+  return ALLOWED_ORIGINS.has(origin);
+};
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Origin",
+    "X-Requested-With",
+    "Content-Type",
+    "Accept",
+    "x-auth-token",
+    "Authorization",
+    "X-Branch",
+    "x-branch",
+  ],
+  optionsSuccessStatus: 204,
+};
+
+// CORS must be at the very top before any routes/static handlers
+app.use(cors(corsOptions));
+try {
+  // Requested global preflight handler
+  app.options("*", cors(corsOptions));
+} catch (err) {
+  // Express/path-to-regexp compatibility fallback
+  app.options(/.*/, cors(corsOptions));
 }
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: (origin, callback) => {
-      if (isAllowedOrigin(origin)) return callback(null, true)
-      return callback(new Error(`Socket.IO CORS blocked for origin: ${origin}`))
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(new Error(`Socket.IO CORS blocked for origin: ${origin}`));
     },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
+    allowedHeaders: [
+      "Origin",
+      "X-Requested-With",
+      "Content-Type",
+      "Accept",
+      "x-auth-token",
+      "Authorization",
+      "X-Branch",
+      "x-branch",
+    ],
   },
+  transports: ["websocket", "polling"],
 });
-
-// CORS Configuration
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (isAllowedOrigin(origin)) return callback(null, true)
-    return callback(new Error(`CORS blocked for origin: ${origin}`))
-  },
-  credentials: true,
-  optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'x-auth-token', 'Authorization', 'X-Branch', 'x-branch']
-};
-
-app.use(cors(corsOptions));
-// Express/path-to-regexp in this runtime rejects "*" string route; regex safely matches all OPTIONS preflights.
-app.options(/.*/, cors(corsOptions));
-
-app.use(express.json());
 
 // Socket.IO connection
 io.on("connection", (socket) => {
@@ -670,7 +700,7 @@ app.post('/api/admin/trigger-midnight-job', auth, adminAuth, async (req, res) =>
 });
 
 // Start server
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5000;
 
 // Connect to MongoDB and start server
 async function startServer() {
