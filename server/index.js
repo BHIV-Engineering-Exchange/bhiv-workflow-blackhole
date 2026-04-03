@@ -173,24 +173,50 @@ const app = express();
 app.set("trust proxy", 1);
 
 // Create HTTP server and initialize Socket.IO
-const ALLOWED_ORIGINS = new Set(
-  [
-    "https://niyantran.blackholeinfiverse.com",
-    "https://blackhole-workflow.vercel.app",
-    "http://localhost:5173",
-  ].filter(Boolean)
-);
+const ALLOWED_ORIGIN_CONFIG = {
+  httpsHosts: new Set([
+    "niyantran.blackholeinfiverse.com",
+    "blackhole-workflow.vercel.app",
+  ]),
+  httpHostsWithPort: new Set(["localhost:5173"]),
+};
+
+const normalizeOrigin = (origin) => {
+  try {
+    return new URL(origin);
+  } catch {
+    return null;
+  }
+};
 
 const isAllowedOrigin = (origin) => {
   // Allow non-browser/server-to-server clients (Postman, cron, health checks)
   if (!origin) return true;
-  return ALLOWED_ORIGINS.has(origin);
+
+  const parsed = normalizeOrigin(origin);
+  if (!parsed) return false;
+
+  const hostWithPort = parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
+
+  if (parsed.protocol === "https:" && ALLOWED_ORIGIN_CONFIG.httpsHosts.has(parsed.hostname)) {
+    return true;
+  }
+  if (parsed.protocol === "http:" && ALLOWED_ORIGIN_CONFIG.httpHostsWithPort.has(hostWithPort)) {
+    return true;
+  }
+  return false;
 };
+
+const ALLOWED_SOCKET_ORIGINS = [
+  "https://niyantran.blackholeinfiverse.com",
+  "https://blackhole-workflow.vercel.app",
+  "http://localhost:5173",
+];
 
 const corsOptions = {
   origin(origin, callback) {
-    if (isAllowedOrigin(origin)) return callback(null, true);
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
+    // Do not throw from CORS callback; false keeps response stable without crashing the request pipeline.
+    return callback(null, isAllowedOrigin(origin));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -211,11 +237,27 @@ const corsOptions = {
 app.use(cors(corsOptions));
 try {
   // Requested global preflight handler
-  app.options("*", cors(corsOptions));
+  app.options(/.*/, cors(corsOptions));
 } catch (err) {
   // Express/path-to-regexp compatibility fallback
   app.options(/.*/, cors(corsOptions));
 }
+
+// Proxy-safe explicit CORS headers for allowed origins.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (isAllowedOrigin(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin || "");
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Origin, X-Requested-With, Content-Type, Accept, x-auth-token, Authorization, X-Branch, x-branch"
+    );
+  }
+  next();
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -223,10 +265,7 @@ app.use(express.urlencoded({ extended: true }));
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: (origin, callback) => {
-      if (isAllowedOrigin(origin)) return callback(null, true);
-      return callback(new Error(`Socket.IO CORS blocked for origin: ${origin}`));
-    },
+    origin: ALLOWED_SOCKET_ORIGINS,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
     allowedHeaders: [
