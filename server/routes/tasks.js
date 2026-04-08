@@ -7,6 +7,7 @@ const auth = require("../middleware/auth")
 const multer = require("multer")
 const { uploadToCloudinary } = require("../utils/cloudinary")
 const Notification = require("../models/Notification")
+const { isValidOrgEmail, ORG_EMAIL_ERROR } = require("../utils/orgEmail")
 
 // Helper to get branch filter from request
 const getBranchQuery = (req) => {
@@ -93,7 +94,7 @@ router.get("/overdue", auth, async (req, res) => {
       }
 
       const isActive = actualUser.stillExist === 1
-      const isBlackhole = actualUser.email.toLowerCase().startsWith('blackhole')
+      const isBlackhole = isValidOrgEmail(actualUser.email)
 
       taskObj.assignee = {
         _id: actualUser._id,
@@ -163,7 +164,7 @@ router.get("/", auth, async (req, res) => {
 
       // Always show the assignee, but with status indicators
       const isActive = actualUser.stillExist === 1
-      const isBlackhole = actualUser.email.toLowerCase().startsWith('blackhole')
+      const isBlackhole = isValidOrgEmail(actualUser.email)
 
       taskObj.assignee = {
         _id: actualUser._id,
@@ -205,7 +206,7 @@ router.get('/:id', auth, async (req, res) => {
       
       if (actualUser) {
         const isActive = actualUser.stillExist === 1
-        const isBlackhole = actualUser.email.toLowerCase().startsWith('blackhole')
+        const isBlackhole = isValidOrgEmail(actualUser.email)
 
         taskObj.assignee = {
           _id: actualUser._id,
@@ -253,6 +254,9 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
     const assigneeUser = await User.findOne(assigneeFilter);
     if (!assigneeUser) {
       return res.status(400).json({ error: "Assignee not found, not active, or not a member of this branch" });
+    }
+    if (!isValidOrgEmail(assigneeUser.email)) {
+      return res.status(400).json({ error: ORG_EMAIL_ERROR });
     }
 
     let notes = "";
@@ -321,7 +325,7 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
 
     // Handle assignee manually
     const taskObj = populatedTask.toObject()
-    const isBh = assigneeUser.email.toLowerCase().startsWith('blackhole')
+    const isBh = isValidOrgEmail(assigneeUser.email)
     taskObj.assignee = {
       _id: assigneeUser._id,
       name: assigneeUser.name,
@@ -365,6 +369,9 @@ router.put("/:id", auth, async (req, res) => {
       if (!assigneeUser) {
         return res.status(400).json({ error: "Assignee not found, not active, or not a member of this branch" })
       }
+      if (!isValidOrgEmail(assigneeUser.email)) {
+        return res.status(400).json({ error: ORG_EMAIL_ERROR })
+      }
     }
 
     // Find and update the task
@@ -384,7 +391,7 @@ router.put("/:id", auth, async (req, res) => {
       
       if (actualUser) {
         const isActive = actualUser.stillExist === 1
-        const isBlackhole = actualUser.email.toLowerCase().startsWith('blackhole')
+        const isBlackhole = isValidOrgEmail(actualUser.email)
 
         taskObj.assignee = {
           _id: actualUser._id,
@@ -457,7 +464,7 @@ router.get("/:id/dependencies", auth, async (req, res) => {
         
         if (actualUser) {
           const isActive = actualUser.stillExist === 1
-          const isBlackhole = actualUser.email.toLowerCase().startsWith('blackhole')
+          const isBlackhole = isValidOrgEmail(actualUser.email)
 
           depObj.assignee = {
             _id: actualUser._id,

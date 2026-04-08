@@ -4,6 +4,7 @@ const Department = require("../models/Department")
 const Task = require("../models/Task")
 const User = require("../models/User")
 const auth = require("../middleware/auth")
+const { isValidOrgEmail, orgEmailMongoFilter } = require("../utils/orgEmail")
 
 // Helper to get branch filter from request
 const getBranchQuery = (req) => {
@@ -114,6 +115,7 @@ router.post("/", auth, async (req, res) => {
       const leadFilter = { 
         _id: lead, 
         stillExist: 1,
+        ...orgEmailMongoFilter(),
       };
       if (branchQuery.branch) leadFilter.branch = branchQuery.branch;
       
@@ -128,6 +130,7 @@ router.post("/", auth, async (req, res) => {
       const memberFilter = { 
         _id: { $in: members }, 
         stillExist: 1,
+        ...orgEmailMongoFilter(),
       };
       if (branchQuery.branch) memberFilter.branch = branchQuery.branch;
       
@@ -179,6 +182,7 @@ router.put("/:id", auth, async (req, res) => {
       const leadFilter = { 
         _id: lead, 
         stillExist: 1,
+        ...orgEmailMongoFilter(),
       };
       if (branchQuery.branch) leadFilter.branch = branchQuery.branch;
       
@@ -194,6 +198,7 @@ router.put("/:id", auth, async (req, res) => {
       const memberFilter = { 
         _id: { $in: members }, 
         stillExist: 1,
+        ...orgEmailMongoFilter(),
       };
       if (branchQuery.branch) memberFilter.branch = branchQuery.branch;
       
@@ -295,7 +300,7 @@ router.get("/:id/tasks", auth, async (req, res) => {
 
       // Always show the assignee, but with status indicators
       const isActive = actualUser.stillExist === 1
-      const isBlackhole = actualUser.email.toLowerCase().startsWith('blackhole')
+      const isBlackhole = isValidOrgEmail(actualUser.email)
 
       taskObj.assignee = {
         _id: actualUser._id,

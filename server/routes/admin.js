@@ -5,6 +5,7 @@ const Department = require("../models/Department")
 const Task = require("../models/Task")
 const auth = require("../middleware/auth")
 const adminAuth = require("../middleware/adminAuth")
+const { isValidOrgEmail, orgEmailMongoFilter, ORG_EMAIL_ERROR } = require("../utils/orgEmail")
 
 // Helper to get branch filter from request
 const getBranchQuery = (req) => {
@@ -46,8 +47,8 @@ router.get("/users", auth, async (req, res) => {
       // Add blackhole indicator
       const usersWithIndicators = users.map(user => ({
         ...user.toObject(),
-        isBlackhole: user.email.toLowerCase().startsWith('blackhole'),
-        canBeAssigned: user.stillExist === 1
+        isBlackhole: isValidOrgEmail(user.email),
+        canBeAssigned: isValidOrgEmail(user.email) && user.stillExist === 1
       }));
 
       return res.json(usersWithIndicators)
@@ -59,8 +60,8 @@ router.get("/users", auth, async (req, res) => {
     // Add blackhole indicator
     const usersWithIndicators = users.map(user => ({
       ...user.toObject(),
-      isBlackhole: user.email.toLowerCase().startsWith('blackhole'),
-      canBeAssigned: user.stillExist === 1
+      isBlackhole: isValidOrgEmail(user.email),
+      canBeAssigned: isValidOrgEmail(user.email) && user.stillExist === 1
     }));
 
     res.json(usersWithIndicators)
@@ -81,8 +82,8 @@ router.get("/users/all", auth, adminAuth, async (req, res) => {
     // Add blackhole indicator
     const usersWithIndicators = users.map(user => ({
       ...user.toObject(),
-      isBlackhole: user.email.toLowerCase().startsWith('blackhole'),
-      canBeAssigned: user.stillExist === 1
+      isBlackhole: isValidOrgEmail(user.email),
+      canBeAssigned: isValidOrgEmail(user.email) && user.stillExist === 1
     }));
 
     res.json(usersWithIndicators)
@@ -130,7 +131,7 @@ router.get("/users/:id", auth, async (req, res) => {
     }
 
     const userObj = user.toObject();
-    userObj.isBlackhole = user.email.toLowerCase().startsWith('blackhole');
+    userObj.isBlackhole = isValidOrgEmail(user.email);
     userObj.canBeAssigned = userObj.isBlackhole && user.stillExist === 1;
 
     res.json(userObj)
@@ -144,7 +145,7 @@ router.get("/users/:id", auth, async (req, res) => {
 })
 
 // @route   POST api/admin/users
-// @desc    Create a new user
+// @desc    Create a new user - ONLY ALLOW BLACKHOLE EMAILS
 // @access  Admin only
 router.post("/users", auth, adminAuth, async (req, res) => {
   try {
@@ -153,6 +154,10 @@ router.post("/users", auth, adminAuth, async (req, res) => {
     // Validate required fields
     if (!name || !email || !password) {
       return res.status(400).json({ error: "Name, email, and password are required" })
+    }
+
+    if (!isValidOrgEmail(email)) {
+      return res.status(400).json({ error: ORG_EMAIL_ERROR })
     }
 
     // Check if user with the same email already exists
@@ -189,8 +194,8 @@ router.post("/users", auth, adminAuth, async (req, res) => {
     // Return user without password
     const userResponse = { ...user.toObject() }
     delete userResponse.password
-    userResponse.isBlackhole = user.email.toLowerCase().startsWith('blackhole');
-    userResponse.canBeAssigned = true;
+    userResponse.isBlackhole = isValidOrgEmail(user.email);
+    userResponse.canBeAssigned = userResponse.isBlackhole;
 
     res.json(userResponse)
   } catch (error) {
@@ -229,6 +234,10 @@ router.put("/users/:id", auth, async (req, res) => {
 
     // Check if email is being changed and if it conflicts with existing users
     if (email && email.toLowerCase() !== user.email) {
+      if (!isValidOrgEmail(email)) {
+        return res.status(400).json({ error: ORG_EMAIL_ERROR })
+      }
+
       const existingUser = await User.findOne({ email: email.toLowerCase() })
       if (existingUser) {
         return res.status(400).json({ error: "User with this email already exists" })
@@ -294,7 +303,7 @@ router.put("/users/:id", auth, async (req, res) => {
     // Return user without password
     const userResponse = { ...user.toObject() }
     delete userResponse.password
-    userResponse.isBlackhole = user.email.toLowerCase().startsWith('blackhole');
+    userResponse.isBlackhole = isValidOrgEmail(user.email);
     userResponse.canBeAssigned = userResponse.isBlackhole && user.stillExist === 1;
 
     res.json(userResponse)
@@ -447,8 +456,8 @@ router.get("/users/role/:role", auth, async (req, res) => {
       // Add blackhole indicator
       const usersWithIndicators = users.map(user => ({
         ...user.toObject(),
-        isBlackhole: user.email.toLowerCase().startsWith('blackhole'),
-        canBeAssigned: user.stillExist === 1
+        isBlackhole: isValidOrgEmail(user.email),
+        canBeAssigned: isValidOrgEmail(user.email)
       }));
 
       return res.json(usersWithIndicators)
@@ -460,8 +469,8 @@ router.get("/users/role/:role", auth, async (req, res) => {
     // Add blackhole indicator
     const usersWithIndicators = users.map(user => ({
       ...user.toObject(),
-      isBlackhole: user.email.toLowerCase().startsWith('blackhole'),
-      canBeAssigned: user.stillExist === 1
+      isBlackhole: isValidOrgEmail(user.email),
+      canBeAssigned: isValidOrgEmail(user.email)
     }));
 
     res.json(usersWithIndicators)
@@ -507,8 +516,8 @@ router.get("/users/search", auth, async (req, res) => {
       // Add blackhole indicator
       const usersWithIndicators = users.map(user => ({
         ...user.toObject(),
-        isBlackhole: user.email.toLowerCase().startsWith('blackhole'),
-        canBeAssigned: user.stillExist === 1
+        isBlackhole: isValidOrgEmail(user.email),
+        canBeAssigned: isValidOrgEmail(user.email)
       }));
 
       return res.json(usersWithIndicators)
@@ -522,8 +531,8 @@ router.get("/users/search", auth, async (req, res) => {
     // Add blackhole indicator
     const usersWithIndicators = users.map(user => ({
       ...user.toObject(),
-      isBlackhole: user.email.toLowerCase().startsWith('blackhole'),
-      canBeAssigned: user.stillExist === 1
+      isBlackhole: isValidOrgEmail(user.email),
+      canBeAssigned: isValidOrgEmail(user.email)
     }));
 
     res.json(usersWithIndicators)
@@ -642,6 +651,7 @@ router.post("/departments", auth, adminAuth, async (req, res) => {
       const leadUser = await User.findOne({ 
         _id: lead, 
         stillExist: 1,
+        ...orgEmailMongoFilter(),
       })
       if (!leadUser) {
         return res.status(400).json({ error: "Lead user not found, not active, or not authorized" })
@@ -703,6 +713,7 @@ router.put("/departments/:id", auth, adminAuth, async (req, res) => {
       const leadUser = await User.findOne({ 
         _id: lead, 
         stillExist: 1,
+        ...orgEmailMongoFilter(),
       })
       if (!leadUser) {
         return res.status(400).json({ error: "Lead user not found, not active, or not authorized" })
@@ -829,6 +840,7 @@ router.put("/departments/:id/members", auth, async (req, res) => {
     const activeUsers = await User.find({ 
       _id: { $in: userIds }, 
       stillExist: 1,
+      ...orgEmailMongoFilter(),
     })
     if (activeUsers.length !== userIds.length) {
       return res.status(400).json({ error: "Some users are not active, not found, or not authorized" })
@@ -945,7 +957,7 @@ router.get("/departments/:id/tasks", auth, async (req, res) => {
 
       // Always show the assignee, but with status indicators
       const isActive = actualUser.stillExist === 1
-      const isBlackhole = actualUser.email.toLowerCase().startsWith('blackhole')
+      const isBlackhole = isValidOrgEmail(actualUser.email)
 
       taskObj.assignee = {
         _id: actualUser._id,

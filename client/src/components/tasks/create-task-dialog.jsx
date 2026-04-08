@@ -29,6 +29,7 @@ import "react-toastify/dist/ReactToastify.css";
 import { useAuth } from "@/context/auth-context";
 import { formatDate } from "@/lib/dateFormat";
 import { getUserTasks } from "@/lib/user-api";
+import { isValidOrgEmail } from "@/lib/orgEmail";
 
 export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null }) {
   const { user } = useAuth();
@@ -170,7 +171,10 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null })
     setAssigneeSearch("");
     
     const usersInDepartment = allUsers.filter(
-      (user) => user.department?._id === departmentId && user.stillExist === 1
+      (user) =>
+        user.department?._id === departmentId &&
+        user.stillExist === 1 &&
+        isValidOrgEmail(user.email)
     );
     setFilteredUsers(usersInDepartment);
     
@@ -184,7 +188,8 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null })
     const usersInDepartment = allUsers.filter(
       (user) =>
         user.department?._id === formData.department &&
-        user.stillExist === 1
+        user.stillExist === 1 &&
+        isValidOrgEmail(user.email)
     );
 
     if (searchValue.trim() === "") {
