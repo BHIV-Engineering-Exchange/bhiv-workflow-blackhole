@@ -4,6 +4,7 @@ const Department = require("../models/Department")
 const Task = require("../models/Task")
 const User = require("../models/User")
 const auth = require("../middleware/auth")
+const { isValidOrgEmail, orgEmailMongoClauses } = require("../utils/orgEmail")
 
 // Helper to get branch filter from request
 const getBranchQuery = (req) => {
@@ -109,12 +110,12 @@ router.post("/", auth, async (req, res) => {
     const { lead, members, ...departmentData } = req.body
     const branchQuery = getBranchQuery(req);
 
-    // For NEW assignments, verify lead is active and has blackhole email and belongs to selected branch
+    // For NEW assignments, verify lead is active, has org email, and belongs to selected branch
     if (lead) {
       const leadFilter = { 
         _id: lead, 
         stillExist: 1,
-        email: { $regex: /^blackhole/, $options: 'i' }
+        $and: orgEmailMongoClauses(),
       };
       if (branchQuery.branch) leadFilter.branch = branchQuery.branch;
       
@@ -124,12 +125,12 @@ router.post("/", auth, async (req, res) => {
       }
     }
 
-    // For NEW assignments, verify all members are active, have blackhole emails, and belong to selected branch
+    // For NEW assignments, verify all members are active, have org emails, and belong to selected branch
     if (members && members.length > 0) {
       const memberFilter = { 
         _id: { $in: members }, 
         stillExist: 1,
-        email: { $regex: /^blackhole/, $options: 'i' }
+        $and: orgEmailMongoClauses(),
       };
       if (branchQuery.branch) memberFilter.branch = branchQuery.branch;
       
@@ -176,12 +177,12 @@ router.put("/:id", auth, async (req, res) => {
     const { lead, members, ...updates } = req.body
     const branchQuery = getBranchQuery(req);
 
-    // For NEW assignments, verify lead is active, has blackhole email, and belongs to selected branch
+    // For NEW assignments, verify lead is active, has org email, and belongs to selected branch
     if (lead) {
       const leadFilter = { 
         _id: lead, 
         stillExist: 1,
-        email: { $regex: /^blackhole/, $options: 'i' }
+        $and: orgEmailMongoClauses(),
       };
       if (branchQuery.branch) leadFilter.branch = branchQuery.branch;
       
@@ -192,12 +193,12 @@ router.put("/:id", auth, async (req, res) => {
       updates.lead = lead
     }
 
-    // For NEW assignments, verify all members are active, have blackhole emails, and belong to selected branch
+    // For NEW assignments, verify all members are active, have org emails, and belong to selected branch
     if (members && members.length > 0) {
       const memberFilter = { 
         _id: { $in: members }, 
         stillExist: 1,
-        email: { $regex: /^blackhole/, $options: 'i' }
+        $and: orgEmailMongoClauses(),
       };
       if (branchQuery.branch) memberFilter.branch = branchQuery.branch;
       
@@ -299,7 +300,7 @@ router.get("/:id/tasks", auth, async (req, res) => {
 
       // Always show the assignee, but with status indicators
       const isActive = actualUser.stillExist === 1
-      const isBlackhole = actualUser.email.toLowerCase().startsWith('blackhole')
+      const isBlackhole = isValidOrgEmail(actualUser.email)
 
       taskObj.assignee = {
         _id: actualUser._id,

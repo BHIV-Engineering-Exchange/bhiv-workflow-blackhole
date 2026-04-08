@@ -352,6 +352,7 @@ import { Loader2, Mail, UserPlus, Eye, EyeOff, Sparkles, Lock, User, Briefcase, 
 import { api } from "../lib/api"
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"
 import { useAuth } from "@/context/auth-context"
+import { isValidOrgEmail } from "@/lib/orgEmail"
 
 export default function Register() {
   // Get currently selected branch from localStorage, default to blackhole_mumbai
@@ -460,6 +461,9 @@ export default function Register() {
       newErrors.email = "Email is required"
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = "Email is invalid"
+    } else if (!isValidOrgEmail(formData.email)) {
+      newErrors.email =
+        "Email must include both bhiv and blackhole (e.g. bhiv.name@blackhole.com)"
     }
 
     if (!formData.password) {
