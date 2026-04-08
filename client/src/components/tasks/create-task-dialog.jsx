@@ -104,19 +104,15 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null })
       departmentsData = departmentsResponse.data;
     }
 
-    // ✅ Filter users by email starting with "blackhole" and ensure data is an array
-    const filteredUsers = Array.isArray(usersResponse)
-      ? usersResponse.filter((user) => user.email && user.email.toLowerCase().startsWith("blackhole"))
-      : [];
+    const usersData = Array.isArray(usersResponse) ? usersResponse : [];
 
-    // ✅ Ensure all data is arrays
     setDepartments(departmentsData);
-    setAllUsers(filteredUsers);
+    setAllUsers(usersData);
     setTasks(Array.isArray(tasksResponse) ? tasksResponse : []);
 
     console.log('Processed data:', {
       departments: departmentsData.length,
-      users: filteredUsers.length,
+      users: usersData.length,
       tasks: Array.isArray(tasksResponse) ? tasksResponse.length : 0
     });
 
@@ -173,7 +169,6 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null })
     setFormData((prev) => ({ ...prev, department: departmentId, assignee: "" }));
     setAssigneeSearch("");
     
-    // ✅ Filter users by department - show all active users (removed blackhole filtering)
     const usersInDepartment = allUsers.filter(
       (user) => user.department?._id === departmentId && user.stillExist === 1
     );
@@ -186,20 +181,19 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null })
     const searchValue = e.target.value;
     setAssigneeSearch(searchValue);
     
-    // Filter users by department and email starting with "blackhole"
     const usersInDepartment = allUsers.filter(
       (user) =>
         user.department?._id === formData.department &&
-        user.stillExist === 1 &&
-        user.email.toLowerCase().startsWith("blackhole")
+        user.stillExist === 1
     );
-    
+
     if (searchValue.trim() === "") {
       setFilteredUsers(usersInDepartment);
     } else {
+      const q = searchValue.toLowerCase();
       const filtered = usersInDepartment.filter((user) =>
-        user.name.toLowerCase().includes(searchValue.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchValue.toLowerCase())
+        (user.name?.toLowerCase() || "").includes(q) ||
+        (user.email?.toLowerCase() || "").includes(q)
       );
       setFilteredUsers(filtered);
     }
