@@ -26,6 +26,7 @@ import LeaveForm from '../components/leave/LeaveForm';
 import LeaveHistory from '../components/leave/LeaveHistory';
 import LeaveCalendar from '../components/leave/LeaveCalendar';
 import LeaveStats from '../components/leave/LeaveStats';
+import { formatDate } from '../lib/dateFormat';
 
 const LeaveRequest = () => {
   const { user } = useAuth();
@@ -211,7 +212,7 @@ const LeaveRequest = () => {
                               {leave.leaveType} Leave
                             </h3>
                             <p className="text-sm text-gray-600">
-                              {new Date(leave.startDate).toLocaleDateString()} - {new Date(leave.endDate).toLocaleDateString()}
+                              {formatDate(leave.startDate)} - {formatDate(leave.endDate)}
                             </p>
                             <p className="text-xs text-gray-500 mt-1">
                               {leave.totalDays} day{leave.totalDays !== 1 ? 's' : ''}
@@ -321,7 +322,7 @@ const LeaveRequest = () => {
                 <div>
                   <label className="text-sm font-medium text-gray-600">Duration</label>
                   <p className="text-gray-900">
-                    {new Date(selectedLeave.startDate).toLocaleDateString()} - {new Date(selectedLeave.endDate).toLocaleDateString()}
+                    {formatDate(selectedLeave.startDate)} - {formatDate(selectedLeave.endDate)}
                   </p>
                   <p className="text-sm text-gray-600">{selectedLeave.totalDays} day{selectedLeave.totalDays !== 1 ? 's' : ''}</p>
                 </div>

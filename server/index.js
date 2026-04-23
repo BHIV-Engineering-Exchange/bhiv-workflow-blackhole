@@ -129,6 +129,7 @@ const http = require("http");
 const socketIo = require("socket.io");
 const jwt = require("jsonwebtoken");
 const path = require("path");
+require("dotenv").config();
 const userNotificationRoutes = require('./routes/user-notifications');
 const taskRoutes = require("./routes/tasks");
 const departmentRoutes = require("./routes/departments");
@@ -161,6 +162,7 @@ const hourlyBasedSalaryRoutes = require('./routes/hourlyBasedSalary'); // Hourly
 const newSalaryRoutes = require('./routes/newSalaryManagement'); // New salary management system
 const branchRoutes = require('./routes/branchRoutes'); // Branch management routes
 const projectRoutes = require('./routes/projects'); // Project management routes
+const testerRoutes = require('./routes/tester'); // Tester routes
 const { startAttendancePersistenceCron, syncExistingAttendance } = require('./services/attendanceCronJobs'); // Attendance persistence cron
 // Middleware imports
 const auth = require('./middleware/auth');
@@ -168,69 +170,117 @@ const adminAuth = require('./middleware/adminAuth');
 // const aiRoutePy = require('./routes/aiRoutePy')
 // Create Express app
 const app = express();
+app.set("trust proxy", 1);
 
 // Create HTTP server and initialize Socket.IO
+const ALLOWED_ORIGIN_CONFIG = {
+  httpsHosts: new Set([
+    "niyantran.blackholeinfiverse.com",
+    "blackhole-workflow.vercel.app",
+  ]),
+  httpHostsWithPort: new Set(["localhost:5173"]),
+};
+
+const normalizeOrigin = (origin) => {
+  try {
+    return new URL(origin);
+  } catch {
+    return null;
+  }
+};
+
+const isAllowedOrigin = (origin) => {
+  // Allow non-browser/server-to-server clients (Postman, cron, health checks)
+  if (!origin) return true;
+
+  const parsed = normalizeOrigin(origin);
+  if (!parsed) return false;
+
+  const hostWithPort = parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
+
+  if (parsed.protocol === "https:" && ALLOWED_ORIGIN_CONFIG.httpsHosts.has(parsed.hostname)) {
+    return true;
+  }
+  if (parsed.protocol === "http:" && ALLOWED_ORIGIN_CONFIG.httpHostsWithPort.has(hostWithPort)) {
+    return true;
+  }
+  return false;
+};
+
+const ALLOWED_SOCKET_ORIGINS = [
+  "https://niyantran.blackholeinfiverse.com",
+  "https://blackhole-workflow.vercel.app",
+  "http://localhost:5173",
+];
+
+const corsOptions = {
+  origin(origin, callback) {
+    // Do not throw from CORS callback; false keeps response stable without crashing the request pipeline.
+    return callback(null, isAllowedOrigin(origin));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Origin",
+    "X-Requested-With",
+    "Content-Type",
+    "Accept",
+    "x-auth-token",
+    "Authorization",
+    "X-Branch",
+    "x-branch",
+  ],
+  optionsSuccessStatus: 204,
+};
+
+// CORS must be at the very top before any routes/static handlers
+app.use(cors(corsOptions));
+try {
+  // Requested global preflight handler
+  app.options(/.*/, cors(corsOptions));
+} catch (err) {
+  // Express/path-to-regexp compatibility fallback
+  app.options(/.*/, cors(corsOptions));
+}
+
+// Proxy-safe explicit CORS headers for allowed origins.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (isAllowedOrigin(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin || "");
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Origin, X-Requested-With, Content-Type, Accept, x-auth-token, Authorization, X-Branch, x-branch"
+    );
+  }
+  next();
+});
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: (origin, callback) => {
-      const allowed = [
-        'https://niyantran.blackholeinfiverse.com',
-        'https://blackhole-workflow.vercel.app',
-        'https://main-workflow.vercel.app',
-        'https://blackholeworkflow.onrender.com',
-        process.env.FRONTEND_URL,
-      ].filter(Boolean);
-      const isLocalhost = origin && /^http:\/\/localhost:\d+$/.test(origin);
-      if (!origin || isLocalhost || allowed.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(null, false);
-      }
-    },
-    methods: ['GET', 'POST'],
+    origin: ALLOWED_SOCKET_ORIGINS,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
+    allowedHeaders: [
+      "Origin",
+      "X-Requested-With",
+      "Content-Type",
+      "Accept",
+      "x-auth-token",
+      "Authorization",
+      "X-Branch",
+      "x-branch",
+    ],
   },
+  transports: ["websocket", "polling"],
 });
-
-// CORS Configuration
-const corsOptions = {
-  origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    // Define allowed origins
-    const allowedOrigins = [
-      'https://niyantran.blackholeinfiverse.com',
-      'https://blackhole-workflow.vercel.app',
-      'https://main-workflow.vercel.app',
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://localhost:8080',
-      'http://localhost:8081',
-      'http://127.0.0.1:3000',
-      'http://192.168.1.2:5173'
-    ];
-    
-    // Check if the origin is in the allowed list
-    const isAllowed = allowedOrigins.includes(origin);
-    callback(null, isAllowed);
-  },
-  credentials: true,
-  optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'x-auth-token', 'Authorization', 'X-Branch', 'x-branch']
-};
-
-app.use(cors(corsOptions));
-
-app.use(express.json());
-
-// Connect to MongoDB
-require('dotenv').config();  // Add this line at the top
 
 // Socket.IO connection
 io.on("connection", (socket) => {
@@ -380,6 +430,7 @@ app.use('/api/hourly-salary', hourlyBasedSalaryRoutes); // Hourly-based salary m
 app.use('/api/new-salary', newSalaryRoutes); // New salary management system
 app.use('/api/branches', branchRoutes); // Branch management routes
 app.use('/api/projects', projectRoutes); // Project management routes
+app.use('/api/tester', testerRoutes); // Tester routes
 
 // app.use('/api/new/ai',aiRoutePy)
 
@@ -688,7 +739,7 @@ app.post('/api/admin/trigger-midnight-job', auth, adminAuth, async (req, res) =>
 });
 
 // Start server
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5000;
 
 // Connect to MongoDB and start server
 async function startServer() {

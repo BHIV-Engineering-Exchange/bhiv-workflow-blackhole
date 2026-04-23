@@ -352,6 +352,7 @@ import { Loader2, Mail, UserPlus, Eye, EyeOff, Sparkles, Lock, User, Briefcase, 
 import { api } from "../lib/api"
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"
 import { useAuth } from "@/context/auth-context"
+import { isValidOrgEmail } from "@/lib/orgEmail"
 
 export default function Register() {
   // Get currently selected branch from localStorage, default to blackhole_mumbai
@@ -460,6 +461,9 @@ export default function Register() {
       newErrors.email = "Email is required"
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = "Email is invalid"
+    } else if (!isValidOrgEmail(formData.email)) {
+      newErrors.email =
+        "Use @gmail.com or @outlook.com; name must include bhiv or blackhole (e.g. blackholeinfiverse64@gmail.com)"
     }
 
     if (!formData.password) {
@@ -716,6 +720,9 @@ export default function Register() {
                     </SelectItem>
                     <SelectItem value="User" className="hover:bg-muted focus:bg-muted transition-colors">
                       User
+                    </SelectItem>
+                    <SelectItem value="Tester" className="hover:bg-muted focus:bg-muted transition-colors">
+                      Tester
                     </SelectItem>
                   </SelectContent>
                 </Select>

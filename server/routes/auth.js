@@ -271,6 +271,7 @@ const Department = require("../models/Department")
 const authMiddleware = require("../middleware/auth")
 const mongoose = require("mongoose")
 const nodemailer = require("nodemailer")
+const { isValidOrgEmail, ORG_EMAIL_ERROR } = require("../utils/orgEmail")
 require('dotenv').config()
 
 
@@ -412,6 +413,10 @@ router.post("/register", async (req, res) => {
   const { name, email, password, role, department, branch } = req.body
 
   try {
+    if (!isValidOrgEmail(email)) {
+      return res.status(400).json({ error: ORG_EMAIL_ERROR })
+    }
+
     // Check if user already exists
     const userExists = await User.findOne({ email })
     if (userExists) {
@@ -419,7 +424,7 @@ router.post("/register", async (req, res) => {
     }
 
     // Validate role
-    const validRoles = ["Admin", "Manager", "User"]
+    const validRoles = ["Admin", "Manager", "User", "Tester"]
     if (!validRoles.includes(role)) {
       return res.status(400).json({ error: "Invalid role" })
     }

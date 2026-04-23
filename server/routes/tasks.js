@@ -2,10 +2,12 @@ const express = require("express")
 const router = express.Router()
 const Task = require("../models/Task")
 const User = require("../models/User")
+const Department = require("../models/Department")
 const auth = require("../middleware/auth")
 const multer = require("multer")
 const { uploadToCloudinary } = require("../utils/cloudinary")
 const Notification = require("../models/Notification")
+const { isValidOrgEmail, ORG_EMAIL_ERROR } = require("../utils/orgEmail")
 
 // Helper to get branch filter from request
 const getBranchQuery = (req) => {
@@ -92,7 +94,7 @@ router.get("/overdue", auth, async (req, res) => {
       }
 
       const isActive = actualUser.stillExist === 1
-      const isBlackhole = actualUser.email.toLowerCase().startsWith('blackhole')
+      const isBlackhole = isValidOrgEmail(actualUser.email)
 
       taskObj.assignee = {
         _id: actualUser._id,
@@ -162,7 +164,7 @@ router.get("/", auth, async (req, res) => {
 
       // Always show the assignee, but with status indicators
       const isActive = actualUser.stillExist === 1
-      const isBlackhole = actualUser.email.toLowerCase().startsWith('blackhole')
+      const isBlackhole = isValidOrgEmail(actualUser.email)
 
       taskObj.assignee = {
         _id: actualUser._id,
@@ -204,7 +206,7 @@ router.get('/:id', auth, async (req, res) => {
       
       if (actualUser) {
         const isActive = actualUser.stillExist === 1
-        const isBlackhole = actualUser.email.toLowerCase().startsWith('blackhole')
+        const isBlackhole = isValidOrgEmail(actualUser.email)
 
         taskObj.assignee = {
           _id: actualUser._id,
@@ -231,7 +233,7 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-// Create new task - ONLY ALLOW ACTIVE BLACKHOLE USERS FOR NEW ASSIGNMENTS
+// Create new task — assignee must be active and belong to the same branch as the task
 router.post("/", auth, upload.single("document"), async (req, res) => {
   try {
     const { title, description, department, assignee, priority, status, dependencies, dueDate, user, links } = req.body;
@@ -242,14 +244,19 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       return res.status(400).json({ error: "Title, department, and assignee are required" });
     }
 
-    // For NEW tasks, verify assignee is an active user with blackhole email
-    const assigneeUser = await User.findOne({ 
-      _id: assignee, 
-      stillExist: 1,
-      email: { $regex: /^blackhole/, $options: 'i' }
-    });
+    const selectedBranch = req.headers['x-branch'] || req.query.branch || 'blackhole_mumbai';
+
+    const assigneeFilter = { _id: assignee, stillExist: 1 };
+    if (selectedBranch && selectedBranch !== 'all') {
+      assigneeFilter.branch = selectedBranch;
+    }
+
+    const assigneeUser = await User.findOne(assigneeFilter);
     if (!assigneeUser) {
-      return res.status(400).json({ error: "Assignee not found, not active, or not authorized" });
+      return res.status(400).json({ error: "Assignee not found, not active, or not a member of this branch" });
+    }
+    if (!isValidOrgEmail(assigneeUser.email)) {
+      return res.status(400).json({ error: ORG_EMAIL_ERROR });
     }
 
     let notes = "";
@@ -266,8 +273,6 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       fileType = req.file.mimetype;
     }
 
-    // Create task with branch from header
-    const selectedBranch = req.headers['x-branch'] || req.query.branch || 'blackhole_mumbai';
     const task = new Task({
       title,
       description,
@@ -296,6 +301,23 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       });
     }
 
+    // Notify all testers about new task
+    try {
+      const dept = await Department.findById(department).select("name");
+      const testers = await User.find({ role: "Tester", stillExist: 1 });
+      for (const tester of testers) {
+        await Notification.create({
+          recipient: tester._id,
+          type: "task_created_for_tester",
+          title: "New Task Created",
+          message: `New task "${title}" created in ${dept?.name || "Unknown"} department`,
+          task: savedTask._id,
+        });
+      }
+    } catch (notifErr) {
+      console.error("Error notifying testers:", notifErr);
+    }
+
     // Populate fields for response
     const populatedTask = await Task.findById(savedTask._id)
       .populate("department", "name color")
@@ -303,6 +325,7 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
 
     // Handle assignee manually
     const taskObj = populatedTask.toObject()
+    const isBh = isValidOrgEmail(assigneeUser.email)
     taskObj.assignee = {
       _id: assigneeUser._id,
       name: assigneeUser.name,
@@ -310,8 +333,8 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       email: assigneeUser.email,
       stillExist: assigneeUser.stillExist,
       isActive: true,
-      isBlackhole: true,
-      status: 'active'
+      isBlackhole: isBh,
+      status: isBh ? 'active' : 'non-blackhole'
     }
 
     // Emit socket event for real-time updates
@@ -326,21 +349,28 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
   }
 });
 
-// Update task - ONLY ALLOW ACTIVE BLACKHOLE USERS FOR NEW ASSIGNMENTS
+// Update task — reassign only to active users in the task’s branch
 router.put("/:id", auth, async (req, res) => {
   try {
     const { id } = req.params
     const updates = req.body
 
-    // If updating assignee, verify they're active and have blackhole email
     if (updates.assignee) {
-      const assigneeUser = await User.findOne({ 
-        _id: updates.assignee, 
-        stillExist: 1,
-        email: { $regex: /^blackhole/, $options: 'i' }
-      });
+      const existing = await Task.findById(id).select("branch")
+      if (!existing) {
+        return res.status(404).json({ error: "Task not found" })
+      }
+      const branchForAssignee = req.headers['x-branch'] || req.query.branch || existing.branch || 'blackhole_mumbai'
+      const assigneeFilter = { _id: updates.assignee, stillExist: 1 }
+      if (branchForAssignee && branchForAssignee !== 'all') {
+        assigneeFilter.branch = branchForAssignee
+      }
+      const assigneeUser = await User.findOne(assigneeFilter)
       if (!assigneeUser) {
-        return res.status(400).json({ error: "Assignee not found, not active, or not authorized" });
+        return res.status(400).json({ error: "Assignee not found, not active, or not a member of this branch" })
+      }
+      if (!isValidOrgEmail(assigneeUser.email)) {
+        return res.status(400).json({ error: ORG_EMAIL_ERROR })
       }
     }
 
@@ -361,7 +391,7 @@ router.put("/:id", auth, async (req, res) => {
       
       if (actualUser) {
         const isActive = actualUser.stillExist === 1
-        const isBlackhole = actualUser.email.toLowerCase().startsWith('blackhole')
+        const isBlackhole = isValidOrgEmail(actualUser.email)
 
         taskObj.assignee = {
           _id: actualUser._id,
@@ -434,7 +464,7 @@ router.get("/:id/dependencies", auth, async (req, res) => {
         
         if (actualUser) {
           const isActive = actualUser.stillExist === 1
-          const isBlackhole = actualUser.email.toLowerCase().startsWith('blackhole')
+          const isBlackhole = isValidOrgEmail(actualUser.email)
 
           depObj.assignee = {
             _id: actualUser._id,

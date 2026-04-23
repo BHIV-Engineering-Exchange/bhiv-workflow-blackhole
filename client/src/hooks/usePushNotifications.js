@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { initializePushNotifications, unsubscribeFromPushNotifications } from "../utils/pushNotifications"
 import { useAuth } from "../context/auth-context"
 
@@ -9,7 +9,7 @@ export function usePushNotifications() {
   const [isSubscribed, setIsSubscribed] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
-  const user = JSON.parse(localStorage.getItem("WorkflowUser"))
+  const { user } = useAuth()
 
   useEffect(() => {
     // Check if push notifications are supported
@@ -20,9 +20,9 @@ export function usePushNotifications() {
     if (supported && user?.id) {
       checkSubscriptionStatus()
     }
-  }, [user])
+  }, [user?.id])
 
-  const checkSubscriptionStatus = async () => {
+  const checkSubscriptionStatus = useCallback(async () => {
     try {
       const registration = await navigator.serviceWorker.getRegistration()
       if (registration) {
@@ -32,9 +32,9 @@ export function usePushNotifications() {
     } catch (error) {
       console.error("Error checking subscription status:", error)
     }
-  }
+  }, [])
 
-  const subscribe = async () => {
+  const subscribe = useCallback(async (force = false) => {
     if (!user?.id) {
       setError("User not authenticated")
       return false
@@ -44,7 +44,7 @@ export function usePushNotifications() {
     setError(null)
 
     try {
-      const subscription = await initializePushNotifications(user.id)
+      const subscription = await initializePushNotifications(user.id, { force })
       setIsSubscribed(!!subscription)
       return !!subscription
     } catch (error) {
@@ -53,9 +53,9 @@ export function usePushNotifications() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [user?.id])
 
-  const unsubscribe = async () => {
+  const unsubscribe = useCallback(async () => {
     setIsLoading(true)
     setError(null)
 
@@ -69,7 +69,7 @@ export function usePushNotifications() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
   return {
     isSupported,

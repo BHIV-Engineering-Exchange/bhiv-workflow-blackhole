@@ -106,8 +106,15 @@ export async function sendSubscriptionToServer(subscription, userId) {
 }
 
 // Initialize push notifications
-export async function initializePushNotifications(userId) {
+export async function initializePushNotifications(userId, options = {}) {
+  const { force = false } = options
   try {
+    const retryKey = `push_retry_after:${userId}`
+    const retryAfter = Number(sessionStorage.getItem(retryKey) || "0")
+    if (!force && retryAfter && Date.now() < retryAfter) {
+      return null
+    }
+
     // Check if VAPID key is configured
     if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.length < 10) {
       console.warn("Push notifications not configured - VAPID public key missing or invalid")
@@ -134,12 +141,15 @@ export async function initializePushNotifications(userId) {
     // Wait for service worker to be ready
     await navigator.serviceWorker.ready
 
-    // Subscribe to push notifications
-    const subscription = await subscribeToPushNotifications(registration)
+    // Reuse existing subscription if present to avoid duplicate subscribe calls
+    const existingSubscription = await registration.pushManager.getSubscription()
+    const subscription = existingSubscription || (await subscribeToPushNotifications(registration))
 
+    // Subscribe to push notifications
     // Only send to server if subscription was successful
     if (subscription) {
       await sendSubscriptionToServer(subscription, userId)
+      sessionStorage.removeItem(retryKey)
       console.log("Push notifications initialized successfully")
     } else {
       console.warn("Push notifications: subscription failed, skipping server registration")
@@ -149,6 +159,10 @@ export async function initializePushNotifications(userId) {
   } catch (error) {
     // Don't log as error - this is expected in some environments
     console.warn("Push notifications unavailable:", error.message || error)
+    // Avoid hammering backend on repeated render cycles for 5 minutes
+    if (userId) {
+      sessionStorage.setItem(`push_retry_after:${userId}`, String(Date.now() + 5 * 60 * 1000))
+    }
     return null
   }
 }

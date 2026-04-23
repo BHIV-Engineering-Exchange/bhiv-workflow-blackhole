@@ -27,7 +27,9 @@ import { isValid, parse, format } from "date-fns";
 import { CalendarIcon, X, Search } from "lucide-react";
 import "react-toastify/dist/ReactToastify.css";
 import { useAuth } from "@/context/auth-context";
+import { formatDate } from "@/lib/dateFormat";
 import { getUserTasks } from "@/lib/user-api";
+import { isValidOrgEmail } from "@/lib/orgEmail";
 
 export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null }) {
   const { user } = useAuth();
@@ -103,19 +105,15 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null })
       departmentsData = departmentsResponse.data;
     }
 
-    // ✅ Filter users by email starting with "blackhole" and ensure data is an array
-    const filteredUsers = Array.isArray(usersResponse)
-      ? usersResponse.filter((user) => user.email && user.email.toLowerCase().startsWith("blackhole"))
-      : [];
+    const usersData = Array.isArray(usersResponse) ? usersResponse : [];
 
-    // ✅ Ensure all data is arrays
     setDepartments(departmentsData);
-    setAllUsers(filteredUsers);
+    setAllUsers(usersData);
     setTasks(Array.isArray(tasksResponse) ? tasksResponse : []);
 
     console.log('Processed data:', {
       departments: departmentsData.length,
-      users: filteredUsers.length,
+      users: usersData.length,
       tasks: Array.isArray(tasksResponse) ? tasksResponse.length : 0
     });
 
@@ -172,9 +170,11 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null })
     setFormData((prev) => ({ ...prev, department: departmentId, assignee: "" }));
     setAssigneeSearch("");
     
-    // ✅ Filter users by department - show all active users (removed blackhole filtering)
     const usersInDepartment = allUsers.filter(
-      (user) => user.department?._id === departmentId && user.stillExist === 1
+      (user) =>
+        user.department?._id === departmentId &&
+        user.stillExist === 1 &&
+        isValidOrgEmail(user.email)
     );
     setFilteredUsers(usersInDepartment);
     
@@ -185,20 +185,20 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null })
     const searchValue = e.target.value;
     setAssigneeSearch(searchValue);
     
-    // Filter users by department and email starting with "blackhole"
     const usersInDepartment = allUsers.filter(
       (user) =>
         user.department?._id === formData.department &&
         user.stillExist === 1 &&
-        user.email.toLowerCase().startsWith("blackhole")
+        isValidOrgEmail(user.email)
     );
-    
+
     if (searchValue.trim() === "") {
       setFilteredUsers(usersInDepartment);
     } else {
+      const q = searchValue.toLowerCase();
       const filtered = usersInDepartment.filter((user) =>
-        user.name.toLowerCase().includes(searchValue.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchValue.toLowerCase())
+        (user.name?.toLowerCase() || "").includes(q) ||
+        (user.email?.toLowerCase() || "").includes(q)
       );
       setFilteredUsers(filtered);
     }
@@ -369,10 +369,12 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null })
 
       // ✅ Use authenticated fetch API instead of axios
       const token = localStorage.getItem("WorkflowToken");
+      const selectedBranch = localStorage.getItem("selectedBranch");
       const response = await fetch(`${API_URL}/tasks`, {
         method: "POST",
         headers: {
           ...(token && { "x-auth-token": token }),
+          ...(selectedBranch && selectedBranch !== "all" && { "x-branch": selectedBranch }),
         },
         body: formDataToSend,
       });
@@ -588,7 +590,7 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null })
                             </div>
                           </div>
                           <div className="text-xs text-muted-foreground dark:text-slate-400 ml-2">
-                            {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No date'}
+                            {task.dueDate ? formatDate(task.dueDate) : 'No date'}
                           </div>
                         </div>
                       ))}

@@ -24,6 +24,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { useAuth } from '../../context/auth-context';
 import api from '../../lib/api';
+import { formatDate } from '../../lib/dateFormat';
 import { toast } from 'react-hot-toast';
 
 const EnhancedStartEndDay = () => {
@@ -662,12 +663,7 @@ const EnhancedStartEndDay = () => {
           })}
         </div>
         <div className="text-lg text-gray-600">
-          {currentTime.toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-          })}
+          {formatDate(currentTime)}
         </div>
       </motion.div>
 

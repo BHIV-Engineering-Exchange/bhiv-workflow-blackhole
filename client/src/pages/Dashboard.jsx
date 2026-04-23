@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
-import { Plus, Loader2, Mail, FileText, Target, Bell, AlertCircle } from 'lucide-react'
+import { Plus, Loader2, Mail, FileText, Target, Bell, AlertCircle, ClipboardCheck, BarChart3 } from 'lucide-react'
 import { CreateTaskDialog } from "../components/tasks/create-task-dialog"
 import { DepartmentStats } from "../components/dashboard/department-stats"
 import { DepartmentDetails } from "../components/departments/DepartmentDetails"
@@ -18,6 +18,7 @@ import { useAuth } from "../context/auth-context"
 import AdminChatbot from "../components/admin/admin-chatbot"
 import { AdminReportDialog } from "../components/admin/AdminReportDialog"
 import OverdueTasks from "../components/admin/OverdueTasks"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, LineChart, Line } from "recharts"
 
 
 
@@ -30,6 +31,7 @@ function Dashboard() {
     completedTasks: 0,
     inProgressTasks: 0,
     pendingTasks: 0,
+    testerApprovalCount: 0,
     totalTasksChange: 0,
     completedTasksChange: 0,
     inProgressTasksChange: 0,
@@ -41,6 +43,7 @@ function Dashboard() {
   const [selectedDepartment, setSelectedDepartment] = useState(null)
   const [showReportDialog, setShowReportDialog] = useState(false)
   const [showOverdueTasksDialog, setShowOverdueTasksDialog] = useState(false)
+  const [testedTaskRows, setTestedTaskRows] = useState([])
 
   const isAdmin = user && (user.role === "Admin" || user.role === "Manager")
 
@@ -56,8 +59,12 @@ function Dashboard() {
     const fetchDashboardData = async () => {
       try {
         setIsLoading(true)
-        const dashboardStats = await api.dashboard.getStats()
+        const [dashboardStats, testedRows] = await Promise.all([
+          api.dashboard.getStats(),
+          api.tester.getTestedTasksFeed(),
+        ])
         setStats(dashboardStats)
+        setTestedTaskRows(Array.isArray(testedRows) ? testedRows : [])
       } catch (error) {
         console.error("Error fetching dashboard stats:", error)
         toast({
@@ -130,6 +137,63 @@ function Dashboard() {
       setIsSendingAimReminders(false)
     }
   }
+
+  const testingTrendData = useMemo(() => {
+    const days = 7
+    const now = new Date()
+    const buckets = []
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date(now)
+      date.setDate(now.getDate() - i)
+      const key = date.toISOString().slice(0, 10)
+      buckets.push({
+        key,
+        label: date.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit" }),
+        tested: 0,
+      })
+    }
+
+    const map = new Map(buckets.map((b) => [b.key, b]))
+    testedTaskRows.forEach((row) => {
+      const rawDate = row?.submission?.createdAt || row?.submission?.updatedAt || row?.evaluation?.updatedAt
+      if (!rawDate) return
+      const key = new Date(rawDate).toISOString().slice(0, 10)
+      if (map.has(key)) {
+        map.get(key).tested += 1
+      }
+    })
+
+    return buckets
+  }, [testedTaskRows])
+
+  const testingStatusData = useMemo(() => {
+    let waiting = 0
+    let approved = 0
+    let rejected = 0
+
+    testedTaskRows.forEach((row) => {
+      const verdict = row?.evaluation?.finalVerdict
+      if (!verdict) {
+        waiting += 1
+        return
+      }
+      if (verdict === "APPROVED" || verdict === "APPROVED WITH MINOR FIXES") {
+        approved += 1
+        return
+      }
+      if (verdict === "REJECTED" || verdict === "REVISION REQUIRED") {
+        rejected += 1
+        return
+      }
+      waiting += 1
+    })
+
+    return [
+      { status: "Waiting", count: waiting, color: "#f59e0b" },
+      { status: "Approved", count: approved, color: "#22c55e" },
+      { status: "Rejected", count: rejected, color: "#ef4444" },
+    ]
+  }, [testedTaskRows])
   
 
   if (isLoading) {
@@ -247,7 +311,7 @@ function Dashboard() {
       </div>
 
       {/* Enhanced Cyber Stats Cards */}
-      <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-5">
         <Card className="neo-card hover-neo group relative overflow-hidden border-primary/20">
           <div className="absolute inset-0 bg-cyber-grid opacity-20"></div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 relative z-10">
@@ -378,6 +442,21 @@ function Dashboard() {
             </p>
           </CardContent>
         </Card>
+
+        <Card className="card-modern hover-lift group border-blue-500/10 hover:border-blue-500/20 transition-all duration-300">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Tested Approved</CardTitle>
+            <div className="p-2 bg-gradient-to-br from-blue-500/10 to-blue-600/10 rounded-lg group-hover:from-blue-500/20 group-hover:to-blue-600/20 transition-all duration-300">
+              <ClipboardCheck className="h-5 w-5 text-blue-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.testerApprovalCount || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              Tester approvals (approved + minor fixes)
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Procurement Alerts for Admins */}
@@ -388,6 +467,58 @@ function Dashboard() {
         <TasksOverview />
         <AIInsights />
       </div>
+
+      {isAdmin && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="neo-card border-primary/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-primary" />
+                Time-wise Testing Trend (Last 7 Days)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={testingTrendData} margin={{ top: 10, right: 20, left: 0, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="label" />
+                    <YAxis allowDecimals={false} />
+                    <RechartsTooltip formatter={(value) => [value, "Tested"]} />
+                    <Line type="monotone" dataKey="tested" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="neo-card border-primary/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-primary" />
+                Testing Status (Waiting / Rejected / Approved)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={testingStatusData} margin={{ top: 10, right: 20, left: 0, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="status" />
+                    <YAxis allowDecimals={false} />
+                    <RechartsTooltip formatter={(value) => [value, "Tasks"]} />
+                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                      {testingStatusData.map((entry) => (
+                        <Cell key={entry.status} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <CreateTaskDialog open={isCreateTaskOpen} onOpenChange={setIsCreateTaskOpen} />
       

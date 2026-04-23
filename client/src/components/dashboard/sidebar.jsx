@@ -1,12 +1,78 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, Link } from "react-router-dom";
-import { LayoutDashboard, CheckSquare, Network, Users, Sparkles, Settings, LogOut, CheckCircle, BarChart, Airplay, LayoutDashboardIcon, Target, Monitor, DollarSign, Calendar, Clock, UserCog, UserCheck, ShoppingCart, Mail, ChevronLeft, ChevronRight, Building2, FolderKanban } from "lucide-react";
+import { LayoutDashboard, CheckSquare, Network, Users, Sparkles, Settings, LogOut, CheckCircle, BarChart, Airplay, LayoutDashboardIcon, Target, Monitor, DollarSign, Calendar, Clock, UserCog, UserCheck, ShoppingCart, Mail, ChevronLeft, ChevronRight, Building2, FolderKanban, ClipboardCheck, AlertTriangle, FileText } from "lucide-react";
 import { useAuth } from "../../context/auth-context";
+import { api } from "../../lib/api";
 
 export function DashboardSidebar() {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [sidebarCounts, setSidebarCounts] = useState({
+    tasks: 0,
+    taskEvaluation: 0,
+    testTasks: 0,
+  });
+
+  useEffect(() => {
+    let mounted = true;
+    let intervalId;
+
+    const fetchSidebarCounts = async () => {
+      if (!user?.id) return;
+
+      try {
+        if (user.role === "Tester") {
+          const [notifications, testedTaskRows] = await Promise.all([
+            api.get(`/user-notifications/${user.id}`),
+            api.tester.getTestedTasksFeed(),
+          ]);
+
+          const unreadTaskAssigned = (notifications || []).filter(
+            (n) => !n.read && n.type === "task_created_for_tester"
+          ).length;
+
+          const pendingEvaluation = (testedTaskRows || []).filter((r) => !r.evaluation).length;
+          const totalTestTasks = (testedTaskRows || []).length;
+
+          if (!mounted) return;
+          setSidebarCounts({
+            tasks: unreadTaskAssigned,
+            taskEvaluation: pendingEvaluation,
+            testTasks: totalTestTasks,
+          });
+          return;
+        }
+
+        if (user.role === "Admin" || user.role === "Manager") {
+          const testedTaskRows = await api.tester.getTestedTasksFeed();
+          if (!mounted) return;
+          setSidebarCounts((prev) => ({
+            ...prev,
+            testTasks: (testedTaskRows || []).length,
+          }));
+        }
+      } catch (error) {
+        // Keep sidebar stable even if count APIs fail.
+        console.error("Error loading sidebar counts:", error);
+      }
+    };
+
+    fetchSidebarCounts();
+    intervalId = setInterval(fetchSidebarCounts, 60000);
+
+    return () => {
+      mounted = false;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [user?.id, user?.role]);
+
+  const getRouteCount = (href) => {
+    if (href === "/tester-tasks") return sidebarCounts.tasks;
+    if (href === "/tester-evaluation") return sidebarCounts.taskEvaluation;
+    if (href === "/tested-tasks") return sidebarCounts.testTasks;
+    return 0;
+  };
 
   // Unified navigation structure with sections
   const getNavigationSections = () => {
@@ -47,6 +113,7 @@ export function DashboardSidebar() {
             { title: "Tasks", href: "/tasks", icon: CheckSquare },
             { title: "All Aims", href: "/all-aims", icon: Target },
             { title: "Completed Tasks", href: "/completedtask", icon: CheckCircle },
+            { title: "Test Tasks", href: "/tested-tasks", icon: FileText },
           ]
         },
         {
@@ -76,6 +143,7 @@ export function DashboardSidebar() {
             { title: "Departments", href: "/departments", icon: Users },
             { title: "All Aims", href: "/all-aims", icon: Target },
             { title: "Completed Tasks", href: "/completedtask", icon: CheckCircle },
+            { title: "Test Tasks", href: "/tested-tasks", icon: FileText },
           ]
         },
         {
@@ -104,6 +172,31 @@ export function DashboardSidebar() {
       ];
     }
 
+    if (role === "Tester") {
+      return [
+        {
+          title: "Main",
+          routes: [
+            { title: "Dashboard", href: "/tester-dashboard", icon: LayoutDashboard },
+          ]
+        },
+        {
+          title: "Testing",
+          routes: [
+            { title: "Tasks", href: "/tester-tasks", icon: CheckSquare },
+            { title: "Task Evaluation", href: "/tester-evaluation", icon: ClipboardCheck },
+            { title: "Test Tasks", href: "/tested-tasks", icon: FileText },
+          ]
+        },
+        {
+          title: "Monitoring",
+          routes: [
+            { title: "Alerts", href: "/tester-alerts", icon: AlertTriangle },
+          ]
+        }
+      ];
+    }
+
     // Default for other roles (Manager, etc.)
     return [
       {
@@ -121,6 +214,7 @@ export function DashboardSidebar() {
           { title: "Departments", href: "/departments", icon: Users },
           { title: "All Aims", href: "/all-aims", icon: Target },
           { title: "Completed Tasks", href: "/completedtask", icon: CheckCircle },
+          { title: "Test Tasks", href: "/tested-tasks", icon: FileText },
         ]
       },
       {
@@ -202,6 +296,21 @@ export function DashboardSidebar() {
                           {route.title}
                         </span>
                       )}
+
+                      {/* Count badge */}
+                      {(() => {
+                        const count = getRouteCount(route.href);
+                        if (!count || count <= 0) return null;
+                        return (
+                          <span className={`ml-auto min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold flex items-center justify-center ${
+                            isActive
+                              ? "bg-primary-foreground text-primary"
+                              : "bg-red-500 text-white"
+                          }`}>
+                            {count > 99 ? "99+" : count}
+                          </span>
+                        );
+                      })()}
 
                       {/* Hover tooltip for collapsed state */}
                       {isCollapsed && (

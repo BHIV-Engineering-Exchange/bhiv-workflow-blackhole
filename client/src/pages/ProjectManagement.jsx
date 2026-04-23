@@ -26,6 +26,7 @@ import { Badge } from "../components/ui/badge"
 import { Progress } from "../components/ui/progress"
 import { useToast } from "../hooks/use-toast"
 import { api } from "../lib/api"
+import { formatDate } from "../lib/dateFormat"
 import {
   Dialog,
   DialogContent,
@@ -554,7 +555,7 @@ export default function ProjectManagement() {
                           : "text-muted-foreground"
                       }
                     >
-                      Due: {new Date(project.dueDate).toLocaleDateString()}
+                      Due: {formatDate(project.dueDate)}
                     </span>
                   </div>
                 )}

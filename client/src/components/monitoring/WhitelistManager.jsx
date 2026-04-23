@@ -25,6 +25,7 @@ import {
 import axios from 'axios';
 import { API_URL } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { formatDate } from '@/lib/dateFormat';
 
 export function WhitelistManager() {
   const [whitelist, setWhitelist] = useState([]);
@@ -509,7 +510,7 @@ export function WhitelistManager() {
                         <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
                           <span>Visits: {entry.usage_stats.total_visits}</span>
                           {entry.usage_stats.last_accessed && (
-                            <span>Last: {new Date(entry.usage_stats.last_accessed).toLocaleDateString()}</span>
+                            <span>Last: {formatDate(entry.usage_stats.last_accessed)}</span>
                           )}
                         </div>
                       )}

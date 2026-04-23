@@ -18,6 +18,7 @@ import { MoreHorizontal, Eye, Edit, Trash, Loader2, Search, X } from 'lucide-rea
 import { TaskDetailsDialog } from "./task-details-dialog"
 import { useToast } from "../../hooks/use-toast"
 import { api } from "../../lib/api"
+import { formatDate } from "../../lib/dateFormat"
 import { useSocketContext } from "../../context/socket-context"
 import {
   Dialog,
@@ -465,7 +466,7 @@ export function TasksList({ filters }) {
                           <Badge className={`${getPriorityColor(task.priority)} font-semibold`}>{task.priority}</Badge>
                         </TableCell>
                         <TableCell className="py-4 font-medium">
-                          {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : <span className="text-muted-foreground italic">No date</span>}
+                          {task.dueDate ? formatDate(task.dueDate) : <span className="text-muted-foreground italic">No date</span>}
                         </TableCell>
                         <TableCell className="text-right py-4">
                           <DropdownMenu>

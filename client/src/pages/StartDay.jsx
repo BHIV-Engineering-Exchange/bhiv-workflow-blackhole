@@ -43,6 +43,7 @@ import { useAuth } from '../context/auth-context';
 import EnhancedStartDayDialog from '../components/attendance/EnhancedStartDayDialog';
 import EnhancedAimCompletionDialog from '../components/attendance/EnhancedAimCompletionDialog';
 import api from '../lib/api';
+import { formatDate } from '../lib/dateFormat';
 import { toast } from 'react-hot-toast';
 
 const StartDay = () => {
@@ -542,12 +543,7 @@ const StartDay = () => {
               })}
             </div>
             <div className="text-lg text-gray-600">
-              {currentTime.toLocaleDateString('en-US', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-              })}
+              {formatDate(currentTime)}
             </div>
           </div>
         </motion.div>
@@ -953,10 +949,7 @@ const StartDay = () => {
                         record.isPresent ? 'bg-green-500' : 'bg-red-500'
                       }`}></div>
                       <span className="text-sm text-gray-600">
-                        {new Date(record.date).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric' 
-                        })}
+                        {formatDate(record.date)}
                       </span>
                     </div>
                     <div className="text-right">

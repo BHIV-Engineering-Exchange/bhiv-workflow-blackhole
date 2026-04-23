@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { api } from "../lib/api";
+import { formatDate } from "../lib/dateFormat";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import {
   Table,
@@ -242,7 +243,7 @@ const Leaderboard = () => {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {new Date(task.dueDate).toLocaleDateString()}
+                            {formatDate(task.dueDate)}
                           </TableCell>
                           <TableCell>{task.dependencies.length}</TableCell>
                         </TableRow>

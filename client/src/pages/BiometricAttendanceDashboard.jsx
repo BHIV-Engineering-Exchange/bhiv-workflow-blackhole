@@ -53,6 +53,7 @@ import {
   Settings
 } from 'lucide-react';
 import axios from 'axios';
+import { formatDate, formatDateTime } from '../lib/dateFormat';
 
 const BiometricAttendanceDashboard = () => {
   // State management
@@ -781,7 +782,7 @@ const BiometricAttendanceDashboard = () => {
                     uploadHistory.map((upload) => (
                       <TableRow key={upload._id}>
                         <TableCell className="font-medium">{upload.originalFileName}</TableCell>
-                        <TableCell>{new Date(upload.uploadDate).toLocaleString()}</TableCell>
+                        <TableCell>{formatDateTime(upload.uploadDate)}</TableCell>
                         <TableCell>{upload.totalRecords}</TableCell>
                         <TableCell>{upload.successfulMatches}</TableCell>
                         <TableCell>
@@ -874,7 +875,7 @@ const BiometricAttendanceDashboard = () => {
               <CardHeader>
                 <CardTitle>Grand Total Summary</CardTitle>
                 <CardDescription>
-                  Period: {new Date(dateRange.startDate).toLocaleDateString()} - {new Date(dateRange.endDate).toLocaleDateString()}
+                  Period: {formatDate(dateRange.startDate)} - {formatDate(dateRange.endDate)}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1060,7 +1061,7 @@ const BiometricAttendanceDashboard = () => {
                     {detailedLogs.length > 0 ? (
                       detailedLogs.map((log) => (
                         <TableRow key={log._id}>
-                          <TableCell>{new Date(log.date).toLocaleDateString()}</TableCell>
+                          <TableCell>{formatDate(log.date)}</TableCell>
                           <TableCell className="font-medium">{log.user?.name}</TableCell>
                           <TableCell>
                             {typeof log.user?.department === 'object' 
@@ -1237,7 +1238,7 @@ const BiometricAttendanceDashboard = () => {
                   {publicHolidays.length > 0 ? (
                     publicHolidays.map((holiday) => (
                       <TableRow key={holiday._id}>
-                        <TableCell>{new Date(holiday.date).toLocaleDateString()}</TableCell>
+                        <TableCell>{formatDate(holiday.date)}</TableCell>
                         <TableCell className="font-medium">{holiday.name}</TableCell>
                         <TableCell>{holiday.description || '-'}</TableCell>
                         <TableCell>
@@ -1363,7 +1364,7 @@ const BiometricAttendanceDashboard = () => {
                     paidLeaves.map((leave) => (
                       <TableRow key={leave._id}>
                         <TableCell className="font-medium">{leave.user?.name}</TableCell>
-                        <TableCell>{new Date(leave.date).toLocaleDateString()}</TableCell>
+                        <TableCell>{formatDate(leave.date)}</TableCell>
                         <TableCell>{leave.hours}h</TableCell>
                         <TableCell>
                           <Badge>{leave.leaveType}</Badge>

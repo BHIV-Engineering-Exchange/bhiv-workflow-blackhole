@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../ui/card"
+import { formatDate } from "../../lib/dateFormat"
 import { Button } from "../ui/button"
 import { Badge } from "../ui/badge"
 import {
@@ -89,7 +90,7 @@ export function SubmissionFeedbackCard({
               <div className="flex items-center gap-1.5 mt-1">
                 <Calendar className="h-3 w-3 text-gray-500 dark:text-gray-400" />
                 <CardDescription className="text-xs text-gray-600 dark:text-gray-400 font-medium">
-                  Reviewed on {new Date(submission.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  Reviewed on {formatDate(submission.updatedAt)}
                 </CardDescription>
               </div>
             </div>

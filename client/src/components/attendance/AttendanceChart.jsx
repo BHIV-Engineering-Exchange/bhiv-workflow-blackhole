@@ -26,6 +26,7 @@ import {
   LineChart as LineChartIcon,
   PieChart as PieChartIcon
 } from 'lucide-react';
+import { formatDate } from '../../lib/dateFormat';
 
 const AttendanceChart = ({ data }) => {
   const [activeChart, setActiveChart] = useState('bar');
@@ -47,10 +48,7 @@ const AttendanceChart = ({ data }) => {
 
   // Process data for charts
   const chartData = data.map(item => ({
-    date: new Date(item.date).toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric' 
-    }),
+    date: formatDate(item.date),
     present: item.presentCount || 0,
     absent: item.absentCount || 0,
     total: item.totalEmployees || 0,

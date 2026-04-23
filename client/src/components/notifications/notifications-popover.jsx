@@ -95,6 +95,7 @@ import { Badge } from "../ui/badge";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_URL } from "@/lib/api";
+import { formatDateTime } from "@/lib/dateFormat";
 
 export function NotificationsPopover() {
   const [notifications, setNotifications] = useState([]);
@@ -250,7 +251,7 @@ export function NotificationsPopover() {
                         <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        {new Date(notification.createdAt).toLocaleString()}
+                        {formatDateTime(notification.createdAt)}
                       </p>
                     </div>
                     <Button

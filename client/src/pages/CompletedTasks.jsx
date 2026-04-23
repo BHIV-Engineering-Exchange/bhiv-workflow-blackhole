@@ -32,6 +32,7 @@ import { Textarea } from "../components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { CompletedTasksStats } from "../components/dashboard/CompletedTasksStats"
 import { API_URL } from "@/lib/api"
+import { formatDate, formatDateTime } from "@/lib/dateFormat"
 
 const CompletedTasks = () => {
   const navigate = useNavigate()
@@ -409,7 +410,7 @@ const handleReviewSubmission = async () => {
                         )}
                         <div className="flex items-center gap-1 text-xs text-muted-foreground">
                           <Clock className="h-3 w-3" />
-                          <span>{new Date(task.dueDate).toLocaleDateString()}</span>
+                          <span>{formatDate(task.dueDate)}</span>
                         </div>
                       </div>
                     </CardHeader>
@@ -565,7 +566,7 @@ const handleReviewSubmission = async () => {
                             <td className="p-4">
                               <div className="font-medium">{task.title}</div>
                               <div className="text-sm text-muted-foreground">
-                                Due: {new Date(task.dueDate).toLocaleDateString()}
+                                Due: {formatDate(task.dueDate)}
                               </div>
                             </td>
                             <td className="p-4">
@@ -789,10 +790,10 @@ const handleReviewSubmission = async () => {
                               </div>
                             </td>
                             <td className="p-4">
-                              {new Date(submission.createdAt).toLocaleDateString()}
+                              {formatDate(submission.createdAt)}
                               {submission.resubmittedAt && (
                                 <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                  Resubmitted: {new Date(submission.resubmittedAt).toLocaleDateString()}
+                                  Resubmitted: {formatDate(submission.resubmittedAt)}
                                 </div>
                               )}
                             </td>
@@ -935,7 +936,7 @@ const handleReviewSubmission = async () => {
                     )}
                     <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300 pt-3 mt-2 border-t border-white/60 dark:border-slate-600/60">
                       <Clock className="h-4 w-4 text-gray-600 dark:text-slate-400" />
-                      <span className="font-medium">Submitted on {new Date(selectedSubmission.createdAt).toLocaleString()}</span>
+                      <span className="font-medium">Submitted on {formatDateTime(selectedSubmission.createdAt)}</span>
                     </div>
                   </div>
                 </div>
@@ -956,7 +957,7 @@ const handleReviewSubmission = async () => {
                               <span className="font-bold text-gray-900 dark:text-slate-100 text-base">{review.status}</span>
                               <span className="text-xs text-gray-700 dark:text-slate-300 flex items-center gap-1.5 bg-white/50 dark:bg-slate-700/40 px-2.5 py-1 rounded-lg backdrop-blur-sm">
                                 <Clock className="h-3.5 w-3.5" />
-                                {new Date(review.reviewedAt).toLocaleString()}
+                                {formatDateTime(review.reviewedAt)}
                               </span>
                             </div>
                             <p className="text-sm text-gray-800 dark:text-slate-200 mb-1">

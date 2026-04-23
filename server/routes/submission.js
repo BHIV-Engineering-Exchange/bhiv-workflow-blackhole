@@ -190,16 +190,30 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       })
     }
 
-    // Find admin user(s) to notify - only active admins
-    const admins = await User.find({ role: "Admin", stillExist: 1 })
-    for (const admin of admins) {
-      await Notification.create({
-        recipient: admin._id,
-        type: "task_submitted",
-        title: "Task Submitted",
-        message: `Submission by ${submission.user.name} for task: '${task.title}'. Please review it.`,
-        task: taskId,
-      })
+    // Workflow: repo submissions go to Tester first; others continue to Admin
+    const hasRepo = !!(githubLink && String(githubLink).trim())
+    if (hasRepo) {
+      const testers = await User.find({ role: "Tester", stillExist: 1 })
+      for (const tester of testers) {
+        await Notification.create({
+          recipient: tester._id,
+          type: "task_submitted",
+          title: "Repo Submitted for Testing",
+          message: `Submission by ${submission.user.name} for task: '${task.title}'. Please evaluate this repo.`,
+          task: taskId,
+        })
+      }
+    } else {
+      const admins = await User.find({ role: "Admin", stillExist: 1 })
+      for (const admin of admins) {
+        await Notification.create({
+          recipient: admin._id,
+          type: "task_submitted",
+          title: "Task Submitted",
+          message: `Submission by ${submission.user.name} for task: '${task.title}'. Please review it.`,
+          task: taskId,
+        })
+      }
     }
 
     res.status(201).json(submission)
@@ -263,15 +277,19 @@ router.put("/:id", auth, upload.single("document"), async (req, res) => {
       .populate("user", "name email")
       .populate("reviewHistory.reviewedBy", "name email")
 
-    // Find admin user(s) to notify about resubmission - only active admins
-    const admins = await User.find({ role: "Admin", stillExist: 1 })
+    // Workflow: repo resubmissions go to Tester first; others continue to Admin
+    const hasRepo = !!(updatedSubmission.githubLink && String(updatedSubmission.githubLink).trim())
+    const recipients = hasRepo
+      ? await User.find({ role: "Tester", stillExist: 1 })
+      : await User.find({ role: "Admin", stillExist: 1 })
+    const notificationTitle = hasRepo ? "Repo Resubmitted for Testing" : "Task Resubmitted"
     const taskTitle = submission.task?.title || "Unknown Task"
     
-    for (const admin of admins) {
+    for (const recipient of recipients) {
       await Notification.create({
-        recipient: admin._id,
+        recipient: recipient._id,
         type: "task_resubmitted",
-        title: "Task Resubmitted",
+        title: notificationTitle,
         message: `${user.name} has resubmitted their work for task: '${taskTitle}'. Please review the updated submission.`,
         task: submission.task?._id,
       })

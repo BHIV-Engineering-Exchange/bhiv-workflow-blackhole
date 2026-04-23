@@ -8,7 +8,7 @@ const NotificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["task_assigned", "task_submitted", "task_resubmitted", "submission_approved", "submission_rejected","submission_reviewed", "procurement_alert"],
+    enum: ["task_assigned", "task_submitted", "task_resubmitted", "submission_approved", "submission_rejected","submission_reviewed", "procurement_alert", "task_created_for_tester", "evaluation_submitted", "task_overdue_alert"],
     required: true,
   },
   title: {

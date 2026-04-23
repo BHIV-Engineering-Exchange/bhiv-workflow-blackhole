@@ -725,6 +725,22 @@ const httpMethods = {
 
 
 //-----------------------------------------------------
+// Tester API Module
+//-----------------------------------------------------
+const tester = {
+  getDashboardStats: () => fetchAPI("/tester/dashboard-stats"),
+  getTasks: (params = {}) => fetchAPI("/tester/tasks", { params }),
+  getDepartments: () => fetchAPI("/tester/departments"),
+  getUsers: () => fetchAPI("/tester/users"),
+  getTestedTasksFeed: () => fetchAPI("/tester/tested-tasks-feed"),
+  getEvaluations: () => fetchAPI("/tester/evaluations"),
+  getEvaluation: (id) => fetchAPI(`/tester/evaluations/${id}`),
+  createEvaluation: (data) => fetchAPI("/tester/evaluations", { method: "POST", body: JSON.stringify(data) }),
+  updateEvaluation: (id, data) => fetchAPI(`/tester/evaluations/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  getAlerts: () => fetchAPI("/tester/alerts"),
+};
+
+//-----------------------------------------------------
 // Combine All API Modules
 //-----------------------------------------------------
 export const api = {
@@ -744,6 +760,7 @@ export const api = {
   procurement,
   branches,
   projects,
+  tester,
 };
 
 export default api;
