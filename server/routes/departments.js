@@ -109,6 +109,16 @@ router.post("/", auth, async (req, res) => {
     const { lead, members, ...departmentData } = req.body
     const branchQuery = getBranchQuery(req);
 
+    // Prevent duplicate department names (case-insensitive)
+    if (departmentData.name) {
+      const existingDepartment = await Department.findOne({
+        name: { $regex: `^${departmentData.name.trim()}$`, $options: "i" },
+      })
+      if (existingDepartment) {
+        return res.status(400).json({ error: "Department with this name already exists" })
+      }
+    }
+
     // For NEW assignments, verify lead is active and has blackhole email and belongs to selected branch
     if (lead) {
       const leadFilter = { 
@@ -165,6 +175,15 @@ router.post("/", auth, async (req, res) => {
     res.status(201).json(populatedDepartment)
   } catch (error) {
     console.error("Error creating department:", error)
+
+    if (error.code === 11000) {
+      return res.status(400).json({ error: "Department with this name already exists" })
+    }
+
+    if (error.name === "CastError" || error.name === "ValidationError") {
+      return res.status(400).json({ error: "Invalid department data provided" })
+    }
+
     res.status(500).json({ error: "Server error" })
   }
 })
