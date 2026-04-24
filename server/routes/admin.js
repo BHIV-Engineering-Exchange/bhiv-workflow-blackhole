@@ -545,27 +545,13 @@ router.get("/users/search", auth, async (req, res) => {
 // ===== DEPARTMENT ROUTES =====
 
 // @route   GET api/admin/departments
-// @desc    Get all departments - FILTERED BY BRANCH
+// @desc    Get all departments
 // @access  Private
 router.get("/departments", auth, async (req, res) => {
   try {
     const branchQuery = getBranchQuery(req);
-    
-    // If branch filter is active, only show departments with members from that branch
-    let matchFilter = {};
-    if (branchQuery.branch) {
-      const usersInBranch = await User.find({ ...branchQuery, stillExist: 1 }).select('_id');
-      const userIds = usersInBranch.map(u => u._id);
-      
-      matchFilter = {
-        $or: [
-          { lead: { $in: userIds } },
-          { members: { $in: userIds } }
-        ]
-      };
-    }
 
-    const departments = await Department.find(matchFilter)
+    const departments = await Department.find({})
       .populate({
         path: "lead",
         select: "name email role stillExist branch",

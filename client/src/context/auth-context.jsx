@@ -18,6 +18,9 @@ const getApiUrl = () => {
     if (host === 'blackhole-workflow.vercel.app' || host.endsWith('.vercel.app')) {
       console.log('🎯 Using Render backend for production');
       return 'https://blackholeworkflow.onrender.com/api';
+    } else if (host === 'localhost' || host === '127.0.0.1') {
+      console.log('🏠 Using localhost backend API');
+      return 'http://localhost:5001/api';
     } else {
       console.log('🏠 Using same-origin API');
       return `${window.location.origin}/api`;
@@ -26,7 +29,7 @@ const getApiUrl = () => {
   
   // Fallback for SSR or build time
   console.warn('⚠️ No API URL configured, using default localhost');
-  return 'http://localhost:5000/api';
+  return 'http://localhost:5001/api';
 };
 
 const API_URL = getApiUrl();

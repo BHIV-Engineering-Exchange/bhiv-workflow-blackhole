@@ -15,28 +15,12 @@ const getBranchQuery = (req) => {
   return {};
 };
 
-// Get all departments - FILTERED BY BRANCH
+// Get all departments
 router.get("/", async (req, res) => {
   try {
     const branchQuery = getBranchQuery(req);
-    
-    // If branch filter is active, only show departments with members from that branch
-    let matchFilter = {};
-    if (branchQuery.branch) {
-      // Get users from the selected branch
-      const usersInBranch = await User.find({ ...branchQuery, stillExist: 1 }).select('_id');
-      const userIds = usersInBranch.map(u => u._id);
-      
-      // Filter departments where lead or members are in the branch
-      matchFilter = {
-        $or: [
-          { lead: { $in: userIds } },
-          { members: { $in: userIds } }
-        ]
-      };
-    }
 
-    const departments = await Department.find(matchFilter)
+    const departments = await Department.find({})
       .populate({
         path: "lead",
         select: "name avatar stillExist email branch",
@@ -47,6 +31,7 @@ router.get("/", async (req, res) => {
         select: "name avatar stillExist email branch",
         match: branchQuery.branch ? { branch: branchQuery.branch } : {}
       })
+      .sort({ name: 1 })
     
     // Filter out members that don't match branch (populate match only nullifies non-matching)
     const filteredDepartments = departments.map(dept => {
@@ -70,7 +55,7 @@ router.get("/", async (req, res) => {
   }
 })
 
-// Get department by ID - FILTERED BY BRANCH
+// Get department by ID
 router.get("/:id", auth, async (req, res) => {
   try {
     const branchQuery = getBranchQuery(req);
