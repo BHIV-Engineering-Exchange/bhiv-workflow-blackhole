@@ -445,8 +445,8 @@ export default function Register() {
     setFormData({ ...formData, role: value })
     if (errors.role) setErrors({ ...errors, role: "" })
 
-    // Clear department if role is Admin/Manager
-    if (value === "Admin" || value === "Manager") {
+    // Clear department if role is Manager
+    if (value === "Manager") {
       setFormData((prev) => ({ ...prev, department: "" }))
     } else if (departments.length > 0) {
       setFormData((prev) => ({ ...prev, department: departments[0]._id }))
@@ -502,8 +502,6 @@ export default function Register() {
 
   const getRoleDescription = (role) => {
     switch (role) {
-      case "Admin":
-        return "Access the organization dashboard, assign tasks, review progress, and generate reports."
       case "Manager":
         return "Manage department tasks, review team progress, and generate department reports."
       case "User":
@@ -712,9 +710,6 @@ export default function Register() {
                     <SelectValue placeholder="Select a role" />
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border">
-                    <SelectItem value="Admin" className="hover:bg-muted focus:bg-muted transition-colors">
-                      Admin
-                    </SelectItem>
                     <SelectItem value="Manager" className="hover:bg-muted focus:bg-muted transition-colors">
                       Manager
                     </SelectItem>
