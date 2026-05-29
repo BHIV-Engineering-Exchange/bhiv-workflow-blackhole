@@ -163,6 +163,7 @@ const newSalaryRoutes = require('./routes/newSalaryManagement'); // New salary m
 const branchRoutes = require('./routes/branchRoutes'); // Branch management routes
 const projectRoutes = require('./routes/projects'); // Project management routes
 const testerRoutes = require('./routes/tester'); // Tester routes
+const tantraExecutionRoutes = require('./routes/tantraExecution'); // Deterministic execution participation routes
 const { startAttendancePersistenceCron, syncExistingAttendance } = require('./services/attendanceCronJobs'); // Attendance persistence cron
 // Middleware imports
 const auth = require('./middleware/auth');
@@ -229,6 +230,22 @@ const corsOptions = {
     "Authorization",
     "X-Branch",
     "x-branch",
+    "X-Execution-Id",
+    "x-execution-id",
+    "X-Trace-Id",
+    "x-trace-id",
+    "X-Execution-Key",
+    "x-execution-key",
+    "X-Tenant-Id",
+    "x-tenant-id",
+    "X-Governance-Route",
+    "x-governance-route",
+    "X-Governance-Policy",
+    "x-governance-policy",
+    "X-Governance-Authority",
+    "x-governance-authority",
+    "X-Governance-Signature",
+    "x-governance-signature",
   ],
   optionsSuccessStatus: 204,
 };
@@ -253,7 +270,7 @@ app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Origin, X-Requested-With, Content-Type, Accept, x-auth-token, Authorization, X-Branch, x-branch"
+      "Origin, X-Requested-With, Content-Type, Accept, x-auth-token, Authorization, X-Branch, x-branch, X-Execution-Id, x-execution-id, X-Trace-Id, x-trace-id, X-Execution-Key, x-execution-key, X-Tenant-Id, x-tenant-id, X-Governance-Route, x-governance-route, X-Governance-Policy, x-governance-policy, X-Governance-Authority, x-governance-authority, X-Governance-Signature, x-governance-signature"
     );
   }
   next();
@@ -431,6 +448,7 @@ app.use('/api/new-salary', newSalaryRoutes); // New salary management system
 app.use('/api/branches', branchRoutes); // Branch management routes
 app.use('/api/projects', projectRoutes); // Project management routes
 app.use('/api/tester', testerRoutes); // Tester routes
+app.use('/api/tantra', tantraExecutionRoutes); // Deterministic execution participation
 
 // app.use('/api/new/ai',aiRoutePy)
 
