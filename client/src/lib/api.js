@@ -17,7 +17,7 @@ if (import.meta.env.VITE_API_URL) {
     console.log('🎯 Using Render backend fallback:', API_URL);
     console.warn('⚠️ WARNING: Using fallback backend. Set VITE_API_URL for proper deployment.');
   } else if (host === 'localhost' || host === '127.0.0.1') {
-    API_URL = 'http://localhost:5001/api';
+    API_URL = 'http://localhost:5000/api';
     console.log('🏠 Using localhost API:', API_URL);
   } else {
     API_URL = `${window.location.origin}/api`;
@@ -562,7 +562,6 @@ const attendance = {
     Object.entries(filters).forEach(([key, value]) => {
       if (value) queryParams.append(key, value);
     });
-    
     const queryString = queryParams.toString();
     return fetchAPI(`/attendance/user/${userId}${queryString ? `?${queryString}` : ""}`);
   },
@@ -573,7 +572,6 @@ const attendance = {
     Object.entries(filters).forEach(([key, value]) => {
       if (value) queryParams.append(key, value);
     });
-    
     const queryString = queryParams.toString();
     return fetchAPI(`/attendance${queryString ? `?${queryString}` : ""}`);
   },
@@ -597,27 +595,22 @@ const attendance = {
 const branches = {
   // Get all active branches (public - for registration)
   getAll: () => fetchAPI("/branches"),
-  
   // Get all branches including inactive (admin only)
   getAllAdmin: () => fetchAPI("/branches/all"),
-  
   // Get single branch
   get: (id) => fetchAPI(`/branches/${id}`),
-  
   // Create branch (admin only)
   create: (branch) =>
     fetchAPI("/branches", {
       method: "POST",
       body: JSON.stringify(branch),
     }),
-  
   // Update branch (admin only)
   update: (id, branch) =>
     fetchAPI(`/branches/${id}`, {
       method: "PUT",
       body: JSON.stringify(branch),
     }),
-  
   // Delete branch (admin only)
   delete: (id) =>
     fetchAPI(`/branches/${id}`, { method: "DELETE" }),

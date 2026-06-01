@@ -1,6 +1,6 @@
 FROM node:18-slim
 
-# Install system dependencies for browser monitoring and screenshots
+# Install system dependencies for browser monitoring and screenshots (including curl for healthchecks)
 RUN apt-get update && apt-get install -y \
     imagemagick \
     scrot \
@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     xvfb \
     x11-xserver-utils \
     procps \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory

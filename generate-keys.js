@@ -1,0 +1,11 @@
+const webpush = require('web-push');
+const keys = webpush.generateVAPIDKeys();
+console.log('===================================================');
+console.log('VAPID KEYS GENERATED SUCCESSFULLY:');
+console.log('===================================================');
+console.log('Public Key:');
+console.log(keys.publicKey);
+console.log('---------------------------------------------------');
+console.log('Private Key:');
+console.log(keys.privateKey);
+console.log('===================================================');
