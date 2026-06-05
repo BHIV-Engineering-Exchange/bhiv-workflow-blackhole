@@ -179,7 +179,7 @@ const ALLOWED_ORIGIN_CONFIG = {
     "niyantran.blackholeinfiverse.com",
     "blackhole-workflow.vercel.app",
   ]),
-  httpHostsWithPort: new Set(["localhost:5173"]),
+  httpHostsWithPort: new Set(["localhost:5173", "localhost"]),
 };
 
 const normalizeOrigin = (origin) => {
@@ -541,8 +541,8 @@ app.use((err, req, res, next) => {
   console.error('Error stack:', err.stack);
   console.error('Request URL:', req.url);
   console.error('Request method:', req.method);
-  
-  res.status(err.status || 500).json({ 
+
+  res.status(err.status || 500).json({
     error: "Something went wrong!",
     details: process.env.NODE_ENV === 'development' ? err.message : undefined,
     path: req.url
@@ -569,15 +569,15 @@ const WFH_MAX_HOURS_PER_DAY = 8;
 const midnightAutoEndJob = async () => {
   try {
     console.log('🕛 Running midnight auto-end job...');
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     // Get yesterday's date (the day that just ended at midnight)
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     yesterday.setHours(0, 0, 0, 0);
-    
+
     const yesterdayEnd = new Date(yesterday);
     yesterdayEnd.setHours(23, 59, 59, 999);
 
@@ -612,7 +612,7 @@ const midnightAutoEndJob = async () => {
         // ============================================
         let isWFH = false;
         const originalHours = hoursWorked;
-        
+
         // Check if user is WFH by workMode or workPattern
         if (record.workPattern === 'Remote') {
           isWFH = true;
@@ -622,7 +622,7 @@ const midnightAutoEndJob = async () => {
             isWFH = true;
           }
         }
-        
+
         // Apply WFH cap ONLY for WFH employees
         // WFO employees keep their actual hours (no cap)
         if (isWFH && hoursWorked > WFH_MAX_HOURS_PER_DAY) {
@@ -632,16 +632,16 @@ const midnightAutoEndJob = async () => {
 
         // MIDNIGHT SPAN LOGIC: Session spans from one day to next
         const spanType = 'MIDNIGHT_SPAN';
-        
+
         // Determine fixed hours based on work mode
         const fixedHours = isWFH ? WFH_MAX_HOURS_PER_DAY : SPAM_VALIDATION_HOURS;
-        
+
         // Auto end the day at midnight
         record.endDayTime = midnightTime;
         record.hoursWorked = Math.round(hoursWorked * 100) / 100;
         record.autoEnded = true;
         record.spamStatus = 'Pending Review';
-        record.spamReason = isWFH 
+        record.spamReason = isWFH
           ? 'WFH session spans midnight - auto-ended with 8h cap'
           : 'Session spans midnight - auto-ended by system';
         record.spanType = spanType; // Mark as midnight span
@@ -653,11 +653,11 @@ const midnightAutoEndJob = async () => {
           splitRequired: Boolean(!isWFH && originalHours > 24), // Only split for WFO multi-day sessions
           isWFH: isWFH
         };
-        record.systemNotes = isWFH 
+        record.systemNotes = isWFH
           ? `WFH Midnight span: ${originalHours.toFixed(2)}h actual → ${hoursWorked}h (8h max cap applied)`
           : `WFO Midnight span: ${originalHours.toFixed(2)}h actual. Admin validation grants ${fixedHours}h fixed`;
-        record.employeeNotes = (record.employeeNotes || '') + 
-          (isWFH 
+        record.employeeNotes = (record.employeeNotes || '') +
+          (isWFH
             ? ' [WFH Auto-ended at midnight - 8h cap applied]'
             : ' [Auto-ended at midnight - Span session pending admin review]');
         record.overtimeHours = isWFH ? 0 : Math.max(0, hoursWorked - 8); // WFH has no overtime
@@ -679,7 +679,7 @@ const midnightAutoEndJob = async () => {
           dailyRecord.totalHoursWorked = record.hoursWorked;
           dailyRecord.autoEnded = true;
           dailyRecord.spamStatus = 'Pending Review';
-          dailyRecord.spamReason = isWFH 
+          dailyRecord.spamReason = isWFH
             ? 'WFH session spans midnight - 8h cap applied'
             : 'Session spans midnight - requires validation';
           dailyRecord.spanType = 'MIDNIGHT_SPAN';
@@ -715,7 +715,7 @@ const midnightAutoEndJob = async () => {
     }
 
     console.log(`✅ Midnight auto-end complete. Processed ${autoEndedCount.length} records.`);
-    
+
   } catch (error) {
     console.error('❌ Midnight auto-end job error:', error);
   }
@@ -726,12 +726,12 @@ const scheduleMidnightJob = () => {
   const now = new Date();
   const midnight = new Date(now);
   midnight.setHours(24, 0, 0, 0); // Next midnight
-  
+
   const msUntilMidnight = midnight - now;
-  
+
   console.log(`🕛 Next midnight auto-end scheduled in ${Math.round(msUntilMidnight / 1000 / 60)} minutes`);
   console.log(`   Next run at: ${midnight.toLocaleString()}`);
-  
+
   // Schedule for next midnight
   setTimeout(() => {
     midnightAutoEndJob();
@@ -745,8 +745,8 @@ app.post('/api/admin/trigger-midnight-job', auth, adminAuth, async (req, res) =>
   try {
     console.log('🔧 Manually triggering midnight auto-end job...');
     await midnightAutoEndJob();
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'Midnight auto-end job executed successfully',
       timestamp: new Date().toISOString()
     });
@@ -775,7 +775,7 @@ async function startServer() {
       compressors: ['zlib'],     // Enable compression for network traffic
     });
     console.log("✅ Connected to MongoDB with optimized connection pool (10-50 connections)");
-    
+
     // Initialize EMS email templates after MongoDB is connected
     const emsAutomation = require('./services/emsAutomation');
     if (!emsAutomation.templatesInitialized) {
@@ -783,20 +783,20 @@ async function startServer() {
       emsAutomation.templatesInitialized = true;
       console.log('📧 EMS email templates initialized');
     }
-    
+
     // Start HTTP server
     server.listen(PORT, async () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`🕛 Midnight Auto-End: ENABLED (unended days go to spam, validation grants exactly ${SPAM_VALIDATION_HOURS}h)`);
       console.log(`📊 Spam validation rule: EXACTLY ${SPAM_VALIDATION_HOURS} hours (not more, not less)`);
-      
+
       // Schedule midnight auto-end job
       scheduleMidnightJob();
-      
+
       // Start attendance persistence cron job
       console.log('🕐 Starting attendance persistence cron job (runs daily at 11:59 PM)...');
       startAttendancePersistenceCron();
-      
+
       // ✅ FIX: Disabled automatic sync on startup to prevent blocking DB on cold starts
       // Sync existing attendance data for the last 30 days
       // console.log('📊 Syncing historical attendance data for the last 30 days...');

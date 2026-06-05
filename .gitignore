@@ -1,3 +1,4 @@
 server/uploads/
 *.env
+.env*
 node_modules

@@ -1,94 +1,74 @@
 # SETU Sovereign Infrastructure: Deployment Demo Proof
 
-## 1. Executive Verification Overview
-
-This document presents the **Deployment Demo Proof** required under **Phase 9** of the SETU Sovereign Infrastructure Migration Sprint. 
-
-To provide empirical proof of deployment success, we transition away from theoretical logs and establish **four visual screenshot checkpoints** capturing the actual running Niyantran container stack. For each checkpoint, we define the exact host terminal command to execute, what the output screenshot must display, and where to link your image file in this packet.
-
----
-
-## 2. Screenshot Directory Setup
-
-Before capturing your proofs, create a `proofs/` directory under your `workflow-blackhole` root to store the image files:
-```bash
-# In your terminal
-mkdir -p c:\Users\ASUS\OneDrive\Desktop\BHIV-Tasks\SETU\workflow-blackhole\proofs
-```
-Save each screenshot inside this folder using the exact filenames specified below.
-
----
-
-## 3. The 4 Visual Verification Checkpoints
-
----
-
-### Checkpoint 1: Active Container Status Verification (`docker compose ps`)
+## 1. Checkpoint 1: Active Container Status Verification (`docker compose ps`) `[PLANNED]`
 *   **Objective:** Visually confirm that the core Niyantran stack is healthy and running.
 *   **Host Command to Execute:**
     ```bash
-    docker compose ps
+    docker compose -f docker-compose.production.yml ps
     ```
-*   **Verification Instructions:** Run the command in your terminal and take a screenshot showing all three Niyantran containers running with their healthy statuses.
-*   **Target Screenshot Filename:** `proofs/docker_compose_ps.png`
-*   **Visual Proof Embed:**
+*   **Evidence Calibration Key:** The screenshot should show `niyantran_database` as `healthy`, `niyantran_backend` as `healthy`, and `niyantran_frontend` as `running` or `started`, confirming successful internal container startup. `[ARCHITECTURAL ASSUMPTION]`
 
-![Screenshot 1: Active Docker Compose Status](proofs/docker_compose_ps.png)
-
-*   **Evidence Calibration Key:** The screenshot should show `niyantran_database` as `healthy`, `niyantran_backend` as `healthy`, and `niyantran_frontend` as `running` or `started`, confirming successful internal container startup.
+![Screenshot 1: Active Docker Compose Status](https://drive.google.com/file/d/1X2D3euFPQKG7fxyPYRxs90KG1sqxRMhO/view?usp=sharing)
 
 ---
 
-### Checkpoint 2: End-to-End API Health Response (`curl -i /api/ping`)
-*   **Objective:** Visually verify that the Niyantran backend API is fully integrated with the database and responds correctly to network queries.
+## 2. Checkpoint 2: End-to-End API Health Response (`curl -i /api/ping`) `[PLANNED]`
+*   **Objective:** Visually verify that the Niyantran backend API is fully integrated with the database and responds correctly to network queries via NGINX.
 *   **Host Command to Execute:**
     ```bash
-    curl -i http://localhost:5000/api/ping
+    curl http://localhost/api/ping
     ```
-*   *(Alternatively, open `http://localhost:5000/api/ping` in your browser and screenshot the JSON output).*
-*   **Verification Instructions:** Take a screenshot of the terminal command or browser tab showing the success response.
-*   **Target Screenshot Filename:** `proofs/api_ping_response.png`
-*   **Visual Proof Embed:**
+*   **Evidence Calibration Key:** The snapshot must verify an HTTP status `200 OK` and display the JSON payload containing the healthy status and service identification. `[ARCHITECTURAL ASSUMPTION]`
 
-![Screenshot 2: API End-to-End Health Response](proofs/api_ping_response.png)
-
-*   **Evidence Calibration Key:** The snapshot must verify an HTTP status `200 OK` and display the JSON payload containing the healthy status and service identification.
+![Screenshot 2: API End-to-End Health Response](https://drive.google.com/file/d/10_WCCh4SjnDEmpAu96dGzsRPOmAE_meU/view?usp=sharing)
 
 ---
 
-### Checkpoint 3: Network Port Bindings & Isolation Check (`docker ps`)
-*   **Objective:** Confirm that network ports are correctly mapped (e.g. frontend exposing the web interface) and database ports are secure.
+## 3. Checkpoint 3: Frontend Ingress Reachability (`curl /`) `[PLANNED]`
+*   **Objective:** Visually verify that NGINX successfully serves the static Vite React app index page on port 80.
+*   **Host Command to Execute:**
+    ```bash
+    curl.exe -Iv http://localhost/
+    ```
+*   **Evidence Calibration Key:** The snapshot must verify an HTTP status `200 OK` and show NGINX serving text/html headers for the index page. `[ARCHITECTURAL ASSUMPTION]`
+
+![Screenshot 3: Frontend Ingress Reachability](https://drive.google.com/file/d/1hFIGEyxfgbB8Cv31N5dcE17OG62sA0zl/view?usp=sharing)
+
+---
+
+## 4. Checkpoint 4: Network Port Isolation Check (`docker ps`) `[PLANNED]`
+*   **Objective:** Confirm that network ports are correctly isolated in production and only exposed via the ingress proxy.
 *   **Host Command to Execute:**
     ```bash
     docker ps --format "table {{.Names}}\t{{.Ports}}"
     ```
-*   **Verification Instructions:** Take a screenshot of the output, displaying the active port routing table on the host.
-*   **Target Screenshot Filename:** `proofs/docker_ports_isolation.png`
-*   **Visual Proof Embed:**
+*   **Evidence Calibration Key:** The screenshot must display the specific port mappings, verifying that in production, only the `niyantran_proxy` container binds public host ports (80/443), while the backend and database containers remain strictly unmapped to the host. `[ARCHITECTURAL ASSUMPTION]`
 
-![Screenshot 3: Network Ports and Isolation](proofs/docker_ports_isolation.png)
-
-*   **Evidence Calibration Key:** The screenshot must display the specific port mappings, verifying where the frontend web port binds to the host and that the database container routing matches secure guidelines.
+![Screenshot 4: Network Ports and Isolation](https://drive.google.com/file/d/1uKrXtCe5P0v5M3QXm5athz3UUrXD8Qyf/view?usp=sharing)
 
 ---
 
-### Checkpoint 4: Low-Burn Container Resource Footprint (`docker stats`)
+## 5. Checkpoint 5: Low-Burn Container Resource Footprint (`docker stats`) `[PLANNED]`
 *   **Objective:** Confirm that our strict memory boundaries keep the idle Niyantran resource usage extremely lean to prevent runaway cloud burn.
 *   **Host Command to Execute:**
     ```bash
     docker stats --no-stream
     ```
-*   **Verification Instructions:** Capture a screenshot of the terminal output showing CPU and Memory usage columns.
-*   **Target Screenshot Filename:** `proofs/docker_resource_stats.png`
-*   **Visual Proof Embed:**
+*   **Evidence Calibration Key:** The screenshot must show the RAM metrics for `niyantran_database`, `niyantran_backend`, and `niyantran_frontend`. The total idle memory consumption across the entire Niyantran stack is estimated to remain under 500MB total. `[ESTIMATED]`
 
-![Screenshot 4: Container Resource Footprint](proofs/docker_resource_stats.png)
-
-*   **Evidence Calibration Key:** The screenshot must show the RAM metrics for `niyantran_database`, `niyantran_backend`, and `niyantran_frontend`. The total idle memory consumption across the entire Niyantran stack should be observed to remain extremely low-burn (comfortably under 500MB total).
+![Screenshot 5: Container Resource Footprint](https://drive.google.com/file/d/1CWDgUf2bZ2o_nW_U0xPp5QBEcahKYwZN/view?usp=sharing)
 
 ---
 
-## 4. Verification Boundaries & Calibration Note
+## 6. Video Walkthrough Verification (SR-1) `[PLANNED]`
+*   **Objective:** Provide a continuous execution video validating container startup, health updates, and ingress routing checks.
+*   **Action Steps to Record:** Screen recording of `docker compose down`, `docker compose up -d`, `docker compose ps` checks, and a live curl call showing service success.
+
+![Video Walkthrough (SR-1)](https://drive.google.com/file/d/1PNhHCpdVQ8YC0L6yVh-RTMfXrvPwGQrs/view?usp=sharing)
+
+---
+
+## 7. Verification Boundaries & Calibration Note `[ARCHITECTURAL ASSUMPTION]`
 
 To maintain an objective and realistic DevOps posture:
 *   **Log Verification Boundaries:** These visual proofs confirm active container status, loopback HTTP pings, and low resource overhead under idle states. They do not validate high-load concurrency, network-attached hard drive failure modes, or external web-push delivery bounds, which remain bounded by your local network.

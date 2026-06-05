@@ -8,7 +8,7 @@ This cost comparison report outlines a realistic infrastructure roadmap designed
 
 ---
 
-## 2. Multi-Stage Cost Comparison Matrix
+## 2. Multi-Stage Cost Comparison Matrix `[ESTIMATED]`
 
 Below is the verified monthly operating comparison between Render Cloud subscription plans and a self-hosted VPS, mapped out for 50, 200, and 1,000 active tracking users. 
 
@@ -22,35 +22,35 @@ Below is the verified monthly operating comparison between Render Cloud subscrip
 
 ---
 
-## 3. Resource & Hardware Specification Blueprint
+## 3. Resource & Hardware Specification Blueprint `[ARCHITECTURAL ASSUMPTION]`
 
 To ensure the cost claims above are tightly coupled to evidence, the following hardware profiles define the minimum hosting nodes required at each scale to support Node.js screenshot parsing and database transactions:
 
 ### 🔹 50 Users (Development Stage)
 *   **Minimum Target Host Node:** 2 vCPUs / 4GB RAM / 40GB SSD
 *   **Operating Spec:** Handles REST telemetry pings and light cron logs. Image capture processing is serialized.
-*   **Estimate Realized:** Basic VPS tier (e.g. Neysa VPS or Hetzner CX22) priced at **₹800/month** (~$9.60).
+*   **Estimate Realized:** Basic VPS tier (e.g. Neysa VPS or Hetzner CX22) priced at **₹800/month** (~$9.60). `[ESTIMATED]`
 
 ### 🔹 200 Users (Growth Stage)
 *   **Minimum Target Host Node:** 4 vCPUs / 8GB RAM / 80GB NVMe SSD
 *   **Operating Spec:** Dedicated memory bounds allow concurrent Express connections. MongoDB uses up to 1.5GB of local WiredTiger cache memory safely.
-*   **Estimate Realized:** Standard compute tier (e.g. Yotta Virtual Instance or Neysa Compute VPS) priced at **₹1,500/month** (~$18.00).
+*   **Estimate Realized:** Standard compute tier (e.g. Yotta Virtual Instance or Neysa Compute VPS) priced at **₹1,500/month** (~$18.00). `[ESTIMATED]`
 
 ### 🔹 1000 Users (Scale Stage)
 *   **Minimum Target Host Node:** 8 vCPUs / 16GB RAM / 160GB NVMe SSD
 *   **Operating Spec:** Accommodates high-frequency Socket.IO web socket streams and concurrent screenshot canvas OCR calculations. Database writes are mapped directly to local RAID storage to prevent disk queuing delays.
-*   **Estimate Realized:** High-performance VM tier (e.g. Yotta Enterprise Compute or large Neysa virtual node) priced at **₹3,500/month** (~$42.00).
+*   **Estimate Realized:** High-performance VM tier (e.g. Yotta Enterprise Compute or large Neysa virtual node) priced at **₹3,500/month** (~$42.00). `[ESTIMATED]`
 
 ---
 
-## 4. Auxiliary Operating Costs & Grounded TCO
+## 4. Auxiliary Operating Costs & Grounded TCO `[ESTIMATED]`
 
 To maintain a calibrated and honest cost perspective, we must factor in secondary subscription expenses and operational labor that public cloud platforms typically bundle into their fees:
 
 1.  **Offsite Backup Storage (S3-Compatible):**
     *   *Volume & Storage:* ~100GB of compressed database snapshots and configuration archives.
     *   *Unit Cost:* $0.02 per GB/month (e.g., Yotta Object Storage or Backblaze B2).
-    *   *Impact:* **₹165/month** (~$2.00).
+    *   *Impact:* **₹165/month** (~$2.00). `[ESTIMATED]`
 2.  **Network Egress Bandwidth:**
     *   *Volume:* ~300GB of outbound JSON/image uploads.
     *   *Unit Cost:* Included within the VPS free bandwidth allocations (typically 2TB to 4TB).
@@ -59,8 +59,9 @@ To maintain a calibrated and honest cost perspective, we must factor in secondar
     *   *Control:* Managed for free via Cloudflare DNS routing and Let's Encrypt automated certbot challenges.
     *   *Impact:* **₹0/month**.
 4.  **Operational Labor Overhead (Calibrated Reality):**
-    *   *Time Commitment:* Requires **1 to 2 hours** of manual DevOps oversight monthly.
+    *   *Time Commitment:* Requires **1 to 2 hours** of manual DevOps oversight monthly. `[ESTIMATED]`
     *   *Task Scope:* Verifying host system security patches (`apt update`), checking Prometheus telemetry alerts, and validating backup script logs.
+
 
 ---
 

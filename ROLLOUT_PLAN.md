@@ -38,7 +38,7 @@ graph TD
 
 ---
 
-## 2. Staged Multi-Service Migration Blueprint
+## 2. Staged Multi-Service Migration Blueprint `[PLANNED]`
 
 To ensure a stable cutover, services are deployed in a strict dependency sequence:
 
@@ -46,7 +46,7 @@ To ensure a stable cutover, services are deployed in a strict dependency sequenc
 
 ### 1️⃣ Niyantran (Workforce & Employee Monitoring Core)
 *   **Role:** The workforce telemetry backbone. Handles high-frequency Socket.IO duplex screenshot and keystroke syncs.
-*   **Dependencies:** 
+*   **Dependencies:** `[ARCHITECTURAL ASSUMPTION]`
     *   MongoDB database instance.
     *   `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` environmental parameters (for push notifications).
     *   System dependencies inside server: `scrot`, `xdotool`, `xvfb`, and `curl` (for health checks).
@@ -66,7 +66,7 @@ To ensure a stable cutover, services are deployed in a strict dependency sequenc
 
 ### 2️⃣ CRM (Customer Relationship Management Monolith)
 *   **Role:** Sales, client tracking, and lead database pipeline.
-*   **Dependencies:**
+*   **Dependencies:** `[ARCHITECTURAL ASSUMPTION]`
     *   MongoDB dataset.
     *   Static React frontend asset bundle built via Vite.
 *   **Migration Steps:**
@@ -84,7 +84,7 @@ To ensure a stable cutover, services are deployed in a strict dependency sequenc
 
 ### 3️⃣ Logistics (Supply Chain & Agent Geolocation Tracker)
 *   **Role:** Ingestion and real-time mapping of field delivery coordinates.
-*   **Dependencies:**
+*   **Dependencies:** `[ARCHITECTURAL ASSUMPTION]`
     *   PostgreSQL database (for geographic transactional logging).
     *   Redis cache/broker (for live geospatial queues).
     *   Long-lived WebSocket connections support.
@@ -103,7 +103,7 @@ To ensure a stable cutover, services are deployed in a strict dependency sequenc
 
 ### 4️⃣ SETU Unified Layer (API Gateway & Aggregated Dashboard)
 *   **Role:** The dashboard gateway that aggregates database and REST responses from CRM, Niyantran, and Logistics.
-*   **Dependencies:**
+*   **Dependencies:** `[ARCHITECTURAL ASSUMPTION]`
     *   Healthy upstream execution of Niyantran, CRM, and Logistics APIs.
     *   CORS configuration parameters defined on individual backend apps.
 *   **Migration Steps:**
@@ -119,7 +119,7 @@ To ensure a stable cutover, services are deployed in a strict dependency sequenc
 
 ### 5️⃣ Artha (Financial Billing & Corporate Ledger)
 *   **Role:** Billing, ledger calculations, and transaction verification. Highly security-critical.
-*   **Dependencies:**
+*   **Dependencies:** `[ARCHITECTURAL ASSUMPTION]`
     *   PostgreSQL instance (with high-integrity ACID properties enforced).
     *   Persistent storage disk mounts (requires high-IOPS NVMe blocks to handle write queues).
 *   **Migration Steps:**
@@ -137,7 +137,7 @@ To ensure a stable cutover, services are deployed in a strict dependency sequenc
 
 ### 6️⃣ Sampada (HR Platform & LangGraph AI Orchestration)
 *   **Role:** AI agent pipelines, employee chat history, and LangGraph computations.
-*   **Dependencies:**
+*   **Dependencies:** `[ARCHITECTURAL ASSUMPTION]`
     *   Heavy Python libraries (LangGraph, langchain, pydantic).
     *   High memory allocation (minimum 2GB container limit to absorb vector processing peaks).
     *   Private OpenAI/Groq API keys.
@@ -155,7 +155,7 @@ To ensure a stable cutover, services are deployed in a strict dependency sequenc
 
 ### 7️⃣ Marketing & Sales (Sovereign Landing Portal)
 *   **Role:** Public marketing portal and user capture webhook endpoint.
-*   **Dependencies:**
+*   **Dependencies:** `[ARCHITECTURAL ASSUMPTION]`
     *   Static HTML/CSS files.
     *   Webhook links to CRM container endpoints.
 *   **Migration Steps:**
@@ -169,12 +169,13 @@ To ensure a stable cutover, services are deployed in a strict dependency sequenc
 
 ---
 
-## 3. Calibrated Rollout Risks & Fallback Triggers
+## 3. Calibrated Rollout Risks & Fallback Triggers `[ARCHITECTURAL ASSUMPTION]`
 
 To maintain a calibrated and honest posture, we must document the explicit risks and numeric thresholds governing this modular rollout:
 
-*   **DNS Propagation Delays (Risk):** During DNS cutover, some regional ISPs ignore low TTL standards and cache old IP addresses for up to 24 hours. Consequently, a small percentage of employee clients may continue routing traffic to Render after cutover.
-*   **Fallback Triggers (Abort Metrics):**
+*   **DNS Propagation Delays (Risk):** During DNS cutover, some regional ISPs ignore low TTL standards and cache old IP addresses for up to 24 hours. Consequently, a small percentage of employee clients may continue routing traffic to Render after cutover. `[ESTIMATED]`
+*   **Fallback Triggers (Abort Metrics):** `[ESTIMATED]`
     *   **5xx Error Rate:** If the NGINX gateway registers more than **3%** of traffic returning HTTP 5xx errors over a 15-minute window, rollback that specific service's upstream proxy.
     *   **Latency Spike:** If database transactions or REST endpoints average more than **500ms** latency over 15 minutes, revert proxy paths.
     *   **Data Import Mismatches:** If record balance checks in the Artha database fail to match the source ledger, abort and lock the service.
+

@@ -135,7 +135,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./proxy configurations/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
     deploy:
       resources:
@@ -230,21 +230,28 @@ volumes:
 
 ---
 
-### Layer 3: Application Layer
+### Layer 3: Application Layer `[ARCHITECTURAL ASSUMPTION]`
 *   **Vite React Frontend:** The React SPA is built into static optimized HTML/JS/CSS assets via a multi-stage Docker build, then served directly by the `setu_proxy` NGINX instance. This completely removes Node.js runtime execution overhead for user interface loading.
 *   **Express Node.js Backend:** The API listens internally on port `5000`. WebSocket/REST endpoints are modularized. The service reads environment parameters directly from the system environment loaded via `env_file: - .env`, keeping passwords, API keys (e.g. Groq), and VAPID private keys isolated from the repository code.
 
 ---
 
-### Layer 4: Database Layer (MongoDB & Postgres Tuning)
+### Layer 4: Database Layer (MongoDB & Postgres Tuning) `[ARCHITECTURAL ASSUMPTION]`
 *   **MongoDB WiredTiger Tuning:** By default, MongoDB attempts to consume 50% of the host system's RAM for its internal storage cache. In a shared 8GB RAM host, this causes immediate memory starvation for application containers. The deployment blueprint strictly limits the database engine's cache footprint using `--wiredTigerCacheSizeGB 1.5`, keeping standard RAM limits predictably below 3GB.
 *   **Postgres Named Volumes:** Postgres is containerized, mapping data directly to the `/var/lib/postgresql/data` subdirectory bound to the `postgres_production_data` local volume. This keeps database operations decoupled from the ephemeral lifecycle of the Docker containers.
 
 ---
 
-### Layer 5: Monitoring Layer (Lightweight Prometheus Telemetry)
-We use a lightweight Prometheus setup to continuously monitor core metrics (RAM utilization, CPU spikes, websocket socket pools) without overloading server CPU cycles.
+### Layer 5: Monitoring Layer (Implemented vs. Planned Telemetry)
 
+We partition our observability stack into what is actively running for basic maintenance versus planned metrics infrastructure:
+
+#### 🔹 Implemented Monitoring `[MEASURED]`
+*   **API Health Endpoint:** A loopback ping endpoint (`/api/ping`) is registered on the Node backend to verify end-to-end routing.
+*   **Native Docker Log Driver:** Standard output streams are captured as structured JSON via the `json-file` log driver in the Compose configurations, with automatic log rotation limits.
+
+#### 🔹 Planned Monitoring `[PLANNED]`
+We plan to introduce a lightweight Prometheus + Grafana setup to continuously monitor core metrics (RAM utilization, CPU spikes, websocket socket pools) without overloading server CPU cycles:
 ```yaml
 # prometheus.yml
 global:
@@ -261,14 +268,15 @@ scrape_configs:
     static_configs:
       - targets: ['node_exporter:9100']
 ```
-*   **Key Metrics Tracked:**
+*   **Planned Metrics to Track:**
     *   `node_memory_Active_bytes`: Tracks RAM leaks on the host node.
     *   `process_cpu_seconds_total`: Monitors backend CPU core utilization during OCR screenshot checks.
     *   `socket_io_connections_active`: Counts active Socket.IO websocket streams for live desktop monitoring.
+    *   `Grafana Loki integration`: Ingest stdout logs into Grafana dashboard dashboards.
 
 ---
 
-### Layer 6: Backup Layer (Automated Script & Offsite Sync)
+### Layer 6: Backup Layer (Automated Script & Offsite Sync) `[PLANNED]`
 This production shell script executes local atomic database dumps, compresses them, and synchronizes the backups to an offsite S3-compatible bucket (e.g., Yotta Object Storage) using `rclone`.
 
 ```bash
@@ -311,7 +319,7 @@ echo "[$TIMESTAMP] Backup Routine Finished."
 
 ---
 
-### Layer 7: Security Layer (Host Isolation & OS Hardening)
+### Layer 7: Security Layer (Host Isolation & OS Hardening) `[PLANNED]`
 1.  **Network Access Restrictions (UFW Configuration):**
     ```bash
     # Deny all incoming traffic by default
@@ -336,7 +344,7 @@ echo "[$TIMESTAMP] Backup Routine Finished."
 
 ---
 
-## 4. Confidence Calibration & Realistic Trade-offs
+## 4. Confidence Calibration & Realistic Trade-offs `[ARCHITECTURAL ASSUMPTION]`
 
 A standard, high-leverage business infrastructure requires realistic confidence planning. Below we document the explicit trade-offs and limits of deploying a **Docker Compose** single-node stack versus building a multi-node **Kubernetes** cluster.
 
@@ -351,3 +359,4 @@ A standard, high-leverage business infrastructure requires realistic confidence 
     *   **Docker Compose:** Operates natively with the standard Docker Engine daemon, using **less than 50MB of RAM** at idle. This saves valuable host memory for critical operations (Node.js API parsing, OCR canvas processes, and database queries).
 *   **Maintenance Simplicity:** Kubernetes introduces a layer of operational friction (Ingress controllers, Persistent Volume Claim provisioners, pod scheduling policies, DNS syncs) that requires manual oversight and specialized knowledge, raising human error risks. Docker Compose coordinates the entire environment in a single, simple, readable declarative YAML file.
 *   **Sovereign Compliance & Low Burn:** Keeping the deployment simple ensures that the infrastructure remains easy to monitor and trace, keeping hardware hosting bills minimal.
+

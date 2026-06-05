@@ -7,7 +7,7 @@ This document establishes the **Security Baseline** for deploying SETU and Niyan
 
 ---
 
-## 2. Tenant-Safe Container Boundaries (DB Access Isolation)
+## 2. Tenant-Safe Container Boundaries (DB Access Isolation) `[ARCHITECTURAL ASSUMPTION]`
 
 To protect multi-tenant workspaces and isolate billing (Artha), logistics, and employee core data (Niyantran), the system enforces strict network-level isolation using **Docker Virtual Bridge Networks**. 
 
@@ -54,7 +54,7 @@ networks:
 
 ---
 
-## 3. Secret Management & JWT Key Handling
+## 3. Secret Management & JWT Key Handling `[ARCHITECTURAL ASSUMPTION]`
 
 ### A. Environment Segregation on the Host Node
 Hardcoding passwords, API keys (e.g. Groq), and encryption keys inside codebase repositories is strictly prohibited. The deployment stack isolates these variables in a secure `.env` file on the host operating system, loading them dynamically into containers during boot.
@@ -106,7 +106,7 @@ module.exports = function(req, res, next) {
 
 ---
 
-## 4. HTTPS & TLS Termination (NGINX + Let's Encrypt)
+## 4. HTTPS & TLS Termination (NGINX + Let's Encrypt) `[ARCHITECTURAL ASSUMPTION]`
 
 To secure user sessions and desktop screen capture sync streams, all traffic must be encrypted. The NGINX reverse proxy terminates SSL/TLS connections, routing HTTP traffic to HTTPS and presenting Let's Encrypt dynamic certificates.
 
@@ -175,7 +175,7 @@ server {
 
 ---
 
-## 5. Daily Database Backup Strategy
+## 5. Daily Database Backup Strategy `[PLANNED]`
 
 To prevent data loss from physical host crashes or corrupted database blocks, the system schedules daily compressed, encrypted backups to an offsite S3 object directory.
 
@@ -217,7 +217,7 @@ Install the backup execution in the system-level crontab to trigger automaticall
 
 ---
 
-## 6. User Actions Audit Logging Middleware
+## 6. User Actions Audit Logging Middleware `[ARCHITECTURAL ASSUMPTION]`
 
 To track compliance, record payroll alterations, and monitor employee data accesses, the Node backend implements an internal **Audit Logging Middleware**. This intercepts requests and stores them in a persistent collection for auditing:
 
@@ -277,7 +277,7 @@ module.exports = function(actionType) {
 
 ---
 
-## 7. Future RBAC (Role-Based Access Control) Readiness
+## 7. Future RBAC (Role-Based Access Control) Readiness `[PLANNED]`
 
 To prepare the Niyantran system for multi-tenant scalability, the User collection includes an active `role` field. We enforce these boundaries using a modular role authorization check:
 
@@ -314,7 +314,7 @@ module.exports = function(allowedRoles = []) {
 
 ---
 
-## 8. Calibrated Security Boundaries & Host Limitations
+## 8. Calibrated Security Boundaries & Host Limitations `[PLANNED]`
 
 To maintain a calibrated and honest posture, we must document the explicit security limits and operational risks of this single-node Docker Compose setup:
 
@@ -326,3 +326,4 @@ To maintain a calibrated and honest posture, we must document the explicit secur
     0 3 * * 1 apt-get update && apt-get upgrade -y --only-upgrade
     ```
 4.  **No Active Intrusion Detection (IDS/IPS):** A lean Docker Compose deployment lacks the complex intrusion detection platforms (like Falco, Snort, or SIEM systems) native to large enterprise environments. **Mitigation:** Manually audit system log directories `/var/log/auth.log` and NGINX access records weekly for anomalous routing actions.
+
