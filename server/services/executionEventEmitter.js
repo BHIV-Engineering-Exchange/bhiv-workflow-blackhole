@@ -140,6 +140,14 @@ const emitLifecycleEvent = async (eventType, executionContext, payload = {}) => 
   }
 
   await emitLineageArtifact(created);
+  try {
+    const { dispatchToSampada } = require("./setuDispatcher");
+    dispatchToSampada(created, {
+      correlationId: process.env.SAMPADA_SETU_CORRELATION_ID,
+    }).catch(() => {});
+  } catch (_) {
+    // additive side-effect only
+  }
   await ExecutionSession.updateOne(
     { executionId },
     {

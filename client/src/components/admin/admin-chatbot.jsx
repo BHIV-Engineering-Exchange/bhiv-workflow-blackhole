@@ -129,30 +129,6 @@ const AdminChatbot = () => {
     }
   }
 
-  const handleClearChat = async () => {
-    try {
-      if (sessionId) {
-        await api.post("/chatbot/clear", { sessionId })
-      }
-      
-      setMessages([
-        {
-          role: "assistant",
-          content: "Chat cleared! How can I assist you today?",
-          timestamp: new Date(),
-        },
-      ])
-      setSessionId(null)
-      
-      toast({
-        title: "Chat Cleared",
-        description: "Conversation history has been reset",
-      })
-    } catch (error) {
-      console.error("Error clearing chat:", error)
-    }
-  }
-
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -162,7 +138,7 @@ const AdminChatbot = () => {
 
   if (!isOpen) {
     return (
-      <div className="fixed bottom-6 right-6 z-50 group">
+      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 group">
         <button
           onClick={() => setIsOpen(true)}
           className="relative cursor-pointer transition-transform duration-200 hover:scale-110 active:scale-95"
@@ -173,7 +149,7 @@ const AdminChatbot = () => {
           }}
         >
           {/* Clean brain emoji - no background, no glow, no animations */}
-          <span className="text-6xl" style={{ 
+          <span className="text-5xl sm:text-6xl" style={{ 
             filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.2))'
           }}>
             🧠
@@ -208,15 +184,15 @@ const AdminChatbot = () => {
     <div className={`fixed z-50 transition-all duration-300 ${
       isFullscreen 
         ? "inset-0 m-0" 
-        : "bottom-6 right-6"
+        : "inset-x-3 bottom-3 sm:inset-x-auto sm:bottom-6 sm:right-6"
     }`}>
       <Card 
         className={`border-none shadow-2xl transition-all duration-300 ${
           isFullscreen 
             ? "w-full h-full rounded-none" 
             : isMinimized 
-              ? "w-[450px] h-16 rounded-2xl" 
-              : "w-[450px] h-[700px] rounded-2xl"
+              ? "w-full max-w-[450px] h-16 rounded-2xl" 
+              : "w-full max-w-[450px] h-[calc(100dvh-1.5rem)] max-h-[700px] rounded-2xl"
         }`}
         style={{
           background: 'rgba(30, 30, 30, 0.85)',
@@ -225,7 +201,7 @@ const AdminChatbot = () => {
           boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
         }}
       >
-        <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-white/10">
+        <CardHeader className="p-3 sm:p-5 flex flex-row items-center justify-between space-y-0 border-b border-white/10">
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg">
@@ -235,7 +211,7 @@ const AdminChatbot = () => {
             </div>
             <div>
               <CardTitle className="text-base font-bold text-white">Workflow Assistant</CardTitle>
-              <p className="text-xs text-gray-400 font-medium mt-0.5">
+              <p className="hidden sm:block text-xs text-gray-400 font-medium mt-0.5">
                 Infiverse AI Solution
               </p>
             </div>
@@ -289,13 +265,13 @@ const AdminChatbot = () => {
         {!isMinimized && (
           <>
             <CardContent className={`p-0 ${
-              isFullscreen ? "h-[calc(100vh-180px)]" : "h-[calc(700px-180px)]"
+              isFullscreen ? "h-[calc(100dvh-180px)]" : "h-[calc(100dvh-170px)] sm:h-[calc(700px-180px)]"
             }`}
             style={{
               background: 'rgba(20, 20, 20, 0.6)'
             }}
             >
-              <ScrollArea className="h-full p-5">
+              <ScrollArea className="h-full p-3 sm:p-5">
                 <div className="space-y-4">
                   {messages.map((message, index) => (
                     <div
@@ -314,7 +290,7 @@ const AdminChatbot = () => {
                       )}
                       
                       <div
-                        className={`rounded-xl px-4 py-3 max-w-[85%] transition-all duration-200 ${
+                        className={`rounded-xl px-4 py-3 max-w-[85%] break-words transition-all duration-200 ${
                           message.role === "user"
                             ? "text-white shadow-lg"
                             : message.isError
@@ -383,7 +359,7 @@ const AdminChatbot = () => {
               </ScrollArea>
             </CardContent>
 
-            <div className="p-5 border-t border-white/10"
+            <div className="p-3 sm:p-5 border-t border-white/10"
               style={{
                 background: 'rgba(20, 20, 20, 0.8)'
               }}
@@ -415,7 +391,7 @@ const AdminChatbot = () => {
                   )}
                 </Button>
               </div>
-              <div className="flex items-center justify-center gap-3 text-xs text-gray-500">
+              <div className="hidden sm:flex items-center justify-center gap-3 text-xs text-gray-500">
                 <span className="flex items-center gap-1.5">
                   <kbd className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-gray-400 font-mono text-[10px]">Enter</kbd>
                   <span>Send</span>

@@ -7,6 +7,8 @@ const { uploadToCloudinary } = require("../utils/cloudinary")
 const Notification = require("../models/Notification")
 const User = require("../models/User")
 const auth = require("../middleware/auth")
+const crypto = require("crypto")
+const { emitTaskSubmittedEvent, emitTaskCompletedEvent, emitTaskFailedEvent } = require("../services/taskExecutionBridge")
 
 // Configure multer for memory storage
 const upload = multer({
@@ -110,6 +112,15 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
   try {
     const { task: taskId, githubLink, notes, originalSubmission, userId } = req.body
 
+    // Get or generate trace_id (make it optional for backward compatibility)
+    let traceId = req.headers["x-trace-id"];
+    if (!traceId) {
+      traceId = `trace_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      console.log(`[TRACE_WARNING] Auto-generated trace_id for task submission ${taskId}: ${traceId}`);
+    } else {
+      console.log(`[TRACE_RECEIVED] Submission received - trace_id=${traceId}, task_id=${taskId}`);
+    }
+
     // Check if user is active
     const user = await User.findOne({ _id: userId, stillExist: 1 });
     if (!user) {
@@ -122,7 +133,7 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       return res.status(404).json({ error: "Task not found" })
     }
 
-    // If it's an original submission (not a revision)
+    // Validate: Prevent duplicate original submission
     if (!originalSubmission) {
       const existingSubmission = await TaskSubmission.findOne({
         task: taskId,
@@ -130,7 +141,25 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       })
 
       if (existingSubmission) {
-        return res.status(400).json({ error: "A submission already exists for this task" })
+        console.error(`[TRACE_FAILURE] Duplicate submission attempt - trace_id=${traceId}, task_id=${taskId}`);
+        
+        // Emit failure event
+        try {
+          await emitTaskFailedEvent(
+            { task: taskId, user: userId, _id: "duplicate" },
+            "duplicate_submission",
+            traceId,
+            task.branch
+          );
+        } catch (emitErr) {
+          console.error("Failed to emit failure event:", emitErr);
+        }
+
+        return res.status(400).json({ 
+          error: "A submission already exists for this task",
+          reason: "duplicate_submission",
+          trace_id: traceId
+        })
       }
     }
 
@@ -182,11 +211,21 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       }
     }
 
+    // Emit execution event with trace propagation
+    let execContext;
+    try {
+      execContext = await emitTaskSubmittedEvent(submission, traceId, task.branch);
+      console.log(`[TRACE_EMITTED] Submission event emitted - trace_id=${execContext.traceId}`);
+    } catch (execErr) {
+      console.error("[TRACE_FAILURE] Failed to emit submission event:", execErr);
+    }
+
     // Emit socket event for real-time updates
     if (req.io) {
       req.io.emit("submission-created", {
         submission,
         taskId,
+        trace_id: execContext?.traceId
       })
     }
 
@@ -216,7 +255,11 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       }
     }
 
-    res.status(201).json(submission)
+    res.status(201).json({
+      ...submission.toObject(),
+      trace_id: execContext?.traceId,
+      execution_id: execContext?.executionId
+    })
   } catch (error) {
     console.error("Error creating submission:", error)
     res.status(500).json({ error: error.message || "Server error" })
@@ -322,6 +365,15 @@ router.put("/:id/review", auth, async (req, res) => {
       return res.status(400).json({ error: "Invalid status" })
     }
 
+    // Get or generate trace_id (make it optional for backward compatibility)
+    let traceId = req.headers["x-trace-id"];
+    if (!traceId) {
+      traceId = `trace_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      console.log(`[TRACE_WARNING] Auto-generated trace_id for submission review`);
+    } else {
+      console.log(`[TRACE_RECEIVED] Review received - trace_id=${traceId}, status=${status}`);
+    }
+
     const submission = await TaskSubmission.findById(req.params.id)
     if (!submission) {
       return res.status(404).json({ error: "Submission not found" })
@@ -354,19 +406,40 @@ router.put("/:id/review", auth, async (req, res) => {
     submission.feedback = feedback || ""
     await submission.save()
 
-    // If approved, ensure task is marked as completed
-    if (status === "Approved") {
-      const task = await Task.findById(submission.task)
-      if (task && task.status !== "Completed") {
-        task.status = "Completed"
-        task.progress = 100
-        await task.save()
+    const task = await Task.findById(submission.task);
+
+    // Emit execution events based on review outcome
+    let execContext;
+    try {
+      if (status === "Approved") {
+        execContext = await emitTaskCompletedEvent(submission, traceId, task?.branch);
+        console.log(`[TRACE_EMITTED] Task completed - trace_id=${execContext.traceId}`);
+        
+        // Mark task as completed
+        if (task && task.status !== "Completed") {
+          task.status = "Completed"
+          task.progress = 100
+          await task.save()
+        }
+      } else if (status === "Rejected") {
+        execContext = await emitTaskFailedEvent(
+          submission, 
+          feedback || "submission_rejected", 
+          traceId, 
+          task?.branch
+        );
+        console.log(`[TRACE_EMITTED] Task failed - trace_id=${execContext.traceId}`);
       }
+    } catch (execErr) {
+      console.error("[TRACE_FAILURE] Failed to emit review event:", execErr);
     }
 
     // Emit socket event for real-time updates
     if (req.io) {
-      req.io.emit("submission-reviewed", submission)
+      req.io.emit("submission-reviewed", {
+        submission,
+        trace_id: execContext?.traceId
+      })
     }
 
     // Notify the submitter
@@ -378,7 +451,11 @@ router.put("/:id/review", auth, async (req, res) => {
       task: submission.task,
     })
 
-    res.json(submission)
+    res.json({
+      ...submission.toObject(),
+      trace_id: execContext?.traceId,
+      execution_id: execContext?.executionId
+    })
   } catch (error) {
     console.error("Error reviewing submission:", error)
     res.status(500).json({ error: "Server error" })
