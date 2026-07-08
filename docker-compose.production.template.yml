@@ -41,14 +41,12 @@ services:
         max-file: "3"
 
   backend:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
+    image: bhiv/niyantran-backend:IMG_TAG
     container_name: niyantran_backend
     restart: unless-stopped
     # Public ports are OMITTED for security isolation
     env_file:
-      - .env.example
+      - .env
     networks:
       - niyantran_network
     depends_on:
@@ -67,14 +65,12 @@ services:
         max-file: "3"
 
   frontend:
-    build:
-      context: .
-      dockerfile: client/Dockerfile
+    image: bhiv/niyantran-frontend:IMG_TAG
     container_name: niyantran_frontend
     restart: unless-stopped
     # Public ports are OMITTED for proxy-only ingress
     env_file:
-      - .env.example
+      - .env
     networks:
       - niyantran_network
     depends_on:
