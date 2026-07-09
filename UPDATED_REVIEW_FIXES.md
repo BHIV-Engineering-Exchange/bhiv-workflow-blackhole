@@ -13,10 +13,10 @@ This document provides a comprehensive record of all internal review findings re
     *   **Ingress Reverse Proxy (`nginx.conf`):** Introduced NGINX as the sole entry point (`proxy-only ingress`) mapping public ports `80` and `443` on the host, secure-proxying API calls (`/api/`), routing auth routes under stricter limits (`/api/auth/`), and upgrading WebSocket tunnels (`/socket.io/`) with custom keep-alive parameters.
 
 **Deliverables Saved:**
-*   [docker-compose.dev.yml](file:///c:/Users/ASUS/OneDrive/Desktop/BHIV-Tasks/SETU/workflow-blackhole/docker-compose.dev.yml)
-*   [docker-compose.production.yml](file:///c:/Users/ASUS/OneDrive/Desktop/BHIV-Tasks/SETU/workflow-blackhole/docker-compose.production.yml)
-*   [nginx.conf](file:///c:/Users/ASUS/OneDrive/Desktop/BHIV-Tasks/SETU/workflow-blackhole/proxy%20configurations/nginx.conf) (Reverse Proxy configuration)
-*   [NGINX/nginx.conf](file:///c:/Users/ASUS/OneDrive/Desktop/BHIV-Tasks/SETU/workflow-blackhole/NGINX/nginx.conf) (Frontend SPA Router fallback configuration)
+*   [docker-compose.dev.yml](./docker-compose.dev.yml)
+*   [docker-compose.production.yml](./docker-compose.production.yml)
+*   [nginx.conf](./proxy%20configurations/nginx.conf) (Reverse Proxy configuration)
+*   [NGINX/nginx.conf](./NGINX/nginx.conf) (Frontend SPA Router fallback configuration)
 
 ---
 
@@ -30,15 +30,15 @@ This document provides a comprehensive record of all internal review findings re
     *   `[PLANNED]`: Upcoming migration steps, firewall settings, cron backup routines, and future RBAC models.
 
 **Modified Documentation Register:**
-1.  [SETU_DEPLOYMENT_AUDIT.md](file:///c:/Users/ASUS/OneDrive/Desktop/BHIV-Tasks/SETU/workflow-blackhole/SETU_DEPLOYMENT_AUDIT.md) — Calibrated current Render metrics and future VPS targets.
-2.  [PERFORMANCE_BOTTLENECK_ANALYSIS.md](file:///c:/Users/ASUS/OneDrive/Desktop/BHIV-Tasks/SETU/workflow-blackhole/PERFORMANCE_BOTTLENECK_ANALYSIS.md) — Calibrated the before vs. after performance matrix.
-3.  [SETU_SELF_HOSTING_BLUEPRINT.md](file:///c:/Users/ASUS/OneDrive/Desktop/BHIV-Tasks/SETU/workflow-blackhole/SETU_SELF_HOSTING_BLUEPRINT.md) — Calibrated horizontal scalability limits and vertical bounds.
-4.  [COST_COMPARISON_REPORT.md](file:///c:/Users/ASUS/OneDrive/Desktop/BHIV-Tasks/SETU/workflow-blackhole/COST_COMPARISON_REPORT.md) — Calibrated monthly VPS prices and savings percentages.
-5.  [SECURITY_BASELINE.md](file:///c:/Users/ASUS/OneDrive/Desktop/BHIV-Tasks/SETU/workflow-blackhole/SECURITY_BASELINE.md) — Calibrated isolation schema and future kernel configurations.
-6.  [ROLLOUT_PLAN.md](file:///c:/Users/ASUS/OneDrive/Desktop/BHIV-Tasks/SETU/workflow-blackhole/ROLLOUT_PLAN.md) — Calibrated migration stages and rollback error thresholds.
-7.  [BHIV_INFRA_READINESS.md](file:///c:/Users/ASUS/OneDrive/Desktop/BHIV-Tasks/SETU/workflow-blackhole/BHIV_INFRA_READINESS.md) — Calibrated bare-metal specifications and roadmap expansion tiers.
-8.  [DEPLOYMENT_DEMO_PROOF.md](file:///c:/Users/ASUS/OneDrive/Desktop/BHIV-Tasks/SETU/workflow-blackhole/DEPLOYMENT_DEMO_PROOF.md) — Calibrated validation checkpoint command targets.
-9.  [REVIEW_PACKET.md](file:///c:/Users/ASUS/OneDrive/Desktop/BHIV-Tasks/SETU/workflow-blackhole/REVIEW_PACKET.md) — Calibrated core DevOps tenets and index registry check links.
+1.  [SETU_DEPLOYMENT_AUDIT.md](./SETU_DEPLOYMENT_AUDIT.md) — Calibrated current Render metrics and future VPS targets.
+2.  [PERFORMANCE_BOTTLENECK_ANALYSIS.md](./PERFORMANCE_BOTTLENECK_ANALYSIS.md) — Calibrated the before vs. after performance matrix.
+3.  [SETU_SELF_HOSTING_BLUEPRINT.md](./SETU_SELF_HOSTING_BLUEPRINT.md) — Calibrated horizontal scalability limits and vertical bounds.
+4.  [COST_COMPARISON_REPORT.md](./COST_COMPARISON_REPORT.md) — Calibrated monthly VPS prices and savings percentages.
+5.  [SECURITY_BASELINE.md](./SECURITY_BASELINE.md) — Calibrated isolation schema and future kernel configurations.
+6.  [ROLLOUT_PLAN.md](./ROLLOUT_PLAN.md) — Calibrated migration stages and rollback error thresholds.
+7.  [BHIV_INFRA_READINESS.md](./BHIV_INFRA_READINESS.md) — Calibrated bare-metal specifications and roadmap expansion tiers.
+8.  [DEPLOYMENT_DEMO_PROOF.md](./DEPLOYMENT_DEMO_PROOF.md) — Calibrated validation checkpoint command targets.
+9.  [REVIEW_PACKET.md](./REVIEW_PACKET.md) — Calibrated core DevOps tenets and index registry check links.
 
 ---
 
