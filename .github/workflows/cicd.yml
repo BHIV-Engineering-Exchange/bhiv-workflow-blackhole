@@ -27,6 +27,8 @@ jobs:
           touch .env
 
       - name: Validate Docker Compose files
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
         run: |
           docker compose -f docker-compose.production.yml config
 
@@ -139,6 +141,9 @@ jobs:
             # Generate target compose file from template by substituting the image tag
             sed "s|IMG_TAG|${{ needs.build.outputs.sha_short }}|g" docker-compose.production.template.yml > docker-compose.production.yml
             
+            # ATLAS URL's runtime injection
+            export MONGODB_URI='${{ secrets.MONGODB_URI }}'
+
             # Validate compose config before deploy
             docker compose -f docker-compose.production.yml config
             
@@ -147,9 +152,6 @@ jobs:
             
             # Log out from Docker Hub to secure credentials on the VM
             docker logout
-            
-            # ATLAS URL's runtime injection
-            export MONGODB_URI='${{ secrets.MONGODB_URI }}'
 
             docker compose -f docker-compose.production.yml up -d --remove-orphans
             
