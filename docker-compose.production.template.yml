@@ -19,32 +19,34 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  database:
-    image: mongo:6.0
-    container_name: niyantran_database
-    restart: unless-stopped
-    # Public ports are OMITTED for security database isolation
-    volumes:
-      - mongodb_data:/data/db
-    networks:
-      - niyantran_network
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+  # database:
+  #   image: mongo:6.0
+  #   container_name: niyantran_database
+  #   restart: unless-stopped
+  #   # Public ports are OMITTED for security database isolation
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #   networks:
+  #     - niyantran_network
+  #   healthcheck:
+  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 10s
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
 
   backend:
     image: bhiv/niyantran-backend:IMG_TAG
     container_name: niyantran_backend
     restart: unless-stopped
     # Public ports are OMITTED for security isolation
+    environment:
+      MONGODB_URI: ${MONGODB_URI}
     env_file:
       - .env
     networks:
@@ -87,7 +89,7 @@ services:
     container_name: niyantran_prometheus
     restart: unless-stopped
     ports:
-      - "127.0.0.1:9090:9090"
+      - "9090:9090"
     volumes:
       - ./Monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -104,7 +106,7 @@ services:
     container_name: niyantran_grafana
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000"
+      - "3000:3000"
     volumes:
       - ./Monitoring/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
       - grafana_data:/var/lib/grafana
@@ -163,8 +165,8 @@ networks:
     driver: bridge
 
 volumes:
-  mongodb_data:
-    driver: local
+  # mongodb_data:
+  #   driver: local
   prometheus_data:
     driver: local
   grafana_data:

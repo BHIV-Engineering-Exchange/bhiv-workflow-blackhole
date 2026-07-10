@@ -1,4 +1,5 @@
 server/uploads/
 *.env
 .env*
+.env.production
 node_modules

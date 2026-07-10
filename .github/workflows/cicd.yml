@@ -148,6 +148,9 @@ jobs:
             # Log out from Docker Hub to secure credentials on the VM
             docker logout
             
+            # ATLAS URL's runtime injection
+            export MONGODB_URI='${{ secrets.MONGODB_URI }}'
+
             docker compose -f docker-compose.production.yml up -d --remove-orphans
             
             # Verify deployment status
