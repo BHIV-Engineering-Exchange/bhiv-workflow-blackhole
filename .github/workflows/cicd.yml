@@ -155,6 +155,9 @@ jobs:
 
             docker compose -f docker-compose.production.yml up -d --remove-orphans
             
+            # to Reload NGINX
+            docker compose -f docker-compose.production.yml up -d --force-recreate proxy
+
             # Verify deployment status
             docker compose -f docker-compose.production.yml ps
             
