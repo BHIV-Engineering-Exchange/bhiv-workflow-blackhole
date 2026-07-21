@@ -67,4 +67,4 @@ Here is a summary of the modified files, their repository paths, and the exact r
 
 ## 3. Template Code Contents
 
-*To inspect or copy the exact configuration structures used, refer to the template files in the respective subfolders.*
+*To inspect or copy the exact configuration structures used, refer to the template files in the respective subfolders*
