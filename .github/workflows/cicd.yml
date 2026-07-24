@@ -39,6 +39,7 @@ jobs:
           path: |
             docker-compose.production.template.yml
             proxy configurations/nginx.conf
+            proxy configurations/nginx.ssl.conf
             Monitoring/prometheus.yml
             Monitoring/datasource.yml
 
