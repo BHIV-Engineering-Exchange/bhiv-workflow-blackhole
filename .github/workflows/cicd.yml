@@ -178,10 +178,10 @@ jobs:
               fi
               
               API_HEALTH=0
-              curl -sf http://localhost/api/ping > /dev/null && API_HEALTH=1
+              curl -k -sf https://localhost/api/ping > /dev/null && API_HEALTH=1
               
               FRONTEND_HEALTH=0
-              curl -sf http://localhost > /dev/null && FRONTEND_HEALTH=1
+              curl -k -sf https://localhost > /dev/null && FRONTEND_HEALTH=1
               
               if [ "$UNHEALTHY_COUNT" -eq 0 ] && [ "$STARTING_COUNT" -eq 0 ] && [ "$API_HEALTH" -eq 1 ] && [ "$FRONTEND_HEALTH" -eq 1 ]; then
                 echo "All containers, API, and frontend endpoints are healthy!"
