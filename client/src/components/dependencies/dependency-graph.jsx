@@ -37,16 +37,13 @@ export function DependencyGraph() {
       try {
         setIsLoading(true)
         const [tasksData, departmentsResponse] = await Promise.all([
-          api.tasks.getTasks(),
+          api.tasks.getTasks({ page: 1, limit: 100 }),
           api.departments.getDepartments(),
         ])
-        console.log("Fetched tasks:", tasksData)
-        console.log("Fetched departments:", departmentsResponse)
 
-        // Handle new API response format for departments
         const departmentsData = departmentsResponse.success ? departmentsResponse.data : departmentsResponse
 
-        setTasks(tasksData)
+        setTasks(Array.isArray(tasksData) ? tasksData : (tasksData.tasks ?? []))
         setDepartments(Array.isArray(departmentsData) ? departmentsData : [])
         setError(null)
       } catch (err) {

@@ -20,6 +20,59 @@ const getBranchQuery = (req) => {
   return {};
 };
 
+// Get leaderboard stats (all users with task counts in one aggregation)
+router.get("/leaderboard", async (req, res) => {
+  try {
+    const branchQuery = getBranchQuery(req);
+
+    const [users, taskAgg] = await Promise.all([
+      User.find({ stillExist: 1, ...branchQuery })
+        .select("name email role department avatar")
+        .populate("department", "name")
+        .lean(),
+      Task.aggregate([
+        { $match: branchQuery },
+        { $group: {
+          _id: { assignee: "$assignee", status: "$status" },
+          count: { $sum: 1 },
+          deps: { $sum: { $size: { $ifNull: ["$dependencies", []] } } },
+        }},
+      ]),
+    ]);
+
+    // Build map: userId -> { completed, total, deps }
+    const statsMap = {};
+    taskAgg.forEach(({ _id, count, deps }) => {
+      const uid = _id.assignee?.toString();
+      if (!uid) return;
+      if (!statsMap[uid]) statsMap[uid] = { completedTasks: 0, totalTasks: 0, totalDependencies: 0 };
+      statsMap[uid].totalTasks += count;
+      if (_id.status === "Completed") {
+        statsMap[uid].completedTasks += count;
+        statsMap[uid].totalDependencies += deps;
+      }
+    });
+
+    const leaderboard = users.map((u) => {
+      const s = statsMap[u._id.toString()] || { completedTasks: 0, totalTasks: 0, totalDependencies: 0 };
+      return {
+        ...u,
+        completedTasks: s.completedTasks,
+        totalTasks: s.totalTasks,
+        totalDependencies: s.totalDependencies,
+        workload: s.totalTasks - s.completedTasks,
+        completionRate: s.totalTasks > 0 ? (s.completedTasks / s.totalTasks) * 100 : 0,
+      };
+    });
+
+    leaderboard.sort((a, b) => b.completedTasks - a.completedTasks);
+    res.json(leaderboard);
+  } catch (error) {
+    console.error("Error fetching leaderboard:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // Get dashboard stats
 router.get("/stats", async (req, res) => {
   try {

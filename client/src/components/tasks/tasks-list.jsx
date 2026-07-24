@@ -189,8 +189,8 @@ export function TasksList({ filters }) {
     const fetchTasks = async () => {
       try {
         setIsLoading(true)
-        const data = await api.tasks.getTasks(filters)
-        setTasks(data)
+        const data = await api.tasks.getTasks({ ...filters, page: 1, limit: 100 })
+        setTasks(data.tasks ?? data)
         setError(null)
       } catch (err) {
         setError(err.message || "Failed to load tasks")

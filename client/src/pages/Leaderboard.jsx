@@ -30,35 +30,8 @@ const Leaderboard = () => {
   const fetchLeaderboard = async () => {
     try {
       setIsLoading(true);
-      // Fetch all users with their task statistics
-      const users = await api.users.getUsers();
-      const leaderboardData = await Promise.all(
-        users.map(async (user) => {
-          const tasks = await api.users.getUserTasks(user._id, { status: "Completed" });
-          const allTasks = await api.users.getUserTasks(user._id);
-          const dependencies = await Promise.all(
-            tasks.map(async (task) => {
-              const deps = await api.tasks.getTask(task._id);
-              return deps.dependencies.length;
-            })
-          );
-          const totalDependencies = dependencies.reduce((sum, count) => sum + count, 0);
-          
-          return {
-            ...user,
-            completedTasks: tasks.length,
-            totalDependencies,
-            workload: allTasks.length - tasks.length, // Pending/In Progress tasks
-            completionRate: allTasks.length > 0 ? (tasks.length / allTasks.length) * 100 : 0,
-          };
-        })
-      );
-
-      // Sort by completed tasks (descending)
-      const sortedLeaderboard = leaderboardData.sort(
-        (a, b) => b.completedTasks - a.completedTasks
-      );
-      setLeaderboard(sortedLeaderboard);
+      const data = await api.dashboard.getLeaderboard();
+      setLeaderboard(data);
     } catch (error) {
       toast({
         title: "Error",
@@ -75,17 +48,17 @@ const Leaderboard = () => {
       const [user, tasks, submissions] = await Promise.all([
         api.users.getUser(userId),
         api.users.getUserTasks(userId),
-        api.users.getUserSubmissions(userId),
+        api.get(`/users/${userId}/submissions`).catch(() => []),
       ]);
 
       const completedTasks = tasks.filter((task) => task.status === "Completed");
       const pendingTasks = tasks.filter((task) => task.status !== "Completed");
-      
+
       setUserDetails({
         ...user,
         completedTasks,
         pendingTasks,
-        submissions,
+        submissions: Array.isArray(submissions) ? submissions : [],
         totalTasks: tasks.length,
         completionRate: tasks.length > 0 ? (completedTasks.length / tasks.length) * 100 : 0,
       });
@@ -100,6 +73,7 @@ const Leaderboard = () => {
 
   const handleUserClick = (user) => {
     setSelectedUser(user);
+    setUserDetails(null);
     fetchUserDetails(user._id);
   };
 

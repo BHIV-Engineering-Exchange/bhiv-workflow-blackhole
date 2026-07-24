@@ -16,10 +16,10 @@ export default function Optimization() {
     const fetchData = async () => {
       try {
         const [tasksData, insightsData] = await Promise.all([
-          api.tasks.getTasks(),
+          api.tasks.getTasks({ page: 1, limit: 100 }),
           api.ai.getInsights(),
         ]);
-        setTasks(tasksData);
+        setTasks(Array.isArray(tasksData) ? tasksData : (tasksData.tasks ?? []));
         setInsights(insightsData);
       } catch (error) {
         console.error("Failed to fetch optimization data:", error);
@@ -76,8 +76,8 @@ export default function Optimization() {
       // If still not found, try to fetch fresh tasks
       if (!task) {
         console.log("🔄 Task not found in local state, fetching fresh tasks...");
-        const freshTasks = await api.tasks.getTasks();
-        task = freshTasks.find((t) => 
+        const freshTasks = await api.tasks.getTasks({ page: 1, limit: 100 });
+        task = (Array.isArray(freshTasks) ? freshTasks : (freshTasks.tasks ?? [])).find((t) => 
           (taskTitle && (t.title === taskTitle || t.title?.toLowerCase() === taskTitle?.toLowerCase())) ||
           (insight.taskId && (t._id === insight.taskId || t._id.toString() === insight.taskId.toString()))
         );
@@ -171,8 +171,8 @@ export default function Optimization() {
     console.log("✅ Task updated successfully:", updatedTask);
     
     // Refresh tasks list
-    const updatedTasks = await api.tasks.getTasks();
-    setTasks(updatedTasks);
+    const updatedTasks = await api.tasks.getTasks({ page: 1, limit: 100 });
+    setTasks(Array.isArray(updatedTasks) ? updatedTasks : (updatedTasks.tasks ?? []));
 
     toast({
       title: "Success",
