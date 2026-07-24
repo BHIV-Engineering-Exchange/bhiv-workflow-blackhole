@@ -1,51 +1,57 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import axios from "axios"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card"
 import { Progress } from "../ui/progress"
 import { CheckCircle2, Clock, AlertTriangle } from "lucide-react"
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts"
+import { API_URL } from "@/lib/api"
 
-export function CompletedTasksStats({ tasks = [], submissions = [], departments = [] }) {
-  let approved = 0, pending = 0, rejected = 0, noSubmission = 0
-  const total = tasks.length
+export function CompletedTasksStats({ departments = [] }) {
+  const [stats, setStats] = useState(null)
+  const [error, setError] = useState(false)
 
-  const departmentStats = departments.map((dept) => ({
-    id: dept._id,
-    name: dept.name,
-    color: dept.color,
-    total: 0,
-    approved: 0,
-    pending: 0,
-    rejected: 0,
-    noSubmission: 0,
-  }))
+  useEffect(() => {
+    const token = localStorage.getItem("WorkflowToken")
+    const branch = localStorage.getItem("selectedBranch")
+    const headers = { "x-auth-token": token }
+    if (branch && branch !== "all") headers["x-branch"] = branch
 
-  tasks.forEach((task) => {
-    const submission = submissions.find((sub) => sub.task?._id === task._id)
-    const deptIndex = task.department ? departmentStats.findIndex((d) => d.id === task.department._id) : -1
+    axios
+      .get(`${API_URL}/tasks/stats`, { headers })
+      .then((res) => setStats(res.data))
+      .catch((err) => {
+        console.error("CompletedTasksStats fetch failed:", err?.response?.data || err.message)
+        setError(true)
+      })
+  }, [])
 
-    if (deptIndex >= 0) {
-      departmentStats[deptIndex].total++
-    }
+  if (!stats) return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {[...Array(4)].map((_, i) => (
+        <Card key={i} className="border-l-4 border-l-slate-200 overflow-hidden animate-pulse">
+          <CardContent className="p-6">
+            <div className="h-4 bg-slate-200 rounded w-1/3 mb-4" />
+            <div className="h-8 bg-slate-200 rounded w-1/2" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
 
-    if (submission) {
-      if (submission.status === "Approved") {
-        approved++
-        if (deptIndex >= 0) departmentStats[deptIndex].approved++
-      } else if (submission.status === "Rejected") {
-        rejected++
-        if (deptIndex >= 0) departmentStats[deptIndex].rejected++
-      } else {
-        pending++
-        if (deptIndex >= 0) departmentStats[deptIndex].pending++
-      }
-    } else {
-      noSubmission++
-      if (deptIndex >= 0) departmentStats[deptIndex].noSubmission++
-    }
-  })
+  const { approved, pending, rejected, noSubmission, total, byDepartment } = stats
 
-  const filteredDeptStats = departmentStats.filter((dept) => dept.total > 0)
+  // Map department ObjectId → name/color from the departments prop
+  const deptMap = new Map(departments.map((d) => [String(d._id), d]))
+
+  const filteredDeptStats = byDepartment
+    .filter((d) => d.total > 0)
+    .map((d) => ({
+      ...d,
+      name: deptMap.get(String(d._id))?.name ?? "Unknown",
+      color: deptMap.get(String(d._id))?.color ?? "bg-slate-400",
+    }))
 
   const submissionData = [
     { name: "Approved", value: approved, color: "#22c55e" },
@@ -215,7 +221,7 @@ export function CompletedTasksStats({ tasks = [], submissions = [], departments 
           </CardHeader>
           <CardContent className="space-y-4 pt-4">
             {filteredDeptStats.map((dept) => (
-              <div key={dept.id} className="space-y-2">
+              <div key={dept._id} className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className={`w-3 h-3 rounded-full ${dept.color}`} />

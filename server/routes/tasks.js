@@ -130,7 +130,7 @@ const MAX_UNPAGINATED_LIMIT = 100
 // Get all tasks - optimized with aggregation (eliminates N+1 query)
 router.get("/", auth, async (req, res) => {
   try {
-    const { department, status, dueDate, priority, page, limit } = req.query
+    const { department, status, dueDate, priority, page, limit, search, submissionStatus } = req.query
     const branchQuery = getBranchQuery(req)
 
     const limitNum = parseInt(limit) || 0
@@ -158,12 +158,38 @@ router.get("/", auth, async (req, res) => {
         $lt: new Date(date.setHours(23, 59, 59, 999)),
       }
     }
+    if (search) {
+      const re = { $regex: search, $options: "i" }
+      filter.$or = [{ title: re }, { description: re }]
+    }
 
     const pageNum = parseInt(page) || 1
     const skip = (pageNum - 1) * limitNum
 
-    const pipeline = [
+    // Base pipeline stages shared by both data + count
+    const basePipeline = [
       { $match: filter },
+      // Join submissions only when submissionStatus filter is active
+      ...( submissionStatus ? [
+        {
+          $lookup: {
+            from: "tasksubmissions",
+            localField: "_id",
+            foreignField: "task",
+            pipeline: [{ $project: { status: 1 } }],
+            as: "_sub"
+          }
+        },
+        {
+          $match: submissionStatus === "noSubmission"
+            ? { "_sub": { $size: 0 } }
+            : { "_sub.status": submissionStatus.charAt(0).toUpperCase() + submissionStatus.slice(1) }
+        }
+      ] : [] )
+    ]
+
+    const dataPipeline = [
+      ...basePipeline,
       { $sort: { updatedAt: -1 } },
       { $skip: skip }, { $limit: limitNum },
       {
@@ -209,16 +235,93 @@ router.get("/", auth, async (req, res) => {
           }
         }
       },
-      { $project: { assigneeData: 0, departmentData: 0 } }
+      { $project: { assigneeData: 0, departmentData: 0, _sub: 0 } }
     ]
 
-    const [tasks, total] = await Promise.all([
-      Task.aggregate(pipeline),
-      Task.countDocuments(filter)
+    const countPipeline = [...basePipeline, { $count: "total" }]
+
+    const [tasks, countResult] = await Promise.all([
+      Task.aggregate(dataPipeline),
+      Task.aggregate(countPipeline)
     ])
+    const total = countResult[0]?.total ?? 0
     res.json({ tasks, total, page: pageNum, pages: Math.ceil(total / limitNum) })
   } catch (error) {
     console.error("Error fetching tasks:", error)
+    res.status(500).json({ error: "Server error" })
+  }
+})
+
+// Get aggregate stats for all completed tasks (used by CompletedTasksStats)
+router.get("/stats", auth, async (req, res) => {
+  try {
+    const branchQuery = getBranchQuery(req)
+    const matchFilter = { ...branchQuery, status: "Completed" }
+
+    // One aggregation: join submissions, group by status, group by department
+    const [statusResult, deptResult] = await Promise.all([
+      Task.aggregate([
+        { $match: matchFilter },
+        {
+          $lookup: {
+            from: "tasksubmissions",
+            localField: "_id",
+            foreignField: "task",
+            pipeline: [{ $project: { status: 1 } }],
+            as: "sub"
+          }
+        },
+        {
+          $group: {
+            _id: {
+              $cond: [
+                { $eq: [{ $size: "$sub" }, 0] },
+                "NoSubmission",
+                { $arrayElemAt: ["$sub.status", 0] }
+              ]
+            },
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+      Task.aggregate([
+        { $match: matchFilter },
+        {
+          $lookup: {
+            from: "tasksubmissions",
+            localField: "_id",
+            foreignField: "task",
+            pipeline: [{ $project: { status: 1 } }],
+            as: "sub"
+          }
+        },
+        {
+          $group: {
+            _id: "$department",
+            total: { $sum: 1 },
+            approved: { $sum: { $cond: [{ $eq: [{ $arrayElemAt: ["$sub.status", 0] }, "Approved"] }, 1, 0] } },
+            pending: { $sum: { $cond: [{ $eq: [{ $arrayElemAt: ["$sub.status", 0] }, "Pending"] }, 1, 0] } },
+            rejected: { $sum: { $cond: [{ $eq: [{ $arrayElemAt: ["$sub.status", 0] }, "Rejected"] }, 1, 0] } },
+            noSubmission: { $sum: { $cond: [{ $eq: [{ $size: "$sub" }, 0] }, 1, 0] } }
+          }
+        }
+      ])
+    ])
+
+    const counts = { Approved: 0, Pending: 0, Rejected: 0, NoSubmission: 0 }
+    statusResult.forEach(r => { counts[r._id] = r.count })
+    const total = counts.Approved + counts.Pending + counts.Rejected + counts.NoSubmission
+
+    res.json({
+      approved: counts.Approved,
+      pending: counts.Pending,
+      rejected: counts.Rejected,
+      noSubmission: counts.NoSubmission,
+      total,
+      byDepartment: deptResult
+    })
+  } catch (error) {
+    console.error("Error fetching task stats:", error)
     res.status(500).json({ error: "Server error" })
   }
 })

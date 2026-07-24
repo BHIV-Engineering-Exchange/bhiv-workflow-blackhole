@@ -79,11 +79,12 @@ const CompletedTasks = () => {
       .catch(() => {})
   }, [])
 
+  // Re-fetch from page 1 whenever any filter changes (also runs on mount)
   useEffect(() => {
-    fetchData(1)
-  }, [])
+    fetchData(1, debouncedSearch, selectedDepartment, submissionFilter)
+  }, [debouncedSearch, selectedDepartment, submissionFilter])
 
-  const fetchData = useCallback(async (pageNum = 1) => {
+  const fetchData = useCallback(async (pageNum = 1, search = debouncedSearch, dept = selectedDepartment, subStatus = submissionFilter) => {
     // Cancel any in-flight request
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
@@ -98,14 +99,23 @@ const CompletedTasks = () => {
       const headers = { "x-auth-token": token }
       const signal = controller.signal
 
+      const params = new URLSearchParams({
+        status: "Completed",
+        page: pageNum,
+        limit: LIMIT,
+      })
+      if (search) params.set("search", search)
+      if (dept && dept !== "all") params.set("department", dept)
+      if (subStatus && subStatus !== "all") params.set("submissionStatus", subStatus)
+
       const [tasksRes, submissionsRes] = await Promise.all([
-        axios.get(`${API_URL}/tasks?status=Completed&page=${pageNum}&limit=${LIMIT}`, { headers, signal }),
+        axios.get(`${API_URL}/tasks?${params}`, { headers, signal }),
         axios.get(`${API_URL}/submissions?page=${pageNum}&limit=${LIMIT}`, { headers, signal }),
       ])
 
       const tasksData = tasksRes.data.tasks ?? tasksRes.data
       setTasks(Array.isArray(tasksData) ? tasksData : [])
-      if (tasksRes.data.pages) {
+      if (tasksRes.data.pages !== undefined) {
         setTotalPages(tasksRes.data.pages)
         setTotalTasks(tasksRes.data.total)
       }
@@ -122,7 +132,7 @@ const CompletedTasks = () => {
       setIsLoading(false)
       setIsPageLoading(false)
     }
-  }, [])
+  }, [debouncedSearch, selectedDepartment, submissionFilter])
 
 
 const [isReviewing, setIsReviewing] = useState(false)
@@ -156,7 +166,7 @@ const [isReviewing, setIsReviewing] = useState(false)
 
       setReviewDialogOpen(false)
       setReviewData({ status: "Approved", feedback: "" })
-      fetchData(page)
+      fetchData(page, debouncedSearch, selectedDepartment, submissionFilter)
     } catch (error) {
       console.error("Error reviewing submission:", error)
       toast({
@@ -219,29 +229,8 @@ const [isReviewing, setIsReviewing] = useState(false)
     return { url: displayUrl, fileName, fileType: displayFileType, isImage }
   }
 
-  // Memoized filter+sort — only recomputes when actual dependencies change
-  const filteredTasks = useMemo(() => {
-    const search = debouncedSearch.toLowerCase()
-    return tasks
-      .filter((task) => {
-        const matchesSearch = !search ||
-          task.title.toLowerCase().includes(search) ||
-          task.description.toLowerCase().includes(search) ||
-          (task.assignee?.name && task.assignee.name.toLowerCase().includes(search))
-
-        const matchesDepartment = selectedDepartment === "all" || task.department?._id === selectedDepartment
-
-        const submission = submissionMap.get(task._id)
-        let matchesSubmission = true
-        if (submissionFilter === "pending") matchesSubmission = submission?.status === "Pending"
-        else if (submissionFilter === "approved") matchesSubmission = submission?.status === "Approved"
-        else if (submissionFilter === "rejected") matchesSubmission = submission?.status === "Rejected"
-        else if (submissionFilter === "noSubmission") matchesSubmission = !submission
-
-        return matchesSearch && matchesDepartment && matchesSubmission
-      })
-      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
-  }, [tasks, debouncedSearch, selectedDepartment, submissionFilter, submissionMap])
+  // Filters are server-side — tasks is already the filtered+paginated result
+  const filteredTasks = tasks
 
   // Memoize document details for the selected submission in the dialog
   const selectedDocumentDetails = useMemo(() => {
@@ -282,7 +271,7 @@ const [isReviewing, setIsReviewing] = useState(false)
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={() => fetchData(page)}
+          onClick={() => fetchData(page, debouncedSearch, selectedDepartment, submissionFilter)}
           disabled={isPageLoading}
           className="h-9 hover:bg-green-50 hover:border-green-300 transition-colors"
         >
@@ -311,7 +300,7 @@ const [isReviewing, setIsReviewing] = useState(false)
 
       {showStats && (
         <div className="mb-6">
-         <CompletedTasksStats tasks={tasks} submissions={submissions} departments={departments} />
+         <CompletedTasksStats departments={departments} />
 
         </div>
       )}
@@ -722,10 +711,10 @@ const [isReviewing, setIsReviewing] = useState(false)
       Page {page} of {totalPages} — {totalTasks} total tasks
     </p>
     <div className="flex gap-2">
-      <Button variant="outline" size="sm" onClick={() => fetchData(page - 1)} disabled={page <= 1 || isPageLoading}>
+      <Button variant="outline" size="sm" onClick={() => fetchData(page - 1, debouncedSearch, selectedDepartment, submissionFilter)} disabled={page <= 1 || isPageLoading}>
         {isPageLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Previous</> : "Previous"}
       </Button>
-      <Button variant="outline" size="sm" onClick={() => fetchData(page + 1)} disabled={page >= totalPages || isPageLoading}>
+      <Button variant="outline" size="sm" onClick={() => fetchData(page + 1, debouncedSearch, selectedDepartment, submissionFilter)} disabled={page >= totalPages || isPageLoading}>
         {isPageLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Next</> : "Next"}
       </Button>
     </div>
