@@ -39,6 +39,7 @@ jobs:
           path: |
             docker-compose.production.template.yml
             proxy configurations/nginx.conf
+            proxy configurations/nginx.ssl.conf
             Monitoring/prometheus.yml
             Monitoring/datasource.yml
 
@@ -77,11 +78,11 @@ jobs:
           # Optional secret; defaults to current VM origin. Must stay aligned with FRONTEND_URL/CORS_ORIGIN.
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
         run: |
-          API_URL="${VITE_API_URL:-http://163.128.209.18/api}"
+          API_URL="${VITE_API_URL:-/api}"
           docker buildx build --push \
             --tag bhiv/niyantran-frontend:${{ steps.vars.outputs.sha_short }} \
             --tag bhiv/niyantran-frontend:latest \
-            --build-arg VITE_API_URL=http://163.128.209.18/api \
+            --build-arg VITE_API_URL="$API_URL" \
             -f client/Dockerfile .
 
   deploy:
@@ -178,10 +179,10 @@ jobs:
               fi
               
               API_HEALTH=0
-              curl -sf http://localhost/api/ping > /dev/null && API_HEALTH=1
+              curl -k -sf https://localhost/api/ping > /dev/null && API_HEALTH=1
               
               FRONTEND_HEALTH=0
-              curl -sf http://localhost > /dev/null && FRONTEND_HEALTH=1
+              curl -k -sf https://localhost > /dev/null && FRONTEND_HEALTH=1
               
               if [ "$UNHEALTHY_COUNT" -eq 0 ] && [ "$STARTING_COUNT" -eq 0 ] && [ "$API_HEALTH" -eq 1 ] && [ "$FRONTEND_HEALTH" -eq 1 ]; then
                 echo "All containers, API, and frontend endpoints are healthy!"
