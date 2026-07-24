@@ -78,11 +78,11 @@ jobs:
           # Optional secret; defaults to current VM origin. Must stay aligned with FRONTEND_URL/CORS_ORIGIN.
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
         run: |
-          API_URL="${VITE_API_URL:-http://163.128.209.18/api}"
+          API_URL="${VITE_API_URL:-/api}"
           docker buildx build --push \
             --tag bhiv/niyantran-frontend:${{ steps.vars.outputs.sha_short }} \
             --tag bhiv/niyantran-frontend:latest \
-            --build-arg VITE_API_URL=http://163.128.209.18/api \
+            --build-arg VITE_API_URL="$API_URL" \
             -f client/Dockerfile .
 
   deploy:
