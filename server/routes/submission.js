@@ -39,22 +39,39 @@ const upload = multer({
   },
 })
 
-// Get all submissions - ONLY SHOW SUBMISSIONS FROM ACTIVE USERS
+const MAX_UNPAGINATED_LIMIT = 100
+
+// Get all submissions - paginated, only active users
 router.get("/", auth, async (req, res) => {
   try {
-    const submissions = await TaskSubmission.find()
-      .populate("task", "title status")
-      .populate({
-        path: "user",
-        select: "name email stillExist",
-        match: { stillExist: 1 } // Only populate active users
+    const { page, limit } = req.query
+    const limitNum = parseInt(limit) || 0
+
+    if (limitNum === 0) {
+      return res.status(400).json({
+        error: "Pagination required. Provide ?limit=N&page=P",
+        hint: "Use ?page=1&limit=20"
       })
-      .populate("reviewHistory.reviewedBy", "name email")
+    }
+    if (limitNum > MAX_UNPAGINATED_LIMIT) {
+      return res.status(400).json({
+        error: `limit exceeds maximum allowed value of ${MAX_UNPAGINATED_LIMIT}`,
+        hint: `Use limit <= ${MAX_UNPAGINATED_LIMIT}`
+      })
+    }
 
-    // Filter out submissions where user didn't populate (inactive users)
-    const activeSubmissions = submissions.filter(submission => submission.user);
-
-    res.json(activeSubmissions)
+    const pageNum = parseInt(page) || 1
+    const activeUserIds = await User.distinct("_id", { stillExist: 1 })
+    const [submissions, total] = await Promise.all([
+      TaskSubmission.find()
+        .populate("task", "title status")
+        .populate({ path: "user", select: "name email stillExist", match: { stillExist: 1 } })
+        .sort({ createdAt: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum),
+      TaskSubmission.countDocuments({ user: { $in: activeUserIds } })
+    ])
+    res.json({ submissions: submissions.filter(s => s.user), total, page: pageNum, pages: Math.ceil(total / limitNum) })
   } catch (error) {
     console.error("Error fetching submissions:", error)
     res.status(500).json({ error: "Server error" })

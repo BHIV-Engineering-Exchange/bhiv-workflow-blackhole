@@ -138,4 +138,9 @@ TaskSubmissionSchema.pre("save", function (next) {
   next()
 })
 
+TaskSubmissionSchema.index({ createdAt: -1 });
+TaskSubmissionSchema.index({ task: 1 });
+TaskSubmissionSchema.index({ user: 1, status: 1 });
+TaskSubmissionSchema.index({ status: 1, createdAt: -1 });
+
 module.exports = mongoose.model("TaskSubmission", TaskSubmissionSchema)

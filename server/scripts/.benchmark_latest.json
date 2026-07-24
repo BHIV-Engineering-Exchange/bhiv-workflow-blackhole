@@ -1,0 +1,155 @@
+{
+  "timestamp": "2026-07-24T10:24:54.576Z",
+  "pageLoad": {
+    "totalPageLoadMs": "482.46",
+    "apiCallCount": 3,
+    "calls": [
+      {
+        "endpoint": "/departments",
+        "status": 200,
+        "records": 13
+      },
+      {
+        "endpoint": "/tasks?status=Completed&page=1&limit=20",
+        "status": 200,
+        "records": 20
+      },
+      {
+        "endpoint": "/submissions?page=1&limit=20",
+        "status": 200,
+        "records": 20
+      }
+    ],
+    "tasksTotal": 2088,
+    "taskPages": 105,
+    "subsTotal": 2210,
+    "heapUsedDeltaMB": "1.38 MB",
+    "heapUsedAfterMB": "20.18 MB",
+    "rssAfterMB": "72.93 MB"
+  },
+  "apiTimes": [
+    {
+      "endpoint": "GET /tasks (p1, Completed, limit=20)",
+      "responseMs": "428.10"
+    },
+    {
+      "endpoint": "GET /tasks (p2, Completed, limit=20)",
+      "responseMs": "431.99"
+    },
+    {
+      "endpoint": "GET /tasks (p5, Completed, limit=20)",
+      "responseMs": "328.99"
+    },
+    {
+      "endpoint": "GET /submissions (p1, limit=20)",
+      "responseMs": "454.24"
+    },
+    {
+      "endpoint": "GET /submissions (p3, limit=20)",
+      "responseMs": "378.48"
+    },
+    {
+      "endpoint": "GET /departments",
+      "responseMs": "410.94"
+    }
+  ],
+  "db": {
+    "completedTaskCount": 2155,
+    "submissionCount": 2210,
+    "tasks": {
+      "indexUsed": "branch_1_status_1_updatedAt_-1",
+      "docsExamined": 20,
+      "docsReturned": "?",
+      "execMs": 1,
+      "indexEfficiency": "?"
+    },
+    "submissions": {
+      "indexUsed": "createdAt_-1",
+      "docsExamined": 20,
+      "execMs": 0
+    }
+  },
+  "largeDataset": {
+    "totalTasks": 2088,
+    "totalPages": 105,
+    "pagesTested": 10,
+    "totalFetchMs": "12450.80",
+    "avgPageMs": "1208.56",
+    "heapGrowthMB": "-1.81 MB",
+    "pageTimes": [
+      {
+        "page": 1,
+        "ms": "8729.93"
+      },
+      {
+        "page": 2,
+        "ms": "380.44"
+      },
+      {
+        "page": 3,
+        "ms": "373.98"
+      },
+      {
+        "page": 4,
+        "ms": "372.06"
+      },
+      {
+        "page": 5,
+        "ms": "345.94"
+      },
+      {
+        "page": 6,
+        "ms": "385.60"
+      },
+      {
+        "page": 7,
+        "ms": "352.16"
+      },
+      {
+        "page": 8,
+        "ms": "413.32"
+      },
+      {
+        "page": 9,
+        "ms": "355.90"
+      },
+      {
+        "page": 10,
+        "ms": "376.27"
+      }
+    ]
+  },
+  "payloads": [
+    {
+      "endpoint": "tasks page 1",
+      "payloadKB": "28.28 KB",
+      "records": 20
+    },
+    {
+      "endpoint": "submissions p1",
+      "payloadKB": "33.06 KB",
+      "records": 20
+    },
+    {
+      "endpoint": "departments",
+      "payloadKB": "19.08 KB",
+      "records": "?"
+    }
+  ],
+  "memory": {
+    "start": {
+      "rss": 75292672,
+      "heapTotal": 35590144,
+      "heapUsed": 19710056,
+      "external": 21645664,
+      "arrayBuffers": 18313368
+    },
+    "end": {
+      "rss": 70434816,
+      "heapTotal": 24203264,
+      "heapUsed": 21818120,
+      "external": 21933327,
+      "arrayBuffers": 18459005
+    }
+  }
+}
