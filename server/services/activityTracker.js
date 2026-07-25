@@ -220,6 +220,13 @@ class ActivityTracker {
           },
           session_id: sessionData.sessionId
         });
+
+        // TANTRA ecosystem: emit KARMA behavioral signal (fire-and-forget — must never break idle detection)
+        try {
+          const karmaClient = require('./karmaClient');
+          karmaClient.signalExcessiveIdle(sessionData.employeeId, timeSinceLastActivity / 60000)
+            .catch(err => console.warn('[KARMA] signalExcessiveIdle failed (non-fatal):', err.message));
+        } catch (e) { /* karmaClient load failure is non-fatal */ }
       }
       
       idleDuration = timeSinceLastActivity / 1000; // Convert to seconds
