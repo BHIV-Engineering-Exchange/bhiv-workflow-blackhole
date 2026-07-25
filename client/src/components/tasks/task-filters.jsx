@@ -14,14 +14,12 @@ export function TaskFilters({ onFilterChange }) {
   const [priority, setPriority] = useState("all")
   const [departments, setDepartments] = useState([])
 
-  // Fetch departments on mount
+  const hasActiveFilters = status.length > 0 || department.length > 0 || priority !== "all"
+
   useEffect(() => {
     const fetchDepartments = async () => {
       try {
         const response = await api.departments.getDepartments()
-        console.log('TaskFilters - Departments response:', response)
-
-        // Handle new API response format
         const data = response.success ? response.data : response
         setDepartments(Array.isArray(data) ? data : [])
       } catch (error) {
@@ -33,15 +31,11 @@ export function TaskFilters({ onFilterChange }) {
   }, [])
 
   const handleStatusChange = (value, checked) => {
-    setStatus(prev => 
-      checked ? [...prev, value] : prev.filter(item => item !== value)
-    )
+    setStatus(prev => checked ? [...prev, value] : prev.filter(item => item !== value))
   }
 
   const handleDepartmentChange = (value, checked) => {
-    setDepartment(prev => 
-      checked ? [...prev, value] : prev.filter(item => item !== value)
-    )
+    setDepartment(prev => checked ? [...prev, value] : prev.filter(item => item !== value))
   }
 
   const handleApplyFilters = () => {
@@ -52,10 +46,24 @@ export function TaskFilters({ onFilterChange }) {
     })
   }
 
+  const handleReset = () => {
+    setStatus([])
+    setDepartment([])
+    setPriority("all")
+    onFilterChange({ status: [], department: [], priority: undefined })
+  }
+
   return (
     <Card className="border-2 rounded-xl shadow-lg">
       <CardHeader className="border-b bg-muted/30">
-        <CardTitle className="text-lg font-semibold">Filters</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg font-semibold">Filters</CardTitle>
+          {hasActiveFilters && (
+            <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+              Active
+            </span>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
         <div className="space-y-3">
@@ -63,8 +71,9 @@ export function TaskFilters({ onFilterChange }) {
           <div className="space-y-2.5">
             {["Completed", "In Progress", "Pending"].map(stat => (
               <div key={stat} className="flex items-center space-x-2.5 p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                <Checkbox 
-                  id={`status-${stat.toLowerCase()}`} 
+                <Checkbox
+                  id={`status-${stat.toLowerCase()}`}
+                  checked={status.includes(stat)}
                   onCheckedChange={(checked) => handleStatusChange(stat, checked)}
                   className="data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
                 />
@@ -81,12 +90,16 @@ export function TaskFilters({ onFilterChange }) {
               <div key={dept._id} className="flex items-center space-x-2.5 p-2 rounded-lg hover:bg-muted/50 transition-colors">
                 <Checkbox
                   id={`dept-${dept._id}`}
+                  checked={department.includes(dept._id)}
                   onCheckedChange={(checked) => handleDepartmentChange(dept._id, checked)}
                   className="data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
                 />
                 <Label htmlFor={`dept-${dept._id}`} className="cursor-pointer font-medium">{dept.name}</Label>
               </div>
             ))}
+            {departments.length === 0 && (
+              <p className="text-xs text-muted-foreground px-2">Loading departments...</p>
+            )}
           </div>
         </div>
 
@@ -104,9 +117,16 @@ export function TaskFilters({ onFilterChange }) {
           </RadioGroup>
         </div>
 
-        <Button className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold" onClick={handleApplyFilters}>
-          Apply Filters
-        </Button>
+        <div className="flex flex-col gap-2">
+          <Button className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold" onClick={handleApplyFilters}>
+            Apply Filters
+          </Button>
+          {hasActiveFilters && (
+            <Button variant="outline" className="w-full border-2 font-semibold" onClick={handleReset}>
+              Reset Filters
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   )

@@ -19,7 +19,6 @@ import { TaskDetailsDialog } from "./task-details-dialog"
 import { useToast } from "../../hooks/use-toast"
 import { api } from "../../lib/api"
 import { formatDate } from "../../lib/dateFormat"
-import { useSocketContext } from "../../context/socket-context"
 import {
   Dialog,
   DialogContent,
@@ -172,10 +171,12 @@ function EditTaskDialog({ task, open, onOpenChange }) {
   )
 }
 
-export function TasksList({ filters }) {
+export function TasksList({ filters, newTask }) {
   const { toast } = useToast()
-  const { events } = useSocketContext()
   const [tasks, setTasks] = useState([])
+  const [total, setTotal] = useState(0)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selectedTask, setSelectedTask] = useState(null)
@@ -183,81 +184,71 @@ export function TasksList({ filters }) {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const LIMIT = 100
 
-  // Fetch tasks based on filters
-  useEffect(() => {
-    const fetchTasks = async () => {
-      try {
-        setIsLoading(true)
-        const data = await api.tasks.getTasks({ ...filters, page: 1, limit: 100 })
-        setTasks(data.tasks ?? data)
-        setError(null)
-      } catch (err) {
-        setError(err.message || "Failed to load tasks")
-        toast({
-          title: "Error",
-          description: err.message || "Failed to load tasks",
-          variant: "destructive",
-        })
-      } finally {
-        setIsLoading(false)
-      }
+  const fetchTasks = async (page = 1) => {
+    try {
+      setIsLoading(true)
+      const params = { page, limit: LIMIT }
+      if (filters.status?.length === 1) params.status = filters.status[0]
+      if (filters.department?.length === 1) params.department = filters.department[0]
+      if (filters.priority && filters.priority !== 'all') params.priority = filters.priority
+      const data = await api.tasks.getTasks(params)
+      setTasks(data.tasks ?? [])
+      setTotal(data.total ?? 0)
+      setTotalPages(data.pages ?? 1)
+      setCurrentPage(page)
+      setError(null)
+    } catch (err) {
+      setError(err.message || "Failed to load tasks")
+      toast({ title: "Error", description: err.message || "Failed to load tasks", variant: "destructive" })
+    } finally {
+      setIsLoading(false)
     }
+  }
 
-    fetchTasks()
-  }, [filters, toast])
+  useEffect(() => { fetchTasks(1) }, [])
+
+  // Reset to page 1 when filters change
+  useEffect(() => { fetchTasks(1) }, [filters.status, filters.department, filters.priority])
+
+  // Prepend newly created task without refetching
+  useEffect(() => {
+    if (newTask) {
+      setTasks(prev => prev.some(t => t._id === newTask._id) ? prev : [newTask, ...prev])
+      setTotal(prev => prev + 1)
+    }
+  }, [newTask])
 
   // Handle socket events for real-time updates
   useEffect(() => {
-    if (events.length > 0) {
-      const latestEvent = events[events.length - 1]
-
-      // Apply filter checks for socket updates
-      const matchesFilters = (task) => {
-        const { status, department, priority } = filters
-        return (
-          (!status?.length || status.includes(task.status)) &&
-          (!department?.length || department.includes(task.department?._id)) &&
-          (!priority || priority === "all" || task.priority === priority)
-        )
-      }
-
-      if (latestEvent.type === "task-created" && matchesFilters(latestEvent.data)) {
-        setTasks((prev) => [...prev, latestEvent.data])
-      } else if (latestEvent.type === "task-updated") {
-        setTasks((prev) =>
-          prev
-            .map((task) => (task._id === latestEvent.data._id ? latestEvent.data : task))
-            .filter(matchesFilters)
-        )
-      } else if (latestEvent.type === "task-deleted") {
-        setTasks((prev) => prev.filter((task) => task._id !== latestEvent.data._id))
-      }
+    const handleTaskUpdated = (e) => {
+      const updated = e.detail
+      setTasks(prev => prev.map(t => t._id === updated._id ? updated : t))
     }
-  }, [events, filters])
+    const handleTaskDeleted = (e) => {
+      const deleted = e.detail
+      setTasks(prev => prev.filter(t => t._id !== (deleted._id ?? deleted)))
+      setTotal(prev => Math.max(0, prev - 1))
+    }
+    window.addEventListener('task-updated', handleTaskUpdated)
+    window.addEventListener('task-deleted', handleTaskDeleted)
+    return () => {
+      window.removeEventListener('task-updated', handleTaskUpdated)
+      window.removeEventListener('task-deleted', handleTaskDeleted)
+    }
+  }, [])
 
-  // Filter tasks based on search query
+  // Client-side search only (filters are server-side via refetch)
   const filteredTasks = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return tasks
-    }
-
+    if (!searchQuery.trim()) return tasks
     const query = searchQuery.toLowerCase().trim()
-    return tasks.filter((task) => {
-      // Search in task title
-      const titleMatch = task.title?.toLowerCase().includes(query)
-      
-      // Search in assignee name
-      const assigneeMatch = task.assignee?.name?.toLowerCase().includes(query)
-      
-      // Search in department name
-      const departmentMatch = task.department?.name?.toLowerCase().includes(query)
-      
-      // Search in task description
-      const descriptionMatch = task.description?.toLowerCase().includes(query)
-
-      return titleMatch || assigneeMatch || departmentMatch || descriptionMatch
-    })
+    return tasks.filter(t =>
+      t.title?.toLowerCase().includes(query) ||
+      t.assignee?.name?.toLowerCase().includes(query) ||
+      t.department?.name?.toLowerCase().includes(query) ||
+      t.description?.toLowerCase().includes(query)
+    )
   }, [tasks, searchQuery])
 
   const getStatusColor = (status) => {
@@ -301,6 +292,8 @@ export function TasksList({ filters }) {
       try {
         setIsDeleting(true);
         await api.tasks.deleteTask(taskId);
+        setTasks(prev => prev.filter(t => t._id !== taskId));
+        setTotal(prev => Math.max(0, prev - 1))
         toast.success("Task deleted successfully");
       } catch (error) {
         console.error("Error deleting task:", error);
@@ -401,19 +394,30 @@ export function TasksList({ filters }) {
         </CardContent>
       </Card>
 
-      {/* Tasks List */}
+      {/* Task count summary */}
+      <div className="flex items-center justify-between px-1">
+        <p className="text-sm font-medium text-muted-foreground">
+          Showing <span className="font-bold text-foreground">
+            {(currentPage - 1) * LIMIT + 1}–{Math.min(currentPage * LIMIT, total)}
+          </span> of <span className="font-bold text-foreground">{total}</span> tasks
+          {searchQuery.trim() && (
+            <span className="ml-1 text-amber-600">({filteredTasks.length} matching search)</span>
+          )}
+        </p>
+        <p className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</p>
+      </div>
+
+      {/* Tasks List grouped by department */}
       {Object.keys(groupedTasks).length === 0 ? (
         <Card className="border-2 rounded-xl shadow-lg">
           <CardContent className="text-center py-12 text-muted-foreground">
             {searchQuery ? (
               <div>
-                <p className="text-lg font-medium mb-3">No tasks found matching your search criteria.</p>
-                <Button variant="outline" onClick={clearSearch} className="border-2 rounded-xl hover:border-green-500">
-                  Clear search
-                </Button>
+                <p className="text-lg font-medium mb-3">No tasks found matching your search.</p>
+                <Button variant="outline" onClick={clearSearch} className="border-2 rounded-xl hover:border-green-500">Clear search</Button>
               </div>
             ) : (
-              <p className="text-lg font-medium">No tasks found matching the selected filters.</p>
+              <p className="text-lg font-medium">No tasks found.</p>
             )}
           </CardContent>
         </Card>
@@ -422,12 +426,9 @@ export function TasksList({ filters }) {
           <Card key={deptName} className="border-2 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
             <CardHeader className="border-b bg-gradient-to-r from-muted/30 to-muted/10">
               <CardTitle className="flex items-center gap-2">
-                <span className="text-lg font-semibold">{deptName} Tasks</span>
-                <Badge className="bg-green-500 text-white hover:bg-green-600 font-semibold">
-                  {deptTasks.length}
-                </Badge>
+                <span className="text-lg font-semibold">{deptName}</span>
+                <Badge className="bg-green-500 text-white hover:bg-green-600 font-semibold">{deptTasks.length}</Badge>
               </CardTitle>
-              <CardDescription className="font-medium">Tasks assigned to the {deptName} department</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
@@ -444,27 +445,21 @@ export function TasksList({ filters }) {
                   </TableHeader>
                   <TableBody>
                     {deptTasks.map((task, index) => (
-                      <TableRow 
-                        key={task._id} 
+                      <TableRow
+                        key={task._id}
                         className={`hover:bg-muted/50 transition-colors ${index % 2 === 0 ? 'bg-background' : 'bg-muted/10'}`}
                       >
                         <TableCell className="py-4">
                           <div>
                             <div className="font-semibold text-foreground">{task.title}</div>
                             {task.description && (
-                              <div className="text-sm text-muted-foreground truncate max-w-xs mt-1">
-                                {task.description}
-                              </div>
+                              <div className="text-sm text-muted-foreground truncate max-w-xs mt-1">{task.description}</div>
                             )}
                           </div>
                         </TableCell>
                         <TableCell className="py-4 font-medium">{task.assignee?.name || <span className="text-muted-foreground italic">Unassigned</span>}</TableCell>
-                        <TableCell className="py-4">
-                          <Badge className={`${getStatusColor(task.status)} font-semibold`}>{task.status}</Badge>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <Badge className={`${getPriorityColor(task.priority)} font-semibold`}>{task.priority}</Badge>
-                        </TableCell>
+                        <TableCell className="py-4"><Badge className={`${getStatusColor(task.status)} font-semibold`}>{task.status}</Badge></TableCell>
+                        <TableCell className="py-4"><Badge className={`${getPriorityColor(task.priority)} font-semibold`}>{task.priority}</Badge></TableCell>
                         <TableCell className="py-4 font-medium">
                           {task.dueDate ? formatDate(task.dueDate) : <span className="text-muted-foreground italic">No date</span>}
                         </TableCell>
@@ -476,35 +471,21 @@ export function TasksList({ filters }) {
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              align="end"
-                              className="bg-white border border-gray-200 shadow-lg rounded-md"
-                            >
-                              <DropdownMenuLabel className="font-medium text-gray-900">
-                                Actions
-                              </DropdownMenuLabel>
-                              <DropdownMenuItem
-                                onClick={() => handleViewTask(task)}
-                                className="text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-                              >
-                                <Eye className="mr-2 h-4 w-4" />
-                                View details
+                            <DropdownMenuContent align="end" className="bg-white border border-gray-200 shadow-lg rounded-md">
+                              <DropdownMenuLabel className="font-medium text-gray-900">Actions</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => handleViewTask(task)} className="text-gray-700 hover:bg-gray-100">
+                                <Eye className="mr-2 h-4 w-4" />View details
                               </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleEditTask(task)}
-                                className="text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-                              >
-                                <Edit className="mr-2 h-4 w-4" />
-                                Edit task
+                              <DropdownMenuItem onClick={() => handleEditTask(task)} className="text-gray-700 hover:bg-gray-100">
+                                <Edit className="mr-2 h-4 w-4" />Edit task
                               </DropdownMenuItem>
                               <DropdownMenuSeparator className="bg-gray-200" />
                               <DropdownMenuItem
-                                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                                className="text-red-600 hover:bg-red-50"
                                 onClick={() => handleDeleteTask(task._id)}
                                 disabled={isDeleting}
                               >
-                                <Trash className="mr-2 h-4 w-4" />
-                                Delete task
+                                <Trash className="mr-2 h-4 w-4" />Delete task
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -517,6 +498,77 @@ export function TasksList({ filters }) {
             </CardContent>
           </Card>
         ))
+      )}
+
+      {/* Pagination controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchTasks(1)}
+            disabled={currentPage === 1 || isLoading}
+            className="rounded-lg border-2"
+          >
+            «
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchTasks(currentPage - 1)}
+            disabled={currentPage === 1 || isLoading}
+            className="rounded-lg border-2"
+          >
+            ‹ Prev
+          </Button>
+
+          {/* Page number buttons — show up to 5 around current page */}
+          {Array.from({ length: totalPages }, (_, i) => i + 1)
+            .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+            .reduce((acc, p, idx, arr) => {
+              if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...')
+              acc.push(p)
+              return acc
+            }, [])
+            .map((p, idx) =>
+              p === '...' ? (
+                <span key={`ellipsis-${idx}`} className="px-1 text-muted-foreground">…</span>
+              ) : (
+                <Button
+                  key={p}
+                  variant={p === currentPage ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => fetchTasks(p)}
+                  disabled={isLoading}
+                  className={`rounded-lg border-2 min-w-[36px] ${
+                    p === currentPage ? 'bg-green-500 hover:bg-green-600 text-white border-green-500' : ''
+                  }`}
+                >
+                  {p}
+                </Button>
+              )
+            )
+          }
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchTasks(currentPage + 1)}
+            disabled={currentPage === totalPages || isLoading}
+            className="rounded-lg border-2"
+          >
+            Next ›
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchTasks(totalPages)}
+            disabled={currentPage === totalPages || isLoading}
+            className="rounded-lg border-2"
+          >
+            »
+          </Button>
+        </div>
       )}
       {selectedTask && (
         <>
@@ -535,5 +587,3 @@ export function TasksList({ filters }) {
     </div>
   )
 }
-
-<ToastContainer />

@@ -11,21 +11,18 @@ function Tasks() {
     department: [],
     priority: undefined,
   })
-
-  const handleFilterChange = (newFilters) => {
-    setFilters(newFilters)
-  }
+  const [newTask, setNewTask] = useState(null)
 
   return (
     <div className="space-y-6 pb-8">
-      <TasksHeader />
+      <TasksHeader onTaskCreated={setNewTask} />
       
       <div className="flex flex-col md:flex-row gap-6">
         <div className="md:w-1/4">
-          <TaskFilters onFilterChange={handleFilterChange} />
+          <TaskFilters onFilterChange={setFilters} />
         </div>
         <div className="flex-1">
-          <TasksList filters={filters} />
+          <TasksList filters={filters} newTask={newTask} />
         </div>
       </div>
     </div>
