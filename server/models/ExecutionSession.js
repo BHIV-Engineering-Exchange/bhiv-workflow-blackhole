@@ -46,6 +46,16 @@ const executionSessionSchema = new mongoose.Schema(
       enum: ["started", "completed", "failed", "blocked"],
       default: "started",
     },
+    actorId: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    actorType: {
+      type: String,
+      enum: ["user", "authority", null],
+      default: null,
+    },
     lastEventType: {
       type: String,
     },

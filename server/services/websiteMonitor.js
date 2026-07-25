@@ -747,12 +747,14 @@ class WebsiteMonitor {
           session_id: sessionData.sessionId
         });
 
-        // TANTRA ecosystem: emit KARMA behavioral signal (fire-and-forget — must never break monitoring)
+        // TANTRA ecosystem: publish event to the bus (fire-and-forget — must never break monitoring)
         try {
-          const karmaClient = require('./karmaClient');
-          karmaClient.signalDisallowedSite(sessionData.employeeId, url)
-            .catch(err => console.warn('[KARMA] signalDisallowedSite failed (non-fatal):', err.message));
-        } catch (e) { /* karmaClient load failure is non-fatal */ }
+          const eventBus = require('./eventBus');
+          eventBus.publish('disallowed_site', {
+            employeeId: sessionData.employeeId,
+            url
+          }).catch(err => console.warn('[eventBus] Publish disallowed_site failed (non-fatal):', err.message));
+        } catch (e) { /* eventBus load failure is non-fatal */ }
 
         await screenCaptureService.triggerCapture(
           sessionData.employeeId,

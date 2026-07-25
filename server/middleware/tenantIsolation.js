@@ -1,3 +1,4 @@
+const ExecutionSession = require("../models/ExecutionSession");
 const { logRejection } = require("../services/executionRejectionLogger");
 
 const enforceTenantIsolation = async (req, res, next) => {
@@ -47,6 +48,36 @@ const enforceTenantIsolation = async (req, res, next) => {
       trace_id: context?.traceId || null,
       rejection_id: rejection.rejectionId,
     });
+  }
+
+  // Persist resolved actor to the session record (Phase E)
+  const executionId = context?.executionId;
+  if (executionId) {
+    let actorId = null;
+    let actorType = null;
+
+    if (req.user) {
+      actorId = req.user.id || req.user._id || req.user.email || null;
+      actorType = "user";
+    } else if (req.executionAuthority) {
+      actorId = req.executionAuthority;
+      actorType = "authority";
+    }
+
+    if (actorId && actorType) {
+      try {
+        await ExecutionSession.updateOne(
+          { executionId },
+          { $set: { actorId, actorType } }
+        );
+        if (req.executionContext && req.executionContext.session) {
+          req.executionContext.session.actorId = actorId;
+          req.executionContext.session.actorType = actorType;
+        }
+      } catch (err) {
+        console.error("[tenantIsolation] Failed to persist actor identity:", err.message);
+      }
+    }
   }
 
   req.executionContext.actorTenantId = actorTenant;

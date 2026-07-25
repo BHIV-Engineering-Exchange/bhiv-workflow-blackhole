@@ -3,7 +3,7 @@
 
 **Date:** 2026-07-25  
 **Author:** Integration Engineering (Niyantran side)  
-**Test Results:** 93 passed, 0 failures (4 suites)
+**Test Results:** 98 passed, 0 failures (6 suites)
 
 ---
 
@@ -11,13 +11,13 @@
 
 | Service | What Changed | Files (from `workflow-blackhole/`) |
 |---------|-------------|-------------------------------------|
-| **Niyantran Backend** | KARMA signals wired into idle/website/EMS detection; Bucket writes wired into screenshots; integration health endpoint; TANTRA execution runtime | `workflow-blackhole/server/services/activityTracker.js`, `workflow-blackhole/server/services/websiteMonitor.js`, `workflow-blackhole/server/services/ems_signals.js`, `workflow-blackhole/server/services/screenCapture.js`, `workflow-blackhole/server/routes/integrationHealth.js`, `workflow-blackhole/server/index.js` |
-| **New Client Modules** | Bucket artifact storage client; KARMA signal producer (routes through Bucket) | `workflow-blackhole/server/services/bucketClient.js`, `workflow-blackhole/server/services/karmaClient.js` |
+| **Niyantran Backend** | Decoupled telemetry call sites via Redis-backed event bus; persisted actor identity (actorId/actorType) on execution session; KARMA signals wired into idle/website/EMS detection; Bucket writes wired into screenshots; integration health endpoint; TANTRA execution runtime | `workflow-blackhole/server/services/activityTracker.js`, `workflow-blackhole/server/services/websiteMonitor.js`, `workflow-blackhole/server/services/ems_signals.js`, `workflow-blackhole/server/services/screenCapture.js`, `workflow-blackhole/server/routes/integrationHealth.js`, `workflow-blackhole/server/index.js`, `workflow-blackhole/server/middleware/tenantIsolation.js` |
+| **New Client Modules** | Added Redis-backed `eventBus.js` pub/sub wrapper; Bucket artifact storage client; KARMA signal producer (routes through Bucket) | `workflow-blackhole/server/services/eventBus.js`, `workflow-blackhole/server/services/bucketClient.js`, `workflow-blackhole/server/services/karmaClient.js` |
 | **Docker Compose (Dev)** | Added `bhiv-bucket`, `bhiv-prana`, `karma-tracker`, `redis` services | `workflow-blackhole/docker-compose.yml` |
 | **Docker Compose (Prod)** | Same + production image tags, no public ports on ecosystem services | `workflow-blackhole/docker-compose.production.template.yml` |
 | **Environment Config** | Added `TANTRA_EXECUTION_KEY`, `BUCKET_*`, `PRANA_*` vars | `workflow-blackhole/server/.env.example` |
-| **Security** | JWT_SECRET hardcoded fallback removed; TANTRA_EXECUTION_KEY required at startup | `workflow-blackhole/server/middleware/auth.js`, `workflow-blackhole/server/middleware/executionAuth.js` |
-| **Tests** | 4 new test suites (93 total tests) | `workflow-blackhole/server/tests/bucketClient.test.js`, `workflow-blackhole/server/tests/karmaClient.test.js`, `workflow-blackhole/server/tests/integrationHealth.test.js`, `workflow-blackhole/server/tests/tantraHealth.test.js` |
+| **Security** | JWT_SECRET hardcoded fallback removed; TANTRA_EXECUTION_KEY required at startup; actor identity stored on execution session | `workflow-blackhole/server/middleware/auth.js`, `workflow-blackhole/server/middleware/executionAuth.js`, `workflow-blackhole/server/models/ExecutionSession.js` |
+| **Tests** | 6 test suites (98 total tests) | `workflow-blackhole/server/tests/eventBus.test.js`, `workflow-blackhole/server/tests/tenantIsolation.test.js`, `workflow-blackhole/server/tests/bucketClient.test.js`, `workflow-blackhole/server/tests/karmaClient.test.js`, `workflow-blackhole/server/tests/integrationHealth.test.js`, `workflow-blackhole/server/tests/tantraHealth.test.js` |
 
 ---
 
@@ -61,13 +61,15 @@ workflow-blackhole/server/services/screenCapture.js:captureScreen() → screensh
 ## 4. Test Results
 
 ```
-Test Suites: 4 passed, 4 total
-Tests:       93 passed, 93 total
-Time:        4.249 s
+Test Suites: 6 passed, 6 total
+Tests:       98 passed, 98 total
+Time:        4.676 s
 ```
 
 | Suite | Tests | What It Covers |
 |-------|-------|----------------|
+| `workflow-blackhole/server/tests/eventBus.test.js` | 2 | Redis pub/sub and local event fallback routing |
+| `workflow-blackhole/server/tests/tenantIsolation.test.js` | 3 | Tenant checks and Phase E actor identity persistence |
 | `workflow-blackhole/server/tests/bucketClient.test.js` | 24 | Envelope builder, governance validation, artifact writes, health, missing env |
 | `workflow-blackhole/server/tests/karmaClient.test.js` | 38 | Contract validation (all 7 fields), Bucket routing, 5 signal factories, invariants |
 | `workflow-blackhole/server/tests/integrationHealth.test.js` | 13 | Bucket/PRANA/KARMA probes, env flags, architecture notes, never-crash guarantee |

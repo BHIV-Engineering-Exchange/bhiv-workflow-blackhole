@@ -306,12 +306,14 @@ class EMSSignalLayer extends EventEmitter {
     if (isIdle) {
       console.log(`💤 [SIGNAL] idle_time - Employee ${employeeId}: ${Math.floor(idleTime/1000)}s - ${signal.meaning}`);
 
-      // TANTRA ecosystem: emit KARMA behavioral signal (fire-and-forget — must never break EMS signals)
+      // TANTRA ecosystem: publish event to the bus (fire-and-forget — must never break EMS signals)
       try {
-        const karmaClient = require('./karmaClient');
-        karmaClient.signalExcessiveIdle(employeeId, idleTime / 60000)
-          .catch(err => console.warn('[KARMA] signalExcessiveIdle via EMS failed (non-fatal):', err.message));
-      } catch (e) { /* karmaClient load failure is non-fatal */ }
+        const eventBus = require('./eventBus');
+        eventBus.publish('excessive_idle', {
+          employeeId,
+          idleMinutes: idleTime / 60000
+        }).catch(err => console.warn('[eventBus] Publish excessive_idle via EMS failed (non-fatal):', err.message));
+      } catch (e) { /* eventBus load failure is non-fatal */ }
     }
     
     this.emit('signal-captured', { employeeId, signal });

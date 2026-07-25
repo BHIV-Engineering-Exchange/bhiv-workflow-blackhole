@@ -174,17 +174,17 @@ class ScreenCaptureService {
 
       await screenCapture.save();
 
-      // TANTRA ecosystem: additive Bucket write (does NOT replace Cloudinary — B3)
+      // TANTRA ecosystem: publish event to the bus (fire-and-forget — must never break capture flow)
       try {
-        const bucketClient = require('./bucketClient');
-        bucketClient.storeScreenshot({
+        const eventBus = require('./eventBus');
+        eventBus.publish('store_screenshot', {
           userId: employeeId,
           sessionId,
           imageBase64: compressedBase64,
           metadata: { trigger, ...metadata_enhanced },
           traceId: screenCapture._id.toString()
-        }).catch(err => console.warn('[Bucket] Screenshot store failed (non-fatal):', err.message));
-      } catch (e) { /* bucketClient load failure is non-fatal */ }
+        }).catch(err => console.warn('[eventBus] Publish store_screenshot failed (non-fatal):', err.message));
+      } catch (e) { /* eventBus load failure is non-fatal */ }
 
       // Update capture config
       captureConfig.lastCaptureHash = currentHash;
