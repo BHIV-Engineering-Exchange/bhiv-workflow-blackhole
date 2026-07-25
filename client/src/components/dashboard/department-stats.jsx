@@ -32,7 +32,6 @@ export function DepartmentStats({ onDepartmentSelect }) {
       try {
         setIsLoading(true)
         const data = await api.dashboard.getDepartmentStats()
-        console.log('Department data:', data) // Debug
         setDepartments(data)
       } catch (error) {
         console.error("Error fetching department stats:", error)
@@ -50,7 +49,6 @@ export function DepartmentStats({ onDepartmentSelect }) {
   }, [toast])
 
   const handlePieClick = (data, index) => {
-    console.log('Pie clicked:', data, index) // Debug
     setActiveIndex(index)
     if (onDepartmentSelect && departments[index]) {
       onDepartmentSelect(departments[index])
@@ -64,8 +62,6 @@ export function DepartmentStats({ onDepartmentSelect }) {
     completed: dept.completed || 0,
     color: COLORS[index % COLORS.length],
   }))
-
-  console.log('Chart data:', chartData) // Debug
 
   const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {

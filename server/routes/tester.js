@@ -122,6 +122,8 @@ router.get("/tested-tasks-feed", auth, testerAuth, async (req, res) => {
         match: { stillExist: 1 },
       })
       .sort({ createdAt: -1 })
+      .limit(300)
+      .lean()
 
     // Filter out submissions where user is inactive
     const activeSubmissions = submissions.filter((s) => s.user)
@@ -129,6 +131,7 @@ router.get("/tested-tasks-feed", auth, testerAuth, async (req, res) => {
     const evaluations = await TaskEvaluation.find()
       .sort({ createdAt: -1 })
       .select("task finalVerdict createdAt evaluatedBy")
+      .limit(300)
       .lean()
 
     const latestEvalByTask = new Map()

@@ -145,10 +145,10 @@ TaskSchema.pre("save", function (next) {
 });
 
 // Compound indexes for dashboard query performance
-TaskSchema.index({ branch: 1, status: 1 });
 TaskSchema.index({ assignee: 1, status: 1 });
 TaskSchema.index({ department: 1, status: 1, branch: 1 });
 TaskSchema.index({ assignee: 1, dueDate: 1, status: 1 });
+TaskSchema.index({ branch: 1, status: 1, updatedAt: -1 }); // covering index for paginated completed-tasks sort
 
 module.exports = mongoose.model("Task", TaskSchema);
 

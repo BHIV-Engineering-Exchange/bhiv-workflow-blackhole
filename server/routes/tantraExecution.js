@@ -1,5 +1,6 @@
 const express = require("express");
 const crypto = require("crypto");
+const mongoose = require("mongoose");
 const router = express.Router();
 
 const { executionAuth } = require("../middleware/executionAuth");
@@ -16,6 +17,43 @@ const computeResultHash = (payload) => {
   hash.update(stableStringify(payload || {}));
   return hash.digest("hex");
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/tantra/health
+// Liveness + readiness probe for the TANTRA runtime.
+// No auth required — monitoring systems must be able to reach this without
+// credentials.  Returns MongoDB connectivity and model availability.
+// ─────────────────────────────────────────────────────────────────────────────
+const MONGO_READY_STATES = { 0: "disconnected", 1: "connected", 2: "connecting", 3: "disconnecting" };
+
+router.get("/health", (req, res) => {
+  const mongoState = MONGO_READY_STATES[mongoose.connection.readyState] || "unknown";
+  const isReady = mongoose.connection.readyState === 1;
+
+  return res.status(isReady ? 200 : 503).json({
+    service: "niyantran-tantra-runtime",
+    version: "1.0.0",
+    status: isReady ? "healthy" : "degraded",
+    timestamp: new Date().toISOString(),
+    components: {
+      mongodb: {
+        state: mongoState,
+        healthy: isReady,
+      },
+      execution_models: {
+        session: "ExecutionSession",
+        event: "ExecutionEvent",
+        lineage: "ExecutionLineage",
+        rejection: "ExecutionRejection",
+      },
+    },
+    runtime: {
+      node_version: process.version,
+      uptime_seconds: Math.floor(process.uptime()),
+      env: process.env.NODE_ENV || "development",
+    },
+  });
+});
 
 router.post(
   "/execution/participate",

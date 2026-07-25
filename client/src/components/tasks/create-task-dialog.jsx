@@ -31,7 +31,7 @@ import { formatDate } from "@/lib/dateFormat";
 import { getUserTasks } from "@/lib/user-api";
 import { isValidOrgEmail } from "@/lib/orgEmail";
 
-export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null }) {
+export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null, onTaskCreated }) {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [departments, setDepartments] = useState([]); // ✅ Initialize as empty array
@@ -84,43 +84,29 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null })
 
       const fetchData = async () => {
   try {
-    // ✅ FIXED: Use authenticated API methods instead of direct axios calls
     const [departmentsResponse, usersResponse, tasksResponse] = await Promise.all([
       api.departments.getDepartments(),
-      api.users.getUsers(), // Use authenticated API method
-      api.tasks.getTasks(), // Use authenticated API method
+      api.users.getUsers(),
+      api.tasks.getTasks({ limit: 100, page: 1 }),
     ]);
 
-    console.log('Departments response:', departmentsResponse);
-    console.log('Users response:', usersResponse);
-    console.log('Tasks response:', tasksResponse);
-
-    // ✅ Handle different response formats for departments
     let departmentsData = [];
     if (Array.isArray(departmentsResponse)) {
       departmentsData = departmentsResponse;
-    } else if (departmentsResponse?.success && Array.isArray(departmentsResponse.data)) {
-      departmentsData = departmentsResponse.data;
     } else if (departmentsResponse?.data && Array.isArray(departmentsResponse.data)) {
       departmentsData = departmentsResponse.data;
     }
 
     const usersData = Array.isArray(usersResponse) ? usersResponse : [];
+    const tasksData = Array.isArray(tasksResponse?.tasks) ? tasksResponse.tasks
+      : Array.isArray(tasksResponse) ? tasksResponse : [];
 
     setDepartments(departmentsData);
     setAllUsers(usersData);
-    setTasks(Array.isArray(tasksResponse) ? tasksResponse : []);
-
-    console.log('Processed data:', {
-      departments: departmentsData.length,
-      users: usersData.length,
-      tasks: Array.isArray(tasksResponse) ? tasksResponse.length : 0
-    });
-
+    setTasks(tasksData);
   } catch (error) {
     console.error("Error fetching data:", error);
     toast.error("Failed to load required data");
-    // ✅ Set empty arrays on error
     setDepartments([]);
     setAllUsers([]);
     setTasks([]);
@@ -387,6 +373,7 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null })
       const result = await response.json();
       console.log("Task created successfully:", result);
 
+      if (onTaskCreated) onTaskCreated(result);
       toast.success("Task created successfully");
       onOpenChange(false);
       

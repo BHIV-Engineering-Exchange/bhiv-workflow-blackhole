@@ -8,6 +8,8 @@ const multer = require("multer")
 const { uploadToCloudinary } = require("../utils/cloudinary")
 const Notification = require("../models/Notification")
 const { isValidOrgEmail, ORG_EMAIL_ERROR } = require("../utils/orgEmail")
+const mongoose = require("mongoose")
+
 
 // Helper to get branch filter from request
 const getBranchQuery = (req) => {
@@ -122,15 +124,31 @@ router.get("/overdue", auth, async (req, res) => {
   }
 })
 
-// Get all tasks - SHOW ALL EXISTING ASSIGNEES
+// Maximum tasks returnable in a single unpaginated request
+const MAX_UNPAGINATED_LIMIT = 100
+
+// Get all tasks - optimized with aggregation (eliminates N+1 query)
 router.get("/", auth, async (req, res) => {
   try {
-    const { department, status, dueDate, priority } = req.query
-    const branchQuery = getBranchQuery(req);
+    const { department, status, dueDate, priority, page, limit, search, submissionStatus } = req.query
+    const branchQuery = getBranchQuery(req)
 
-    // Build filter object with branch filter
+    const limitNum = parseInt(limit) || 0
+    if (limitNum === 0) {
+      return res.status(400).json({
+        error: "Pagination required. Provide ?limit=N&page=P (max limit without page: use limit <= " + MAX_UNPAGINATED_LIMIT + ")",
+        hint: "Use ?status=Completed&page=1&limit=20"
+      })
+    }
+    if (limitNum > MAX_UNPAGINATED_LIMIT) {
+      return res.status(400).json({
+        error: `limit exceeds maximum allowed value of ${MAX_UNPAGINATED_LIMIT}`,
+        hint: `Use limit <= ${MAX_UNPAGINATED_LIMIT} with page parameter`
+      })
+    }
+
     const filter = { ...branchQuery }
-    if (department) filter.department = department
+    if (department) filter.department = new mongoose.Types.ObjectId(department)
     if (status) filter.status = status
     if (priority) filter.priority = priority
     if (dueDate) {
@@ -140,49 +158,170 @@ router.get("/", auth, async (req, res) => {
         $lt: new Date(date.setHours(23, 59, 59, 999)),
       }
     }
+    if (search) {
+      const re = { $regex: search, $options: "i" }
+      filter.$or = [{ title: re }, { description: re }]
+    }
 
-    const tasks = await Task.find(filter)
-      .populate("department", "name color")
-      .populate("dependencies", "title status")
+    const pageNum = parseInt(page) || 1
+    const skip = (pageNum - 1) * limitNum
 
-    // Handle assignee population manually - SHOW ALL EXISTING ASSIGNEES
-    const tasksWithAssignees = await Promise.all(tasks.map(async (task) => {
-      const taskObj = task.toObject()
-      
-      if (!task.assignee) {
-        taskObj.assignee = null
-        return taskObj
-      }
+    // Base pipeline stages shared by both data + count
+    const basePipeline = [
+      { $match: filter },
+      // Join submissions only when submissionStatus filter is active
+      ...( submissionStatus ? [
+        {
+          $lookup: {
+            from: "tasksubmissions",
+            localField: "_id",
+            foreignField: "task",
+            pipeline: [{ $project: { status: 1 } }],
+            as: "_sub"
+          }
+        },
+        {
+          $match: submissionStatus === "noSubmission"
+            ? { "_sub": { $size: 0 } }
+            : { "_sub.status": submissionStatus.charAt(0).toUpperCase() + submissionStatus.slice(1) }
+        }
+      ] : [] )
+    ]
 
-      // Get the actual user without any filtering - SHOW EXISTING ASSIGNEES
-      const actualUser = await User.findById(task.assignee).select("name avatar email stillExist")
-      
-      if (!actualUser) {
-        taskObj.assignee = null
-        return taskObj
-      }
+    const dataPipeline = [
+      ...basePipeline,
+      { $sort: { updatedAt: -1 } },
+      { $skip: skip }, { $limit: limitNum },
+      {
+        $lookup: {
+          from: "users",
+          localField: "assignee",
+          foreignField: "_id",
+          pipeline: [{ $project: { name: 1, avatar: 1, email: 1, stillExist: 1 } }],
+          as: "assigneeData"
+        }
+      },
+      {
+        $lookup: {
+          from: "departments",
+          localField: "department",
+          foreignField: "_id",
+          pipeline: [{ $project: { name: 1, color: 1 } }],
+          as: "departmentData"
+        }
+      },
+      {
+        $addFields: {
+          department: { $arrayElemAt: ["$departmentData", 0] },
+          assignee: {
+            $let: {
+              vars: { u: { $arrayElemAt: ["$assigneeData", 0] } },
+              in: {
+                $cond: {
+                  if: { $not: ["$$u"] },
+                  then: null,
+                  else: {
+                    _id: "$$u._id",
+                    name: "$$u.name",
+                    avatar: "$$u.avatar",
+                    email: "$$u.email",
+                    stillExist: "$$u.stillExist",
+                    isActive: { $eq: ["$$u.stillExist", 1] },
+                    isBlackhole: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      { $project: { assigneeData: 0, departmentData: 0, _sub: 0 } }
+    ]
 
-      // Always show the assignee, but with status indicators
-      const isActive = actualUser.stillExist === 1
-      const isBlackhole = isValidOrgEmail(actualUser.email)
+    const countPipeline = [...basePipeline, { $count: "total" }]
 
-      taskObj.assignee = {
-        _id: actualUser._id,
-        name: actualUser.name,
-        avatar: actualUser.avatar,
-        email: actualUser.email,
-        stillExist: actualUser.stillExist,
-        isActive,
-        isBlackhole,
-        status: !isActive ? 'inactive' : !isBlackhole ? 'non-blackhole' : 'active'
-      }
-
-      return taskObj
-    }))
-
-    res.json(tasksWithAssignees)
+    const [tasks, countResult] = await Promise.all([
+      Task.aggregate(dataPipeline),
+      Task.aggregate(countPipeline)
+    ])
+    const total = countResult[0]?.total ?? 0
+    res.json({ tasks, total, page: pageNum, pages: Math.ceil(total / limitNum) })
   } catch (error) {
     console.error("Error fetching tasks:", error)
+    res.status(500).json({ error: "Server error" })
+  }
+})
+
+// Get aggregate stats for all completed tasks (used by CompletedTasksStats)
+router.get("/stats", auth, async (req, res) => {
+  try {
+    const branchQuery = getBranchQuery(req)
+    const matchFilter = { ...branchQuery, status: "Completed" }
+
+    // One aggregation: join submissions, group by status, group by department
+    const [statusResult, deptResult] = await Promise.all([
+      Task.aggregate([
+        { $match: matchFilter },
+        {
+          $lookup: {
+            from: "tasksubmissions",
+            localField: "_id",
+            foreignField: "task",
+            pipeline: [{ $project: { status: 1 } }],
+            as: "sub"
+          }
+        },
+        {
+          $group: {
+            _id: {
+              $cond: [
+                { $eq: [{ $size: "$sub" }, 0] },
+                "NoSubmission",
+                { $arrayElemAt: ["$sub.status", 0] }
+              ]
+            },
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+      Task.aggregate([
+        { $match: matchFilter },
+        {
+          $lookup: {
+            from: "tasksubmissions",
+            localField: "_id",
+            foreignField: "task",
+            pipeline: [{ $project: { status: 1 } }],
+            as: "sub"
+          }
+        },
+        {
+          $group: {
+            _id: "$department",
+            total: { $sum: 1 },
+            approved: { $sum: { $cond: [{ $eq: [{ $arrayElemAt: ["$sub.status", 0] }, "Approved"] }, 1, 0] } },
+            pending: { $sum: { $cond: [{ $eq: [{ $arrayElemAt: ["$sub.status", 0] }, "Pending"] }, 1, 0] } },
+            rejected: { $sum: { $cond: [{ $eq: [{ $arrayElemAt: ["$sub.status", 0] }, "Rejected"] }, 1, 0] } },
+            noSubmission: { $sum: { $cond: [{ $eq: [{ $size: "$sub" }, 0] }, 1, 0] } }
+          }
+        }
+      ])
+    ])
+
+    const counts = { Approved: 0, Pending: 0, Rejected: 0, NoSubmission: 0 }
+    statusResult.forEach(r => { counts[r._id] = r.count })
+    const total = counts.Approved + counts.Pending + counts.Rejected + counts.NoSubmission
+
+    res.json({
+      approved: counts.Approved,
+      pending: counts.Pending,
+      rejected: counts.Rejected,
+      noSubmission: counts.NoSubmission,
+      total,
+      byDepartment: deptResult
+    })
+  } catch (error) {
+    console.error("Error fetching task stats:", error)
     res.status(500).json({ error: "Server error" })
   }
 })

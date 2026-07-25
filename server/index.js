@@ -130,6 +130,37 @@ const socketIo = require("socket.io");
 const jwt = require("jsonwebtoken");
 const path = require("path");
 require("dotenv").config();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STARTUP ENVIRONMENT VALIDATION
+// The server will not start without these variables.  All of them guard
+// security boundaries — a missing value is always a misconfiguration, never
+// a runtime degradation that should be silently absorbed.
+// ─────────────────────────────────────────────────────────────────────────────
+const REQUIRED_ENV = {
+  JWT_SECRET:
+    "Required to sign and verify user JWTs. Set to a long random secret.",
+  TANTRA_EXECUTION_KEY:
+    "Required to authenticate requests to the TANTRA execution gateway. " +
+    "Set to a long random secret. Generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+  MONGODB_URI:
+    "Required to connect to MongoDB. Set to a valid MongoDB connection string.",
+};
+
+const missingVars = Object.entries(REQUIRED_ENV)
+  .filter(([key]) => !process.env[key])
+  .map(([key, hint]) => `  ${key}: ${hint}`);
+
+if (missingVars.length > 0) {
+  console.error("❌ SERVER STARTUP ABORTED — required environment variables are missing:");
+  missingVars.forEach((msg) => console.error(msg));
+  console.error(
+    "\nCopy server/.env.example to server/.env and fill in the missing values."
+  );
+  process.exit(1);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const userNotificationRoutes = require('./routes/user-notifications');
 const taskRoutes = require("./routes/tasks");
 const departmentRoutes = require("./routes/departments");
@@ -482,6 +513,7 @@ app.use('/api/branches', branchRoutes); // Branch management routes
 app.use('/api/projects', projectRoutes); // Project management routes
 app.use('/api/tester', testerRoutes); // Tester routes
 app.use('/api/tantra', tantraExecutionRoutes); // Deterministic execution participation
+app.use('/api/integration', require('./routes/integrationHealth')); // TANTRA ecosystem integration health
 
 // app.use('/api/new/ai',aiRoutePy)
 

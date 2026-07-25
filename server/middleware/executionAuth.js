@@ -1,12 +1,19 @@
 const jwt = require("jsonwebtoken");
 const { logRejection } = require("../services/executionRejectionLogger");
 
+// Hard guard: refuse to load if TANTRA_EXECUTION_KEY is absent.
+// Without this, any caller knowing the public fallback string bypasses execution auth.
+if (!process.env.TANTRA_EXECUTION_KEY) {
+  throw new Error(
+    "[executionAuth.js] TANTRA_EXECUTION_KEY environment variable is not set. " +
+    "The server will not start without it. " +
+    "Set TANTRA_EXECUTION_KEY to a long random secret before running."
+  );
+}
+
 const executionAuth = async (req, res, next) => {
   const executionKey = req.headers["x-execution-key"];
-  const expectedKey =
-    process.env.TANTRA_EXECUTION_KEY ||
-    process.env.EXECUTION_AUTH_KEY ||
-    "niyantran-dev-exec-key";
+  const expectedKey = process.env.TANTRA_EXECUTION_KEY;
 
   if (executionKey && executionKey === expectedKey) {
     req.executionAuthority = "setu";
@@ -18,7 +25,7 @@ const executionAuth = async (req, res, next) => {
     try {
       const decoded = jwt.verify(
         token,
-        process.env.JWT_SECRET || "jwtSecret"
+        process.env.JWT_SECRET
       );
       req.user = decoded;
 

@@ -5,7 +5,7 @@ import { Button } from "../ui/button"
 import { Plus, CheckSquare } from "lucide-react"
 import { CreateTaskDialog } from "./create-task-dialog"
 
-export function TasksHeader() {
+export function TasksHeader({ onTaskCreated }) {
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false)
 
   return (
@@ -29,7 +29,11 @@ export function TasksHeader() {
         </Button>
       </div>
 
-      <CreateTaskDialog open={isCreateTaskOpen} onOpenChange={setIsCreateTaskOpen} />
+      <CreateTaskDialog
+        open={isCreateTaskOpen}
+        onOpenChange={setIsCreateTaskOpen}
+        onTaskCreated={onTaskCreated}
+      />
     </div>
   )
 }

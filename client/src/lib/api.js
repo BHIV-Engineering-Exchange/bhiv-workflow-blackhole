@@ -368,6 +368,7 @@ const dashboard = {
   getDepartmentStats: () => fetchAPI("/dashboard/departments"),
   getTasksOverview: () => fetchAPI("/dashboard/tasks-overview"),
   getUserStats: (userId) => fetchAPI(`/dashboard/user-stats/${userId}`),
+  getLeaderboard: () => fetchAPI("/dashboard/leaderboard"),
   getAdminReport: (date, filter) => {
     const params = new URLSearchParams();
     if (date) params.append('date', date);

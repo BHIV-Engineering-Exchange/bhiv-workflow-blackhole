@@ -2,7 +2,7 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import axios from "axios"
 import { useNavigate } from "react-router-dom"
 import { useToast } from "../hooks/use-toast"
@@ -41,7 +41,9 @@ const CompletedTasks = () => {
   const [submissions, setSubmissions] = useState([])
   const [departments, setDepartments] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isPageLoading, setIsPageLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [selectedDepartment, setSelectedDepartment] = useState("all")
   const [selectedSubmission, setSelectedSubmission] = useState(null)
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
@@ -52,101 +54,139 @@ const CompletedTasks = () => {
   const [viewMode, setViewMode] = useState("grid")
   const [submissionFilter, setSubmissionFilter] = useState("all")
   const [showStats, setShowStats] = useState(true)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalTasks, setTotalTasks] = useState(0)
+  const LIMIT = 20
+  const abortRef = useRef(null)
+  const departmentsLoadedRef = useRef(false)
 
+  // Debounce search input — avoid filtering on every keystroke
   useEffect(() => {
-    fetchData()
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
+  // Fetch departments once on mount only
+  useEffect(() => {
+    const token = localStorage.getItem("WorkflowToken")
+    axios.get(`${API_URL}/departments`, { headers: { "x-auth-token": token } })
+      .then((res) => {
+        if (res.data.success && res.data.data) setDepartments(res.data.data)
+        else if (Array.isArray(res.data)) setDepartments(res.data)
+        departmentsLoadedRef.current = true
+      })
+      .catch(() => {})
   }, [])
 
-  const fetchData = async () => {
+  // Re-fetch from page 1 whenever any filter changes (also runs on mount)
+  useEffect(() => {
+    fetchData(1, debouncedSearch, selectedDepartment, submissionFilter)
+  }, [debouncedSearch, selectedDepartment, submissionFilter])
+
+  const fetchData = useCallback(async (pageNum = 1, search = debouncedSearch, dept = selectedDepartment, subStatus = submissionFilter) => {
+    // Cancel any in-flight request
+    if (abortRef.current) abortRef.current.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    const isFirstLoad = pageNum === 1 && tasks.length === 0
+    if (isFirstLoad) setIsLoading(true)
+    else setIsPageLoading(true)
+
     try {
-      setIsLoading(true)
       const token = localStorage.getItem("WorkflowToken")
+      const headers = { "x-auth-token": token }
+      const signal = controller.signal
 
-      const tasksResponse = await axios.get(`${API_URL}/tasks?status=Completed`, {
-        headers: { "x-auth-token": token },
+      const params = new URLSearchParams({
+        status: "Completed",
+        page: pageNum,
+        limit: LIMIT,
       })
-      setTasks(tasksResponse.data)
+      if (search) params.set("search", search)
+      if (dept && dept !== "all") params.set("department", dept)
+      if (subStatus && subStatus !== "all") params.set("submissionStatus", subStatus)
 
-      const submissionsResponse = await axios.get(`${API_URL}/submissions`, {
-        headers: { "x-auth-token": token },
-      })
-      setSubmissions(submissionsResponse.data)
+      const [tasksRes, submissionsRes] = await Promise.all([
+        axios.get(`${API_URL}/tasks?${params}`, { headers, signal }),
+        axios.get(`${API_URL}/submissions?page=${pageNum}&limit=${LIMIT}`, { headers, signal }),
+      ])
 
-      const departmentsResponse = await axios.get(`${API_URL}/departments`, {
-        headers: { "x-auth-token": token },
-      })
-
-      console.log('CompletedTasks - Departments response:', departmentsResponse.data)
-
-      // Handle both old and new response formats
-      if (departmentsResponse.data.success && departmentsResponse.data.data) {
-        setDepartments(departmentsResponse.data.data)
-      } else if (Array.isArray(departmentsResponse.data)) {
-        setDepartments(departmentsResponse.data)
-      } else {
-        console.error('Unexpected departments response format:', departmentsResponse.data)
-        setDepartments([])
+      const tasksData = tasksRes.data.tasks ?? tasksRes.data
+      setTasks(Array.isArray(tasksData) ? tasksData : [])
+      if (tasksRes.data.pages !== undefined) {
+        setTotalPages(tasksRes.data.pages)
+        setTotalTasks(tasksRes.data.total)
       }
+
+      const submissionsData = submissionsRes.data.submissions ?? submissionsRes.data
+      setSubmissions(Array.isArray(submissionsData) ? submissionsData : [])
+
+      setPage(pageNum)
     } catch (error) {
+      if (axios.isCancel(error) || error.name === "CanceledError") return
       console.error("Error fetching data:", error)
+      toast({ title: "Error", description: "Failed to load data", variant: "destructive" })
+    } finally {
+      setIsLoading(false)
+      setIsPageLoading(false)
+    }
+  }, [debouncedSearch, selectedDepartment, submissionFilter])
+
+
+const [isReviewing, setIsReviewing] = useState(false)
+
+  const handleReviewSubmission = async () => {
+    if (!selectedSubmission) return
+
+    try {
+      setIsReviewing(true)
+      const token = localStorage.getItem("WorkflowToken")
+      const reviewerId = JSON.parse(localStorage.getItem("WorkflowUser")).id
+
+      if (!reviewerId) throw new Error("Reviewer ID not found")
+
+      const updatedReviewData = {
+        status: reviewData.status,
+        feedback: reviewData.feedback,
+        reviewedBy: typeof reviewerId === "string" ? reviewerId : reviewerId.id,
+      }
+
+      await axios.put(
+        `${API_URL}/submissions/${selectedSubmission._id}/review`,
+        updatedReviewData,
+        { headers: { "x-auth-token": token } }
+      )
+
+      toast({
+        title: "Success",
+        description: `Submission ${reviewData.status.toLowerCase()} successfully`,
+      })
+
+      setReviewDialogOpen(false)
+      setReviewData({ status: "Approved", feedback: "" })
+      fetchData(page, debouncedSearch, selectedDepartment, submissionFilter)
+    } catch (error) {
+      console.error("Error reviewing submission:", error)
       toast({
         title: "Error",
-        description: "Failed to load data",
+        description: "Failed to review submission",
         variant: "destructive",
       })
     } finally {
-      setIsLoading(false)
+      setIsReviewing(false)
     }
   }
 
-const handleReviewSubmission = async () => {
-  if (!selectedSubmission) return
+  // O(1) lookup map — built once when submissions change, not on every render
+  const submissionMap = useMemo(() => {
+    const map = new Map()
+    submissions.forEach((s) => { if (s.task?._id) map.set(s.task._id, s) })
+    return map
+  }, [submissions])
 
-  try {
-    setIsLoading(true)
-    const token = localStorage.getItem("WorkflowToken")
-    const reviewerId = JSON.parse(localStorage.getItem("WorkflowUser")).id // Assuming userId is stored as a string in localStorage
-
-    if (!reviewerId) {
-      throw new Error("Reviewer ID not found")
-    }
-
-    // Validate that reviewerId is a string and not an object
-    const updatedReviewData = {
-      status: reviewData.status,
-      feedback: reviewData.feedback,
-      reviewedBy: typeof reviewerId === "string" ? reviewerId : reviewerId.id, // Ensure only the ID string is sent
-    }
-
-    await axios.put(
-      `${API_URL}/submissions/${selectedSubmission._id}/review`,
-      updatedReviewData,
-      { headers: { "x-auth-token": token } }
-    )
-
-    toast({
-      title: "Success",
-      description: `Submission ${reviewData.status.toLowerCase()} successfully`,
-    })
-
-    setReviewDialogOpen(false)
-    setReviewData({ status: "Approved", feedback: "" })
-    fetchData()
-  } catch (error) {
-    console.error("Error reviewing submission:", error)
-    toast({
-      title: "Error",
-      description: "Failed to review submission",
-      variant: "destructive",
-    })
-  } finally {
-    setIsLoading(false)
-  }
-}
-
-  const getSubmissionForTask = (taskId) => {
-    return submissions.find((submission) => submission.task?._id === taskId)
-  }
+  const getSubmissionForTask = useCallback((taskId) => submissionMap.get(taskId), [submissionMap])
 
   const getSubmissionStatusBadge = (status) => {
     switch (status) {
@@ -189,30 +229,14 @@ const handleReviewSubmission = async () => {
     return { url: displayUrl, fileName, fileType: displayFileType, isImage }
   }
 
+  // Filters are server-side — tasks is already the filtered+paginated result
   const filteredTasks = tasks
-    .filter((task) => {
-      const matchesSearch =
-        task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        task.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (task.assignee?.name && task.assignee.name.toLowerCase().includes(searchTerm.toLowerCase()))
 
-      const matchesDepartment = selectedDepartment === "all" || task.department?._id === selectedDepartment
-
-      const submission = getSubmissionForTask(task._id)
-      let matchesSubmission = true
-      if (submissionFilter === "pending") {
-        matchesSubmission = submission && submission.status === "Pending"
-      } else if (submissionFilter === "approved") {
-        matchesSubmission = submission && submission.status === "Approved"
-      } else if (submissionFilter === "rejected") {
-        matchesSubmission = submission && submission.status === "Rejected"
-      } else if (submissionFilter === "noSubmission") {
-        matchesSubmission = !submission
-      }
-
-      return matchesSearch && matchesDepartment && matchesSubmission
-    })
-    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+  // Memoize document details for the selected submission in the dialog
+  const selectedDocumentDetails = useMemo(() => {
+    if (!selectedSubmission?.documentLink) return null
+    return getDocumentDetails(selectedSubmission.documentLink, selectedSubmission.fileType)
+  }, [selectedSubmission])
 
   if (isLoading) {
     return (
@@ -247,10 +271,11 @@ const handleReviewSubmission = async () => {
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={fetchData} 
+          onClick={() => fetchData(page, debouncedSearch, selectedDepartment, submissionFilter)}
+          disabled={isPageLoading}
           className="h-9 hover:bg-green-50 hover:border-green-300 transition-colors"
         >
-          <Clock className="mr-2 h-4 w-4" /> Refresh
+          {isPageLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clock className="mr-2 h-4 w-4" />} Refresh
         </Button>
         <Button 
           variant="outline" 
@@ -275,7 +300,8 @@ const handleReviewSubmission = async () => {
 
       {showStats && (
         <div className="mb-6">
-          <CompletedTasksStats />
+         <CompletedTasksStats departments={departments} />
+
         </div>
       )}
 
@@ -365,7 +391,7 @@ const handleReviewSubmission = async () => {
               </CardContent>
             </Card>
           ) : viewMode === "grid" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transition-opacity duration-200 ${isPageLoading ? "opacity-40 pointer-events-none" : "opacity-100"}`}>
               {filteredTasks.map((task) => {
                 const submission = getSubmissionForTask(task._id)
                 const document = submission ? getDocumentDetails(submission.documentLink, submission.fileType) : null
@@ -543,7 +569,7 @@ const handleReviewSubmission = async () => {
               })}
             </div>
           ) : (
-            <Card>
+            <Card className={`transition-opacity duration-200 ${isPageLoading ? "opacity-40 pointer-events-none" : "opacity-100"}`}>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -679,8 +705,24 @@ const handleReviewSubmission = async () => {
               </CardContent>
             </Card>
           )}
+          {totalPages > 1 && (
+  <div className="flex items-center justify-between mt-6">
+    <p className="text-sm text-muted-foreground">
+      Page {page} of {totalPages} — {totalTasks} total tasks
+    </p>
+    <div className="flex gap-2">
+      <Button variant="outline" size="sm" onClick={() => fetchData(page - 1, debouncedSearch, selectedDepartment, submissionFilter)} disabled={page <= 1 || isPageLoading}>
+        {isPageLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Previous</> : "Previous"}
+      </Button>
+      <Button variant="outline" size="sm" onClick={() => fetchData(page + 1, debouncedSearch, selectedDepartment, submissionFilter)} disabled={page >= totalPages || isPageLoading}>
+        {isPageLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Next</> : "Next"}
+      </Button>
+    </div>
+  </div>
+)}
         </TabsContent>
-
+        
+           
         <TabsContent value="submissions" className="mt-0">
           <Card>
             <CardHeader>
@@ -906,18 +948,18 @@ const handleReviewSubmission = async () => {
                         </a>
                       </div>
                     )}
-                    {selectedSubmission.documentLink && (
+                    {selectedDocumentDetails?.url && (
                       <div className="relative overflow-hidden flex flex-wrap items-start gap-2.5 p-3.5 bg-gradient-to-r from-white/70 to-white/40 dark:from-slate-700/50 dark:to-slate-700/30 rounded-xl border border-white/70 dark:border-slate-600/60 backdrop-blur-lg transition-all duration-300 hover:border-accent/40 dark:hover:border-accent/40 hover:shadow-md group">
                         <FileText className="h-4 w-4 text-gray-800 dark:text-slate-200 flex-shrink-0 mt-0.5 transition-transform duration-300 group-hover:scale-110" />
                         <a
-                          href={getDocumentDetails(selectedSubmission.documentLink, selectedSubmission.fileType).url}
-                          target={getDocumentDetails(selectedSubmission.documentLink, selectedSubmission.fileType).isImage ? "_self" : "_blank"}
+                          href={selectedDocumentDetails.url}
+                          target={selectedDocumentDetails.isImage ? "_self" : "_blank"}
                           rel="noopener noreferrer"
                           className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline flex items-center gap-1.5 flex-1 min-w-0 break-all text-sm font-semibold transition-colors"
                         >
                           <span className="truncate">
-                            {getDocumentDetails(selectedSubmission.documentLink, selectedSubmission.fileType).fileName} 
-                            ({getDocumentDetails(selectedSubmission.documentLink, selectedSubmission.fileType).fileType})
+                            {selectedDocumentDetails.fileName} 
+                            ({selectedDocumentDetails.fileType})
                           </span>
                           <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" />
                         </a>
@@ -1044,10 +1086,10 @@ const handleReviewSubmission = async () => {
               </Button>
               <Button 
                 onClick={handleReviewSubmission} 
-                disabled={isLoading} 
+                disabled={isReviewing} 
                 className="flex-1 sm:flex-none h-12 px-8 rounded-xl bg-gradient-to-r from-primary via-primary to-primary/90 hover:from-primary/90 hover:via-primary hover:to-primary text-primary-foreground shadow-xl shadow-primary/40 hover:shadow-2xl hover:shadow-primary/50 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-xl font-bold text-base backdrop-blur-lg"
               >
-                {isLoading ? (
+                {isReviewing ? (
                   <span className="flex items-center gap-2.5">
                     <div className="h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
                     Processing...

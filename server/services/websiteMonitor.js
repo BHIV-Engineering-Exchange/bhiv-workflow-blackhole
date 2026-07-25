@@ -747,6 +747,13 @@ class WebsiteMonitor {
           session_id: sessionData.sessionId
         });
 
+        // TANTRA ecosystem: emit KARMA behavioral signal (fire-and-forget — must never break monitoring)
+        try {
+          const karmaClient = require('./karmaClient');
+          karmaClient.signalDisallowedSite(sessionData.employeeId, url)
+            .catch(err => console.warn('[KARMA] signalDisallowedSite failed (non-fatal):', err.message));
+        } catch (e) { /* karmaClient load failure is non-fatal */ }
+
         await screenCaptureService.triggerCapture(
           sessionData.employeeId,
           sessionData.sessionId,

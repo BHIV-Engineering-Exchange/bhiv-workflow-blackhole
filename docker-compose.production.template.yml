@@ -41,6 +41,14 @@ services:
   #       max-size: "10m"
   #       max-file: "3"
 
+  # ── TANTRA Ecosystem Services ────────────────────────────────────────────
+  # Bucket: EXTERNAL — deployed on Render (https://bhiv-bucket-i1l6.onrender.com)
+  # PRANA:  NOT DEPLOYED — git repo only, for future integration
+  # KARMA:  Reached via Bucket relay on Render (not direct)
+  # None of these run as containers in this compose file.
+
+  # ── Niyantran Application ────────────────────────────────────────────────
+
   backend:
     image: bhiv/niyantran-backend:IMG_TAG
     container_name: niyantran_backend
@@ -48,6 +56,8 @@ services:
     # Public ports are OMITTED for security isolation
     environment:
       MONGODB_URI: ${MONGODB_URI}
+      # Bucket on Render — no local container needed
+      BUCKET_BASE_URL: https://bhiv-bucket-i1l6.onrender.com
     env_file:
       - .env
     networks:
@@ -84,6 +94,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # ── Monitoring Stack ─────────────────────────────────────────────────────
 
   prometheus:
     image: prom/prometheus:v2.45.0
@@ -172,4 +184,5 @@ volumes:
     driver: local
   grafana_data:
     driver: local
+
 

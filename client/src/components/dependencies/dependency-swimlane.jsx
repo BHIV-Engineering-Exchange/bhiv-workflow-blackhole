@@ -33,13 +33,13 @@ export function DependencySwimlane() {
       try {
         setIsLoading(true)
         const [tasksData, departmentsResponse] = await Promise.all([
-          api.tasks.getTasks(),
+          api.tasks.getTasks({ page: 1, limit: 100 }),
           api.departments.getDepartments(),
         ])
 
         const departmentsData = departmentsResponse.success ? departmentsResponse.data : departmentsResponse
 
-        setTasks(tasksData)
+        setTasks(Array.isArray(tasksData) ? tasksData : (tasksData.tasks ?? []))
         setDepartments(Array.isArray(departmentsData) ? departmentsData : [])
         setError(null)
       } catch (err) {

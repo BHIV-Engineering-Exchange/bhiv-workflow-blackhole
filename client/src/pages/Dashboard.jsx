@@ -44,6 +44,7 @@ function Dashboard() {
   const [showReportDialog, setShowReportDialog] = useState(false)
   const [showOverdueTasksDialog, setShowOverdueTasksDialog] = useState(false)
   const [testedTaskRows, setTestedTaskRows] = useState([])
+  const [isFeedLoading, setIsFeedLoading] = useState(true)
 
   const isAdmin = user && (user.role === "Admin" || user.role === "Manager")
 
@@ -59,12 +60,8 @@ function Dashboard() {
     const fetchDashboardData = async () => {
       try {
         setIsLoading(true)
-        const [dashboardStats, testedRows] = await Promise.all([
-          api.dashboard.getStats(),
-          api.tester.getTestedTasksFeed(),
-        ])
+        const dashboardStats = await api.dashboard.getStats()
         setStats(dashboardStats)
-        setTestedTaskRows(Array.isArray(testedRows) ? testedRows : [])
       } catch (error) {
         console.error("Error fetching dashboard stats:", error)
         toast({
@@ -74,6 +71,20 @@ function Dashboard() {
         })
       } finally {
         setIsLoading(false)
+      }
+
+      // Load tester feed separately — don't block the page
+      if (isAdmin) {
+        try {
+          const testedRows = await api.tester.getTestedTasksFeed()
+          setTestedTaskRows(Array.isArray(testedRows) ? testedRows : [])
+        } catch (error) {
+          console.error("Error fetching tester feed:", error)
+        } finally {
+          setIsFeedLoading(false)
+        }
+      } else {
+        setIsFeedLoading(false)
       }
     }
 
@@ -478,17 +489,23 @@ function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={testingTrendData} margin={{ top: 10, right: 20, left: 0, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="label" />
-                    <YAxis allowDecimals={false} />
-                    <RechartsTooltip formatter={(value) => [value, "Tested"]} />
-                    <Line type="monotone" dataKey="tested" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              {isFeedLoading ? (
+                <div className="h-[280px] flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={testingTrendData} margin={{ top: 10, right: 20, left: 0, bottom: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="label" />
+                      <YAxis allowDecimals={false} />
+                      <RechartsTooltip formatter={(value) => [value, "Tested"]} />
+                      <Line type="monotone" dataKey="tested" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -500,21 +517,27 @@ function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={testingStatusData} margin={{ top: 10, right: 20, left: 0, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="status" />
-                    <YAxis allowDecimals={false} />
-                    <RechartsTooltip formatter={(value) => [value, "Tasks"]} />
-                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                      {testingStatusData.map((entry) => (
-                        <Cell key={entry.status} fill={entry.color} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              {isFeedLoading ? (
+                <div className="h-[280px] flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={testingStatusData} margin={{ top: 10, right: 20, left: 0, bottom: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="status" />
+                      <YAxis allowDecimals={false} />
+                      <RechartsTooltip formatter={(value) => [value, "Tasks"]} />
+                      <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                        {testingStatusData.map((entry) => (
+                          <Cell key={entry.status} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

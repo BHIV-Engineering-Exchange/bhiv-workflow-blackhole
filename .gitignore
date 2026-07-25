@@ -1,5 +1,13 @@
 server/uploads/
 *.env
-.env*
+!.env.example
 .env.production
 node_modules
+Karma-Tracker/
+bhiv-bucket/
+bhiv_prana/
+
+# Task internal docs (not for git — sensitive planning artifacts)
+Niyantran Full TANTRA Ecosystem Integration And Production VM Convergence/Niyantran Full TANTRA Ecosystem Integration And Production VM Convergence.md
+Niyantran Full TANTRA Ecosystem Integration And Production VM Convergence/Implementation.md
+Niyantran Full TANTRA Ecosystem Integration And Production VM Convergence/ENVIRONMENT.md
