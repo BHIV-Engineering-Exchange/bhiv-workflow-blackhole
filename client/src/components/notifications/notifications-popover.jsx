@@ -113,8 +113,13 @@ export function NotificationsPopover() {
           `${API_URL}/user-notifications/${userId}`
         );
         const notificationsData = Array.isArray(response.data) ? response.data : [];
-        setNotifications(notificationsData);
-        setHasUnread(notificationsData.some((notification) => !notification.read));
+        // Preserve optimistic read state: if we already marked it read locally, keep it read
+        setNotifications(prev => {
+          const localReadIds = new Set(prev.filter(n => n.read).map(n => n._id));
+          const merged = notificationsData.map(n => localReadIds.has(n._id) ? { ...n, read: true } : n);
+          setHasUnread(merged.some(n => !n.read));
+          return merged;
+        });
       } catch (error) {
         console.error("Error fetching notifications:", error);
       }
@@ -134,12 +139,11 @@ export function NotificationsPopover() {
       await axios.put(
         `${API_URL}/user-notifications/${notificationId}/read?userId=${userId}`
       );
-      setNotifications(
-        notifications.map((notification) =>
-          notification._id === notificationId ? { ...notification, read: true } : notification
-        )
-      );
-      setHasUnread(notifications.some((notification) => notification._id !== notificationId && !notification.read));
+      setNotifications(prev => {
+        const updated = prev.map((n) => n._id === notificationId ? { ...n, read: true } : n);
+        setHasUnread(updated.some(n => !n.read));
+        return updated;
+      });
     } catch (error) {
       console.error("Error marking notification as read:", error);
     }
