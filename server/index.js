@@ -182,7 +182,6 @@ const attendanceStatusRoutes = require('./routes/attendanceStatus'); // Attendan
 const agentActivityRoutes = require('./routes/agentActivity'); // Agent activity routes
 const leaveRoutes = require('./routes/leave'); // New leave routes
 const enhancedSalaryRoutes = require('./routes/enhancedSalary'); // Enhanced salary with live attendance
-const enhancedAimsRoutes = require('./routes/enhancedAims'); // Enhanced aims routes
 const consentRoutes = require('./routes/consent'); // Consent routes
 const alertRoutes = require('./routes/alerts'); // Alert routes
 const emsRoutes = require('./routes/ems'); // EMS automation routes
@@ -499,7 +498,6 @@ app.use("/api/agent", agentActivityRoutes); // Desktop agent activity ingestion
 app.use("/api/attendance-dashboard", require("./routes/attendanceDashboard")); // Live attendance dashboard routes
 app.use("/api/leave", leaveRoutes); // Leave management routes
 app.use("/api/enhanced-salary", enhancedSalaryRoutes); // Enhanced salary with live attendance and WFH tracking
-app.use("/api/enhanced-aims", enhancedAimsRoutes); // Enhanced aims with progress routes
 app.use('/api/consent', consentRoutes);
 app.use('/api/alerts', alertRoutes);
 app.use('/api/ems', emsRoutes); // EMS automation routes

@@ -245,39 +245,39 @@ router.get("/with-progress", auth, async (req, res) => {
     console.log('🔍 Enhanced aims query params:', { department, date, user, branch: branchQuery.branch });
     console.log('👤 Request user:', { id: req.user.id, role: req.user.role });
 
-    // Build filter object for aims
     const aimFilter = {};
-    
-    // 🔒 SECURITY FIX: Non-admin users can only see their own aims
-    if (req.user.role !== 'Admin') {
-      aimFilter.user = req.user.id;
-      console.log('🔒 Non-admin user - filtering by user ID:', req.user.id);
-    } else {
-      // Admin can filter by department, branch, and specific user
-      const userFilter = { stillExist: 1, ...branchQuery };
-      
+    let effectiveBranch = branchQuery.branch;
+
+    if (req.user.role === 'Admin' || req.user.role === 'Manager') {
+      if (req.user.role === 'Manager') {
+        const managerDoc = await User.findById(req.user.id).select('branch').lean();
+        effectiveBranch = managerDoc?.branch || req.user.branch;
+      }
+      const userFilter = { stillExist: 1 };
+      if (effectiveBranch) userFilter.branch = effectiveBranch;
+
       if (department && department !== "all") {
         userFilter.department = department;
       }
-      
-      // Get users matching the filter
+
       const usersMatching = await User.find(userFilter).select('_id');
       if (usersMatching.length > 0) {
         aimFilter.user = { $in: usersMatching.map(u => u._id) };
       } else {
-        // No users matching filter, return empty result
-        return res.json({
-          success: true,
-          data: []
-        });
+        return res.json({ success: true, data: [] });
       }
       if (user) aimFilter.user = user;
-      console.log('👑 Admin user - applying filters:', { department, user });
+      console.log(`👑 ${req.user.role} - applying filters:`, { department, user, branch: effectiveBranch });
+    } else {
+      aimFilter.user = req.user.id;
+      console.log('🔒 Non-admin user - filtering by user ID:', req.user.id);
     }
     
     let queryDate = new Date();
     if (date) {
-      queryDate = new Date(date);
+      // Parse yyyy-MM-dd as local date to avoid UTC offset shifting the day
+      const parts = date.split('T')[0].split('-');
+      queryDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
     }
     
     const startOfDay = new Date(queryDate);
@@ -422,9 +422,21 @@ router.get("/with-progress", auth, async (req, res) => {
 
     console.log(`✅ Returning ${enhancedAims.length} enhanced aims`);
 
+    // Count total users in scope for "Aims Not Set" stat
+    let totalUsersInScope;
+    if (aimFilter.user && aimFilter.user.$in) {
+      totalUsersInScope = aimFilter.user.$in.length;
+    } else {
+      const countFilter = { stillExist: 1 };
+      if (effectiveBranch) countFilter.branch = effectiveBranch;
+      if (department && department !== 'all') countFilter.department = department;
+      totalUsersInScope = await User.countDocuments(countFilter);
+    }
+
     res.json({
       success: true,
-      data: enhancedAims
+      data: enhancedAims,
+      totalUsers: totalUsersInScope
     });
 
   } catch (error) {
