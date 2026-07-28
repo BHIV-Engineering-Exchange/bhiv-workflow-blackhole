@@ -466,6 +466,59 @@ app.get('/api/test-browser-detection', async (req, res) => {
 });
 
 
+// Docs endpoint to dynamically inspect and return all registered API routes
+app.get('/docs', (req, res) => {
+  const list = [];
+  
+  function traverse(router, basePath = '') {
+    if (!router || !router.stack) return;
+    router.stack.forEach(layer => {
+      if (layer.route) {
+        // Simple route registered directly on this router
+        const routePath = (basePath + layer.route.path).replace(/\/+/g, '/');
+        const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase());
+        methods.forEach(method => {
+          list.push({ method, path: routePath });
+        });
+      } else if (layer.name === 'router' && layer.handle && layer.handle.stack) {
+        // Nested router middleware
+        let prefix = '';
+        if (layer.regexp) {
+          prefix = layer.regexp.source
+            .replace('^\\/', '/')
+            .replace('\\/?(?=\\/|$)', '')
+            .replace('\\/?$', '')
+            .replace(/\\/g, '');
+        }
+        traverse(layer.handle, basePath + prefix);
+      }
+    });
+  }
+
+  traverse(app._router, '');
+
+  // Filter out any duplicates and sort alphabetically by path
+  const uniqueList = [];
+  const seen = new Set();
+  list.forEach(item => {
+    const key = `${item.method}:${item.path}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueList.push(item);
+    }
+  });
+
+  uniqueList.sort((a, b) => a.path.localeCompare(b.path));
+
+  res.json({
+    message: "Niyantran Workflow Server API Live Endpoint Catalog",
+    version: "1.0.0",
+    total_endpoints: uniqueList.length,
+    endpoints: uniqueList
+  });
+});
+
+
 // Serve static files from Vite build if present
 const clientDistPath = path.join(__dirname, '../client/dist');
 const fs = require('fs');
