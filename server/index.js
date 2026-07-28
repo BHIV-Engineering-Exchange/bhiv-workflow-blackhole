@@ -466,13 +466,26 @@ app.get('/api/test-browser-detection', async (req, res) => {
 });
 
 
-// Serve static files from Vite build
-app.use(express.static(path.join(__dirname, '../client/dist')));
+// Serve static files from Vite build if present
+const clientDistPath = path.join(__dirname, '../client/dist');
+const fs = require('fs');
 
-// Serve frontend only for non-API routes
-app.get(/^\/(?!api).*/, (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/dist/index.html'));
-});
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  app.get(/^\/(?!api).*/, (req, res) => {
+    const indexPath = path.join(clientDistPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.json({ message: "Niyantran Workflow Server API is running." });
+    }
+  });
+} else {
+  // If static folder is not built locally or not present in standalone api deployments
+  app.get('/', (req, res) => {
+    res.json({ message: "Niyantran Workflow Server API is running." });
+  });
+}
 
 
 // Routes
