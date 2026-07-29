@@ -33,10 +33,13 @@ curl -sf -o /dev /null -w "%{http_code}\n" http://localhost/
 # 3. Backend Mongo connect (look for Connected to MongoDB / connection errors)
 docker compose -f docker-compose.production.yml logs backend --tail=80
 
-# 4. Secrets present (do not cat the file)
+# 4. Secrets and Configuration present (do not cat the file)
 test -f .env && ls -la .env
 
-# 5. Note monitoring exposure (hardening later)
+# 5. Verify PRANA & Identity Variables exist in .env
+grep -q "PRANA" .env && echo " PRANA configs present" || echo " MISSING PRANA configs"
+
+# 6. Note monitoring exposure (hardening later)
 ss -tlnp | grep -E ':3000|:9090|:5000|:27017' || true
 ```
 
@@ -50,7 +53,7 @@ Pass criteria: proxy, frontend, backend running; `/api/ping` succeeds; `.env` ex
 
 1. **Source of truth:** GitHub repository secrets  
    - `MONGODB_URI` — injected at deploy for Compose `environment.MONGODB_URI`  
-   - `ENV_FILE` — full VM `.env` contents; **must include the same `MONGODB_URI`** plus `JWT_SECRET`, `FRONTEND_URL`, `CORS_ORIGIN`, etc.
+   - `ENV_FILE` — full VM `.env` contents; **must include the same `MONGODB_URI`** plus `JWT_SECRET`, `FRONTEND_URL`, `CORS_ORIGIN`, PRANA configurations (e.g., `PRANA_API_URL`), and canonical ecosystem identity variables.
 2. **Atlas Network Access:** allowlist the **VM public egress IP only**. Do not use `0.0.0.0/0` in production.
 3. **Database user:** dedicated least-privilege Atlas user for Niyantran only.
 4. **Host file:** after deploy, lock permissions:
@@ -185,11 +188,13 @@ CI currently builds with `--build-arg VITE_API_URL=http://163.128.209.18/api`. W
 
 ---
 
-## Phase 5 — Future-ready (readiness only)
+## Phase 5 — PRANA & Identity Integration
 
-This task does **not** enable full PRANA / Live Monitoring / Live Attendance product rollout.
+This deployment **includes and enables** full PRANA session monitoring and canonical Identity integration.
 
-VM + Docker + Atlas + Socket.IO through NGINX removes Render/Vercel WebSocket and memory ceilings that previously blocked those services. Next enablement should follow `BHIV_INFRA_READINESS.md` and SETU rollout docs without changing the Niyantran compose layout unless capacity requires a dedicated tier.
+* **Employee Session Lifecycle:** Every authenticated employee session must automatically start PRANA monitoring on login and stop on logout. No manual activation should exist.
+* **Identity:** All employee operations must use canonical ecosystem identities (no legacy/temporary string IDs). 
+* Ensure all related environment variables (`PRANA_API_URL`, etc.) are correctly populated in the `ENV_FILE` before deployment.
 
 ---
 

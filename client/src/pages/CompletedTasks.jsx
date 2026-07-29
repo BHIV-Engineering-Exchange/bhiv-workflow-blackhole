@@ -38,7 +38,6 @@ const CompletedTasks = () => {
   const navigate = useNavigate()
   const { toast } = useToast()
   const [tasks, setTasks] = useState([])
-  const [submissions, setSubmissions] = useState([])
   const [departments, setDepartments] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [isPageLoading, setIsPageLoading] = useState(false)
@@ -81,6 +80,7 @@ const CompletedTasks = () => {
 
   // Re-fetch from page 1 whenever any filter changes (also runs on mount)
   useEffect(() => {
+    setPage(1)
     fetchData(1, debouncedSearch, selectedDepartment, submissionFilter)
   }, [debouncedSearch, selectedDepartment, submissionFilter])
 
@@ -90,7 +90,7 @@ const CompletedTasks = () => {
     const controller = new AbortController()
     abortRef.current = controller
 
-    const isFirstLoad = pageNum === 1 && tasks.length === 0
+    const isFirstLoad = pageNum === 1
     if (isFirstLoad) setIsLoading(true)
     else setIsPageLoading(true)
 
@@ -108,10 +108,7 @@ const CompletedTasks = () => {
       if (dept && dept !== "all") params.set("department", dept)
       if (subStatus && subStatus !== "all") params.set("submissionStatus", subStatus)
 
-      const [tasksRes, submissionsRes] = await Promise.all([
-        axios.get(`${API_URL}/tasks?${params}`, { headers, signal }),
-        axios.get(`${API_URL}/submissions?page=${pageNum}&limit=${LIMIT}`, { headers, signal }),
-      ])
+      const tasksRes = await axios.get(`${API_URL}/tasks?${params}`, { headers, signal })
 
       const tasksData = tasksRes.data.tasks ?? tasksRes.data
       setTasks(Array.isArray(tasksData) ? tasksData : [])
@@ -119,9 +116,6 @@ const CompletedTasks = () => {
         setTotalPages(tasksRes.data.pages)
         setTotalTasks(tasksRes.data.total)
       }
-
-      const submissionsData = submissionsRes.data.submissions ?? submissionsRes.data
-      setSubmissions(Array.isArray(submissionsData) ? submissionsData : [])
 
       setPage(pageNum)
     } catch (error) {
@@ -179,14 +173,7 @@ const [isReviewing, setIsReviewing] = useState(false)
     }
   }
 
-  // O(1) lookup map — built once when submissions change, not on every render
-  const submissionMap = useMemo(() => {
-    const map = new Map()
-    submissions.forEach((s) => { if (s.task?._id) map.set(s.task._id, s) })
-    return map
-  }, [submissions])
-
-  const getSubmissionForTask = useCallback((taskId) => submissionMap.get(taskId), [submissionMap])
+  const getSubmissionForTask = useCallback((task) => task.submission ?? null, [])
 
   const getSubmissionStatusBadge = (status) => {
     switch (status) {
@@ -393,7 +380,7 @@ const [isReviewing, setIsReviewing] = useState(false)
           ) : viewMode === "grid" ? (
             <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transition-opacity duration-200 ${isPageLoading ? "opacity-40 pointer-events-none" : "opacity-100"}`}>
               {filteredTasks.map((task) => {
-                const submission = getSubmissionForTask(task._id)
+                const submission = getSubmissionForTask(task)
                 const document = submission ? getDocumentDetails(submission.documentLink, submission.fileType) : null
                 return (
                   <Card
@@ -585,7 +572,7 @@ const [isReviewing, setIsReviewing] = useState(false)
                     </thead>
                     <tbody>
                       {filteredTasks.map((task) => {
-                        const submission = getSubmissionForTask(task._id)
+                        const submission = getSubmissionForTask(task)
                         const document = submission ? getDocumentDetails(submission.documentLink, submission.fileType) : null
                         return (
                           <tr key={task._id} className="border-b hover:bg-muted/50">
@@ -743,51 +730,26 @@ const [isReviewing, setIsReviewing] = useState(false)
                     </tr>
                   </thead>
                   <tbody>
-                    {submissions
-                      .filter((submission) => {
-                        if (selectedDepartment !== "all") {
-                          const task = tasks.find((t) => t._id === submission.task?._id)
-                          if (!task || task.department?._id !== selectedDepartment) {
-                            return false
-                          }
-                        }
-                        if (submissionFilter !== "all") {
-                          if (submissionFilter === "pending" && submission.status !== "Pending") {
-                            return false
-                          } else if (submissionFilter === "approved" && submission.status !== "Approved") {
-                            return false
-                          } else if (submissionFilter === "rejected" && submission.status !== "Rejected") {
-                            return false
-                          }
-                        }
-                        return true
-                      })
-                      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-                      .map((submission) => {
-                        const task = tasks.find((t) => t._id === submission.task?._id)
+                    {tasks
+                      .filter((task) => task.submission)
+                      .map((task) => {
+                        const submission = task.submission
                         const document = getDocumentDetails(submission.documentLink, submission.fileType)
                         return (
-                          <tr key={submission._id} className="border-b hover:bg-muted/50">
+                          <tr key={task._id} className="border-b hover:bg-muted/50">
                             <td className="p-4">
-                              {task ? (
-                                <div className="font-medium">{task.title}</div>
-                              ) : (
-                                <span className="text-muted-foreground">Unknown Task</span>
-                              )}
+                              <div className="font-medium">{task.title}</div>
                             </td>
                             <td className="p-4">
-                              {submission.user ? (
+                              {task.assignee ? (
                                 <div className="flex items-center gap-2">
                                   <Avatar className="h-6 w-6">
-                                    <AvatarImage src={submission.user.avatar || "/placeholder.svg"} />
+                                    <AvatarImage src={task.assignee.avatar || "/placeholder.svg"} />
                                     <AvatarFallback className="text-xs">
-                                      {submission.user.name
-                                        .split(" ")
-                                        .map((n) => n[0])
-                                        .join("")}
+                                      {task.assignee.name.split(" ").map((n) => n[0]).join("")}
                                     </AvatarFallback>
                                   </Avatar>
-                                  <span>{submission.user.name}</span>
+                                  <span>{task.assignee.name}</span>
                                 </div>
                               ) : (
                                 <span className="text-muted-foreground">Unknown User</span>
@@ -851,16 +813,14 @@ const [isReviewing, setIsReviewing] = useState(false)
                             </td>
                             <td className="p-4 text-right">
                               <div className="flex justify-end gap-2">
-                                {task && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => navigate(`/tasks/${task._id}`)}
-                                    className="h-8"
-                                  >
-                                    View Task
-                                  </Button>
-                                )}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => navigate(`/tasks/${task._id}`)}
+                                  className="h-8"
+                                >
+                                  View Task
+                                </Button>
                                 <Button
                                   size="sm"
                                   className="h-8"
