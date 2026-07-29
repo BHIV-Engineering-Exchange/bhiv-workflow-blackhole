@@ -19,6 +19,7 @@ function AllAims() {
   const { toast } = useToast()
   const { user } = useAuth()
   const [aims, setAims] = useState([])
+  const [totalUsers, setTotalUsers] = useState(0)
   const [departments, setDepartments] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSendingReminders, setIsSendingReminders] = useState(false)
@@ -31,70 +32,40 @@ function AllAims() {
   const [imageModalOpen, setImageModalOpen] = useState(false)
 
   const fetchData = useCallback(async () => {
-    const scrollPosition = filterCardRef.current ? filterCardRef.current.getBoundingClientRect().top + window.scrollY : 0
     try {
       setIsLoading(true)
 
-      // Fetch departments
-      const departmentsResponse = await api.departments.getDepartments()
-      console.log('AllAims - Departments response:', departmentsResponse)
-      const departmentsData = departmentsResponse.success ? departmentsResponse.data : departmentsResponse
-      setDepartments(Array.isArray(departmentsData) ? departmentsData : [])
+      const token = localStorage.getItem('WorkflowToken')
+      const selectedBranch = localStorage.getItem('selectedBranch')
+      const headers = {
+        'x-auth-token': token,
+        ...(selectedBranch && selectedBranch !== 'all' && { 'x-branch': selectedBranch })
+      }
 
-      // Fetch enhanced aims with progress data
-      const filters = {}
-      if (selectedDepartment && selectedDepartment !== "all") filters.department = selectedDepartment
-      if (selectedDate) filters.date = selectedDate.toISOString()
-
-      try {
-        // Try enhanced API first
-        const selectedBranch = localStorage.getItem('selectedBranch')
-        const enhancedResponse = await axios.get(`${API_URL}/enhanced-aims/with-progress`, {
-          params: filters,
-          headers: {
-            'x-auth-token': localStorage.getItem('WorkflowToken'),
-            ...(selectedBranch && selectedBranch !== 'all' && { 'x-branch': selectedBranch })
+      const [departmentsResponse, aimsResponse] = await Promise.all([
+        axios.get(`${API_URL}/departments`, { headers }),
+        axios.get(`${API_URL}/aims/with-progress`, {
+          headers,
+          params: {
+            ...(selectedDepartment && selectedDepartment !== 'all' && { department: selectedDepartment }),
+            date: format(selectedDate, 'yyyy-MM-dd')
           }
         })
-        console.log('AllAims - Enhanced aims response:', enhancedResponse.data)
-        const enhancedAims = enhancedResponse.data.success ? enhancedResponse.data.data : enhancedResponse.data
-        console.log('AllAims - Enhanced aims processed:', enhancedAims)
-        
-        // Log progress entries for each aim
-        if (Array.isArray(enhancedAims)) {
-          enhancedAims.forEach(aim => {
-            console.log(`User ${aim.user?.name}: progressEntries=${aim.progressEntries?.length || 0}, isPending=${aim.isPending}`);
-            if (aim.progressEntries && aim.progressEntries.length > 0) {
-              console.log('Progress entries:', aim.progressEntries);
-            }
-          });
-        }
-        
-        setAims(Array.isArray(enhancedAims) ? enhancedAims : [])
-      } catch (enhancedError) {
-        console.log('Enhanced API failed, using regular API:', enhancedError)
-        // Fallback to regular API
-        const aimsData = await api.aims.getAims(filters)
-        console.log('AllAims - Regular aims data:', aimsData)
-        setAims(Array.isArray(aimsData) ? aimsData : [])
-      }
+      ])
 
-      setAutomateAimReminders(false)
-      setAutomateProgressReminders(false)
+      const deptsData = departmentsResponse.data?.data ?? departmentsResponse.data
+      setDepartments(Array.isArray(deptsData) ? deptsData : [])
+
+      const aimsData = aimsResponse.data?.data ?? aimsResponse.data
+      setAims(Array.isArray(aimsData) ? aimsData : [])
+      setTotalUsers(aimsResponse.data?.totalUsers ?? (Array.isArray(aimsData) ? aimsData.length : 0))
     } catch (error) {
-      console.error("Error fetching data:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load aims data",
-        variant: "destructive",
-      })
+      console.error('Error fetching aims data:', error.response?.data || error.message)
+      toast({ title: 'Error', description: 'Failed to load aims data', variant: 'destructive' })
     } finally {
       setIsLoading(false)
-      if (filterCardRef.current) {
-        window.scrollTo({ top: scrollPosition, behavior: "instant" })
-      }
     }
-  }, [selectedDate, selectedDepartment, toast])
+  }, [selectedDate, selectedDepartment])
 
   useEffect(() => {
     fetchData()
@@ -472,39 +443,19 @@ function AllAims() {
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-md font-medium">
                 <User className="h-4 w-4" />
-                <span>Total Users: {(() => {
-                  const uniqueUsers = new Set(aims.map(aim => aim.user?._id).filter(Boolean));
-                  return uniqueUsers.size;
-                })()}</span>
+                <span>Total Users: {totalUsers}</span>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 rounded-md font-medium">
                 <CheckCircle className="h-4 w-4" />
-                <span>Aims Set: {(() => {
-                  const uniqueUsersWithAims = new Set();
-                  aims.forEach(aim => {
-                    if (aim.user?._id && aim.aim && aim.aim.trim() !== '') {
-                      uniqueUsersWithAims.add(aim.user._id);
-                    }
-                  });
-                  return uniqueUsersWithAims.size;
-                })()}</span>
+                <span>Aims Set: {aims.length}</span>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-700 rounded-md font-medium">
                 <AlertCircle className="h-4 w-4" />
-                <span>Aims Not Set: {(() => {
-                  const allUsers = new Set(aims.map(aim => aim.user?._id).filter(Boolean));
-                  const usersWithAims = new Set();
-                  aims.forEach(aim => {
-                    if (aim.user?._id && aim.aim && aim.aim.trim() !== '') {
-                      usersWithAims.add(aim.user._id);
-                    }
-                  });
-                  return allUsers.size - usersWithAims.size;
-                })()}</span>
+                <span>Aims Not Set: {Math.max(0, totalUsers - aims.length)}</span>
               </div>
             </div>
           </div>
