@@ -18,6 +18,25 @@ router.get('/:userId', async (req, res) => {
   }
 });
 
+// Static route MUST come before /:id/read to avoid Express matching 'read-all' as an id
+router.put('/read-all', async (req, res) => {
+  const userId = req.query.userId;
+  if (!userId) {
+    return res.status(400).json({ error: 'User ID is required' });
+  }
+
+  try {
+    await Notification.updateMany(
+      { recipient: userId, read: false },
+      { read: true }
+    );
+    res.json({ message: 'All notifications marked as read' });
+  } catch (error) {
+    console.error('Error marking all notifications as read:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 router.put('/:id/read', async (req, res) => {
   const userId = req.query.userId;
   if (!userId) {
@@ -36,24 +55,6 @@ router.put('/:id/read', async (req, res) => {
     res.json(notification);
   } catch (error) {
     console.error('Error marking notification as read:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-router.put('/read-all', async (req, res) => {
-  const userId = req.query.userId;
-  if (!userId) {
-    return res.status(400).json({ error: 'User ID is required' });
-  }
-
-  try {
-    await Notification.updateMany(
-      { recipient: userId, read: false },
-      { read: true }
-    );
-    res.json({ message: 'All notifications marked as read' });
-  } catch (error) {
-    console.error('Error marking all notifications as read:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

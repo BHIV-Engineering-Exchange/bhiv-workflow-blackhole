@@ -348,7 +348,7 @@
 // export default Progress;
 
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -383,6 +383,7 @@ function Progress() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedImages, setSelectedImages] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
+  const selectedTaskIdRef = useRef(null);
 
 
 
@@ -401,11 +402,13 @@ function Progress() {
   
         setTasks(filteredTasks);
   
-        // Select the first task by default if available
         if (filteredTasks.length > 0) {
-          setSelectedTask(filteredTasks[0]);
-          setProgressValue(filteredTasks[0].progress || 0);
-          fetchProgressHistory(filteredTasks[0]._id);
+          const prevId = selectedTaskIdRef.current;
+          const taskToSelect = (prevId && filteredTasks.find(t => t._id === prevId)) || filteredTasks[0];
+          selectedTaskIdRef.current = taskToSelect._id;
+          setSelectedTask(taskToSelect);
+          setProgressValue(taskToSelect.progress || 0);
+          fetchProgressHistory(taskToSelect._id);
         }
       } catch (error) {
         console.error("Error fetching tasks:", error);
@@ -418,8 +421,8 @@ function Progress() {
     if (user) {
       fetchUserTasks();
     }
-  }, [user, toast]);
-  
+  }, [user]);
+
 
   const fetchProgressHistory = async (taskId) => {
     try {
@@ -434,6 +437,7 @@ function Progress() {
   const handleTaskChange = (taskId) => {
     const task = tasks.find(t => t._id === taskId);
     if (task) {
+      selectedTaskIdRef.current = task._id;
       setSelectedTask(task);
       setProgressValue(task.progress || 0);
       fetchProgressHistory(task._id);

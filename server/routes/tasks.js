@@ -176,14 +176,18 @@ router.get("/", auth, async (req, res) => {
             from: "tasksubmissions",
             localField: "_id",
             foreignField: "task",
-            pipeline: [{ $project: { status: 1 } }],
+            pipeline: [
+              { $sort: { createdAt: -1 } },
+              { $limit: 1 },
+              { $project: { status: 1 } }
+            ],
             as: "_sub"
           }
         },
         {
           $match: submissionStatus === "noSubmission"
             ? { "_sub": { $size: 0 } }
-            : { "_sub.status": submissionStatus.charAt(0).toUpperCase() + submissionStatus.slice(1) }
+            : { "_sub.0.status": submissionStatus.charAt(0).toUpperCase() + submissionStatus.slice(1) }
         }
       ] : [] )
     ]
@@ -210,6 +214,34 @@ router.get("/", auth, async (req, res) => {
           as: "departmentData"
         }
       },
+      // Always embed latest submission for completed tasks
+      ...( filter.status === "Completed" ? [
+        {
+          $lookup: {
+            from: "tasksubmissions",
+            localField: "_id",
+            foreignField: "task",
+            pipeline: [
+              { $sort: { createdAt: -1 } },
+              { $limit: 1 },
+              {
+                $lookup: {
+                  from: "users",
+                  localField: "user",
+                  foreignField: "_id",
+                  pipeline: [{ $project: { name: 1, avatar: 1 } }],
+                  as: "userArr"
+                }
+              },
+              { $addFields: { user: { $arrayElemAt: ["$userArr", 0] } } },
+              { $project: { userArr: 0 } }
+            ],
+            as: "submissionArr"
+          }
+        },
+        { $addFields: { submission: { $arrayElemAt: ["$submissionArr", 0] } } },
+        { $project: { submissionArr: 0 } }
+      ] : [] ),
       {
         $addFields: {
           department: { $arrayElemAt: ["$departmentData", 0] },

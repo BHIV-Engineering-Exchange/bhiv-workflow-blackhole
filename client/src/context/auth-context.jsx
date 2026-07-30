@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../hooks/use-toast";
 import axios from "axios";
+import { initPranaCore, getPacketBuilder } from "../lib/prana-core/prana_packet_builder";
 
 // Determine API URL with fallback logic
 const getApiUrl = () => {
@@ -59,6 +60,37 @@ export const AuthProvider = ({ children }) => {
     return config;
   });
 
+  // PRANA lifecycle helpers
+  const startPrana = (currentUser) => {
+    if (!currentUser) return;
+    try {
+      window.PRANA_DISABLED = false; // ensure it's not disabled
+      initPranaCore({
+        system_type: 'ems',
+        role: 'employee',
+        user_id: currentUser.id || currentUser.email,
+        session_id: localStorage.getItem("WorkflowToken") || 'no-session',
+        bucket_endpoint: import.meta.env.VITE_PRANA_BUCKET_URL || 'http://localhost:8001/bucket/prana/ingest'
+      });
+      console.log('✅ PRANA monitoring started for:', currentUser.email);
+    } catch (err) {
+      console.error('❌ Failed to start PRANA:', err);
+    }
+  };
+
+  const stopPrana = () => {
+    try {
+      const builder = getPacketBuilder();
+      if (builder) {
+        builder.destroy();
+      }
+      window.PRANA_DISABLED = true;
+      console.log('🛑 PRANA monitoring stopped');
+    } catch (err) {
+      console.error('❌ Failed to stop PRANA:', err);
+    }
+  };
+
   // Load user from localStorage on mount
   useEffect(() => {
     const storedUser = localStorage.getItem("WorkflowUser");
@@ -66,6 +98,8 @@ export const AuthProvider = ({ children }) => {
       try {
         const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
+        // Start PRANA if resuming session
+        startPrana(parsedUser);
       } catch (error) {
         console.error("Error parsing stored user:", error);
         localStorage.removeItem("WorkflowUser");
@@ -91,6 +125,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem("WorkflowToken", token);
       localStorage.setItem("WorkflowUser", JSON.stringify(user));
       setUser(user);
+      startPrana(user);
   
       toast({
         title: "Registration successful",
@@ -125,6 +160,7 @@ export const AuthProvider = ({ children }) => {
 
       // Set user in state
       setUser(user);
+      startPrana(user);
 
       toast({
         title: "Login successful",
@@ -151,6 +187,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    stopPrana();
     setUser(null);
     localStorage.removeItem("WorkflowToken"); // Fixed from "token" to "WorkflowToken"
     localStorage.removeItem("WorkflowUser");
