@@ -16,6 +16,10 @@ COPY client/ .
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 
+# Accept PRANA Bucket URL as a build argument
+ARG VITE_PRANA_BUCKET_URL
+ENV VITE_PRANA_BUCKET_URL=$VITE_PRANA_BUCKET_URL
+
 # Build the production bundle
 RUN npm run build
 

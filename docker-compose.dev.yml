@@ -52,6 +52,9 @@ services:
     build:
       context: .
       dockerfile: client/Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL}
+        - VITE_PRANA_BUCKET_URL=${VITE_PRANA_BUCKET_URL}
     container_name: niyantran_frontend
     restart: unless-stopped
     ports:

@@ -77,12 +77,15 @@ jobs:
         env:
           # Optional secret; defaults to current VM origin. Must stay aligned with FRONTEND_URL/CORS_ORIGIN.
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_PRANA_BUCKET_URL: ${{ secrets.VITE_PRANA_BUCKET_URL }}
         run: |
           API_URL="${VITE_API_URL:-/api}"
+          PRANA_BUCKET_URL="${VITE_PRANA_BUCKET_URL:-https://bhiv-bucket-i1l6.onrender.com/bucket/prana/ingest}"
           docker buildx build --push \
             --tag bhiv/niyantran-frontend:${{ steps.vars.outputs.sha_short }} \
             --tag bhiv/niyantran-frontend:latest \
             --build-arg VITE_API_URL="$API_URL" \
+            --build-arg VITE_PRANA_BUCKET_URL="$PRANA_BUCKET_URL" \
             -f client/Dockerfile .
 
   deploy:
