@@ -25,7 +25,7 @@ const getBranchQuery = (req) => {
 // @route   GET /api/aims
 // @desc    Get all aims (with filters) - FILTERED BY BRANCH
 // @access  Private (Admin/Manager)
-router.get("/", adminAuth, async (req, res) => {
+router.get("/", auth, adminAuth, async (req, res) => {
   try {
     const { department, date, user } = req.query;
     const branchQuery = getBranchQuery(req);
@@ -182,7 +182,7 @@ router.get("/user/:userId", auth, async (req, res) => {
 // @route   GET /api/aims/all
 // @desc    Get all aims with user data for admin view - FILTERED BY BRANCH
 // @access  Admin only
-router.get("/all", adminAuth, async (req, res) => {
+router.get("/all", auth, adminAuth, async (req, res) => {
   try {
     const { date } = req.query;
     const branchQuery = getBranchQuery(req);
@@ -452,7 +452,7 @@ router.get("/with-progress", auth, async (req, res) => {
 // @route   GET /api/aims/all-with-progress
 // @desc    Get all aims with progress data for admin view
 // @access  Admin only
-router.get('/all-with-progress', adminAuth, async (req, res) => {
+router.get('/all-with-progress', auth, adminAuth, async (req, res) => {
   try {
     const { date } = req.query;
     const targetDate = date ? new Date(date) : new Date();
@@ -1119,7 +1119,7 @@ router.get("/debug", auth, async (req, res) => {
 // @route   DELETE /api/aims/cleanup-default
 // @desc    Clean up default aims
 // @access  Admin only
-router.delete("/cleanup-default", adminAuth, async (req, res) => {
+router.delete("/cleanup-default", auth, adminAuth, async (req, res) => {
   try {
     const result = await Aim.deleteMany({
       aims: 'Daily work objectives - to be updated'
