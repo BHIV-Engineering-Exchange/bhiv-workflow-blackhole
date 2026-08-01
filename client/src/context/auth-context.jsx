@@ -5,6 +5,9 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "../hooks/use-toast";
 import axios from "axios";
 import { initPranaCore, getPacketBuilder } from "../lib/prana-core/prana_packet_builder";
+import { getSignalCapture } from "../lib/prana-core/signals";
+import { getStateEngine } from "../lib/prana-core/prana_state_engine";
+import monitoringService from "../services/monitoring-service";
 
 // Determine API URL with fallback logic
 const getApiUrl = () => {
@@ -28,7 +31,6 @@ const getApiUrl = () => {
     }
   }
   
-  // Fallback for SSR or build time
   console.warn('⚠️ No API URL configured, using default localhost');
   return 'http://localhost:5001/api';
 };
@@ -60,34 +62,45 @@ export const AuthProvider = ({ children }) => {
     return config;
   });
 
-  // PRANA lifecycle helpers
-  const startPrana = (currentUser) => {
+  // ── Monitoring lifecycle ──────────────────────────────────────────────────
+  const startMonitoring = (currentUser) => {
     if (!currentUser) return;
     try {
-      window.PRANA_DISABLED = false; // ensure it's not disabled
-      initPranaCore({
+      window.PRANA_DISABLED = false;
+      window.__EMS_API_BASE = API_URL; // used by ems-signal-collector.js
+      const pranaResult = initPranaCore({
         system_type: 'ems',
         role: 'employee',
         user_id: currentUser.id || currentUser.email,
         session_id: localStorage.getItem("WorkflowToken") || 'no-session',
         bucket_endpoint: import.meta.env.VITE_PRANA_BUCKET_URL || 'http://localhost:8001/bucket/prana/ingest'
       });
-      console.log('✅ PRANA monitoring started for:', currentUser.email);
+
+      // Expose PRANA internals on window so monitoring-service can read them
+      window.__pranaSignalCapture = getSignalCapture();
+      window.__pranaStateEngine = getStateEngine();
+      window.__pranaPacketBuilder = pranaResult?.packetBuilder || getPacketBuilder();
+
+      const token = localStorage.getItem("WorkflowToken");
+      monitoringService.start(currentUser, token, API_URL);
+      console.log('✅ Monitoring started for:', currentUser.email);
     } catch (err) {
-      console.error('❌ Failed to start PRANA:', err);
+      console.error('❌ Failed to start monitoring:', err);
     }
   };
 
-  const stopPrana = () => {
+  const stopMonitoring = () => {
     try {
+      monitoringService.stop();
       const builder = getPacketBuilder();
-      if (builder) {
-        builder.destroy();
-      }
+      if (builder) builder.destroy();
       window.PRANA_DISABLED = true;
-      console.log('🛑 PRANA monitoring stopped');
+      window.__pranaSignalCapture = null;
+      window.__pranaStateEngine = null;
+      window.__pranaPacketBuilder = null;
+      console.log('🛑 Monitoring stopped');
     } catch (err) {
-      console.error('❌ Failed to stop PRANA:', err);
+      console.error('❌ Failed to stop monitoring:', err);
     }
   };
 
@@ -98,8 +111,8 @@ export const AuthProvider = ({ children }) => {
       try {
         const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
-        // Start PRANA if resuming session
-        startPrana(parsedUser);
+        // Resume monitoring on page reload / tab reopen
+        startMonitoring(parsedUser);
       } catch (error) {
         console.error("Error parsing stored user:", error);
         localStorage.removeItem("WorkflowUser");
@@ -111,7 +124,6 @@ export const AuthProvider = ({ children }) => {
   const register = async (userData) => {
     setLoading(true);
   
-    // Remove department field if not required
     const filteredUserData = { ...userData };
     if (filteredUserData.role === "Admin" || filteredUserData.role === "Manager") {
       delete filteredUserData.department;
@@ -125,7 +137,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem("WorkflowToken", token);
       localStorage.setItem("WorkflowUser", JSON.stringify(user));
       setUser(user);
-      startPrana(user);
+      startMonitoring(user);
   
       toast({
         title: "Registration successful",
@@ -145,7 +157,6 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     }
   };
-  
 
   const login = async (credentials) => {
     setLoading(true);
@@ -154,13 +165,11 @@ export const AuthProvider = ({ children }) => {
       const { token, user } = response.data;
 
       console.log("user after login", user);
-      // Store token and user in localStorage
       localStorage.setItem("WorkflowToken", token);
       localStorage.setItem("WorkflowUser", JSON.stringify(user));
 
-      // Set user in state
       setUser(user);
-      startPrana(user);
+      startMonitoring(user);
 
       toast({
         title: "Login successful",
@@ -168,7 +177,6 @@ export const AuthProvider = ({ children }) => {
         variant: "success",
       });
 
-      // Navigate based on role
       navigate(
         user.role === "User" ? "/userdashboard" :
         user.role === "Tester" ? "/tester-dashboard" :
@@ -186,10 +194,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    stopPrana();
+  const logout = async () => {
+    stopMonitoring();
+    // Send logout signal BEFORE clearing token so authMiddleware can read it
+    try {
+      await axiosInstance.post("/auth/logout");
+    } catch (_) {}
     setUser(null);
-    localStorage.removeItem("WorkflowToken"); // Fixed from "token" to "WorkflowToken"
+    localStorage.removeItem("WorkflowToken");
     localStorage.removeItem("WorkflowUser");
     navigate("/login");
     toast({

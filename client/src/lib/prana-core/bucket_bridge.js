@@ -38,6 +38,10 @@ class BucketBridge {
     // Load offline queue from localStorage on init
     this._loadOfflineQueue();
 
+    // Clear stale offline queue — old packets built for wrong endpoint format will never succeed
+    this.offlineQueue = [];
+    this._clearPersistedQueue();
+
     // Setup network status listeners
     this._setupNetworkHandling();
 
@@ -192,7 +196,7 @@ class BucketBridge {
         },
         body,
         // Add signal for timeout handling
-        signal: AbortSignal.timeout(10000), // 10 second timeout
+        signal: AbortSignal.timeout(30000), // 10 second timeout
       });
 
       if (!res.ok) {

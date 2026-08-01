@@ -283,10 +283,16 @@ class EMSSignalCollector {
     const signals = [...this.signalBuffer];
     this.signalBuffer = [];
 
+    // Get auth token for authenticated requests
+    const token = localStorage.getItem('WorkflowToken');
+
     try {
       const response = await fetch(`${this.config.apiEndpoint}/signals`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'x-auth-token': token } : {})
+        },
         body: JSON.stringify({
           employeeId: this.config.employeeId,
           sessionId: this.config.sessionId,
@@ -345,7 +351,10 @@ class EMSSignalCollector {
   // Get live capture proof
   async getLiveCaptureProof() {
     try {
-      const response = await fetch(`${this.config.apiEndpoint}/signals/${this.config.employeeId}/proof`);
+      const token = localStorage.getItem('WorkflowToken');
+      const response = await fetch(`${this.config.apiEndpoint}/signals/${this.config.employeeId}/proof`, {
+        headers: token ? { 'x-auth-token': token } : {}
+      });
       if (response.ok) {
         const proof = await response.json();
         this.logCurrentState(proof.current_state, proof.statistics);
@@ -376,13 +385,26 @@ if (typeof window !== 'undefined') {
 
   // Auto-start if configuration is found
   const autoStart = () => {
-    const employeeId = localStorage.getItem('employeeId') || sessionStorage.getItem('userId');
-    const apiUrl = localStorage.getItem('apiUrl') || window.location.origin;
+    let employeeId = null;
+    try {
+      const stored = localStorage.getItem('WorkflowUser');
+      if (stored) employeeId = JSON.parse(stored).id;
+    } catch (_) {}
+    if (!employeeId) employeeId = localStorage.getItem('employeeId') || sessionStorage.getItem('userId');
+
+    // Resolve correct API base:
+    // 1. Use window.__EMS_API_BASE set by auth-context (most reliable)
+    // 2. Fallback to localhost:5000 for local dev
+    // 3. Fallback to same-origin /api for production
+    const apiBase = window.__EMS_API_BASE ||
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:5000/api'
+        : window.location.origin + '/api');
 
     if (employeeId) {
       window.emsCollector = new EMSSignalCollector({
         employeeId: employeeId,
-        apiEndpoint: `${apiUrl}/api/ems-signals`,
+        apiEndpoint: `${apiBase}/ems-signals`,
         debug: true
       });
 

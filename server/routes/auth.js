@@ -272,6 +272,7 @@ const authMiddleware = require("../middleware/auth")
 const mongoose = require("mongoose")
 const nodemailer = require("nodemailer")
 const { isValidOrgEmail, ORG_EMAIL_ERROR } = require("../utils/orgEmail")
+const { signalUserLogin, signalUserLogout, signalSessionResume, signalTaskCreated } = require("../services/karmaClient")
 require('dotenv').config()
 
 
@@ -482,6 +483,9 @@ router.post("/register", async (req, res) => {
     })
 
     res.status(201).json({ token, user: payload })
+
+    // Fire-and-forget KARMA signal — registration counts as first login
+    signalUserLogin(String(newUser._id)).catch(() => {});
   } catch (error) {
     console.error("Registration error:", error)
     res.status(500).json({ error: "Server error" })
@@ -520,10 +524,19 @@ router.post("/login", async (req, res) => {
     })
 
     res.json({ token, user: payload })
+
+    // Fire-and-forget KARMA signal
+    signalUserLogin(String(user._id)).catch(() => {});
   } catch (error) {
     console.error("Login error:", error)
     res.status(500).json({ error: "Server error" })
   }
+})
+
+// Logout route — emits KARMA lifecycle signal
+router.post("/logout", authMiddleware, async (req, res) => {
+  signalUserLogout(String(req.user.id)).catch(() => {});
+  res.json({ message: "Logged out" });
 })
 
 // Verify admin password for branch switching

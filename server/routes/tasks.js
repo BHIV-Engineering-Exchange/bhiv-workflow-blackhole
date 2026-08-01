@@ -9,6 +9,7 @@ const { uploadToCloudinary } = require("../utils/cloudinary")
 const Notification = require("../models/Notification")
 const { isValidOrgEmail, ORG_EMAIL_ERROR } = require("../utils/orgEmail")
 const mongoose = require("mongoose")
+const { signalTaskCreated, signalTaskCompleted } = require("../services/karmaClient")
 
 
 // Helper to get branch filter from request
@@ -513,6 +514,9 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       req.io.emit("task:created", taskObj);
     }
 
+    // Fire-and-forget KARMA signal
+    signalTaskCreated(String(assignee)).catch(() => {});
+
     res.status(201).json(taskObj);
   } catch (error) {
     console.error("Error creating task:", error);
@@ -582,6 +586,11 @@ router.put("/:id", auth, async (req, res) => {
     // Emit socket event for real-time updates
     if (req.io) {
       req.io.emit("task:updated", taskObj)
+    }
+
+    // Fire-and-forget KARMA signal when task is completed
+    if (updates.status === "Completed" && task.assignee) {
+      signalTaskCompleted(String(task.assignee)).catch(() => {});
     }
 
     res.json(taskObj)

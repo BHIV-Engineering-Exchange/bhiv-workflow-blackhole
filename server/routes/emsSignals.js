@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const emsSignals = require('../services/ems_signals');
 const auth = require('../middleware/auth');
+const {
+  signalExcessiveIdle,
+  signalKeystrokeAnomaly,
+  signalNormalActivity,
+} = require('../services/karmaClient');
 
 /**
  * EMS Signal API Routes
@@ -37,7 +42,24 @@ router.post('/signals/init', async (req, res) => {
 // Receive batch signals from client
 router.post('/signals', async (req, res) => {
   try {
-    const { employeeId, sessionId, signals } = req.body;
+    let { employeeId, sessionId, signals } = req.body;
+
+    // Accept PRANA packet format: { user_id, raw_signals, cognitive_state, focus_score, ... }
+    if (!employeeId && req.body.user_id) {
+      employeeId = req.body.user_id;
+      sessionId = req.body.session_id;
+      const raw = req.body.raw_signals || {};
+      signals = [
+        { type: 'window_focus',      value: raw.window_focus,    metadata: { cognitive_state: req.body.cognitive_state, focus_score: req.body.focus_score } },
+        { type: 'keystroke_rate',    value: raw.keystroke_count, metadata: { count: raw.keystroke_count, rate: raw.keystroke_count } },
+        { type: 'mouse_movement',    value: raw.mouse_events,    metadata: { events: raw.mouse_events, distance: raw.mouse_distance, velocity: raw.mouse_velocity } },
+        { type: 'scroll_depth',      value: raw.scroll_depth,    metadata: { depth: raw.scroll_depth, events: raw.scroll_events } },
+        { type: 'task_tab_active',   value: raw.task_tab_active, metadata: { active: raw.task_tab_active } },
+        { type: 'app_switch',        value: raw.app_switches,    metadata: { count: raw.app_switches } },
+        { type: 'browser_hidden',    value: raw.browser_hidden,  metadata: { hidden: raw.browser_hidden } },
+        { type: 'productivity_score',value: req.body.focus_score, metadata: { focus_score: req.body.focus_score, cognitive_state: req.body.cognitive_state, active_seconds: req.body.active_seconds, idle_seconds: req.body.idle_seconds } },
+      ].filter(s => s.value !== undefined && s.value !== null);
+    }
 
     if (!employeeId || !signals || !Array.isArray(signals)) {
       return res.status(400).json({ 
@@ -78,6 +100,23 @@ router.post('/signals', async (req, res) => {
           case 'browser_hidden':
             emsSignals.captureBrowserHidden(employeeId, signal.value, signal.metadata);
             break;
+
+          case 'focus_change':
+            // cognitive state change — store as window_focus signal
+            emsSignals.captureWindowFocus(employeeId, signal.value !== 'AWAY' && signal.value !== 'IDLE', signal.metadata);
+            break;
+
+          case 'idle_time':
+            // idle detection — reuse window_focus with inverted value
+            emsSignals.captureWindowFocus(employeeId, (signal.value || 0) < 120, signal.metadata);
+            break;
+
+          case 'productivity_score':
+          case 'session_heartbeat':
+          case 'session_end':
+            // stored in signal buffer as-is via addSignal
+            emsSignals.initializeEmployee(employeeId, sessionId || signal.metadata && signal.metadata.sessionId || 'unknown');
+            break;
           
           default:
             console.warn(`Unknown signal type: ${signal.type}`);
@@ -90,6 +129,21 @@ router.post('/signals', async (req, res) => {
 
     // Get current state
     const currentState = emsSignals.getSignalState(employeeId);
+
+    // KARMA signals based on processed signal types
+    const types = signals.map(s => s.type);
+    if (types.includes('browser_hidden')) {
+      signalExcessiveIdle(String(employeeId)).catch(() => {});
+    } else if (types.includes('keystroke') || types.includes('keystroke_rate')) {
+      const anomalyScore = currentState?.statistics?.keystrokeAnomalyScore || 0;
+      if (anomalyScore > 0.3) {
+        signalKeystrokeAnomaly(String(employeeId), anomalyScore).catch(() => {});
+      } else {
+        signalNormalActivity(String(employeeId)).catch(() => {});
+      }
+    } else if (types.includes('window_focus') || types.includes('mouse_movement') || types.includes('task_tab_active')) {
+      signalNormalActivity(String(employeeId)).catch(() => {});
+    }
 
     res.json({
       success: true,
@@ -262,6 +316,68 @@ router.delete('/signals/:employeeId', async (req, res) => {
   } catch (error) {
     console.error('Error clearing signals:', error);
     res.status(500).json({ error: 'Failed to clear signals' });
+  }
+});
+
+// GET /api/ems-signals/timeline/:employeeId?date=YYYY-MM-DD
+router.get('/timeline/:employeeId', auth, async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const date = req.query.date || new Date().toISOString().split('T')[0];
+
+    const state = emsSignals.getSignalState(employeeId);
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const daySignals = emsSignals.getSignals(
+      employeeId,
+      startOfDay.getTime(),
+      endOfDay.getTime()
+    );
+
+    const workingTimeline = {};
+    const productivityTimeline = {};
+
+    for (const sig of daySignals) {
+      const hour = new Date(sig.timestamp).getHours();
+      const key = `${String(hour).padStart(2, '0')}:00`;
+
+      if (!workingTimeline[key]) workingTimeline[key] = { active_signals: 0, idle_signals: 0 };
+      if (!productivityTimeline[key]) productivityTimeline[key] = { scores: [], avg_score: 0 };
+
+      if (sig.type === 'idle_time' && (sig.value || 0) > 120) {
+        workingTimeline[key].idle_signals++;
+      } else if (['keystroke', 'mouse_movement', 'window_focus', 'task_tab_active'].includes(sig.type)) {
+        workingTimeline[key].active_signals++;
+      }
+
+      if (sig.type === 'productivity_score' && sig.metadata && sig.metadata.focus_score != null) {
+        productivityTimeline[key].scores.push(sig.metadata.focus_score);
+      }
+    }
+
+    for (const key of Object.keys(productivityTimeline)) {
+      const scores = productivityTimeline[key].scores;
+      productivityTimeline[key].avg_score = scores.length
+        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+        : 0;
+      delete productivityTimeline[key].scores;
+    }
+
+    res.json({
+      employeeId,
+      date,
+      currentState: state ? state.currentState : null,
+      statistics: state ? state.statistics : null,
+      workingTimeline,
+      productivityTimeline,
+      totalSignals: daySignals.length,
+    });
+  } catch (error) {
+    console.error('Error fetching timeline:', error);
+    res.status(500).json({ error: 'Failed to fetch timeline' });
   }
 });
 

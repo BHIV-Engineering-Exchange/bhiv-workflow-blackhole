@@ -13,6 +13,11 @@ const auth = require('../middleware/auth');
 const adminAuth = require('../middleware/adminAuth');
 const DailyAttendance = require('../models/DailyAttendance');
 const { reverseGeocode } = require('../utils/reverseGeocode');
+const {
+  signalNormalActivity,
+  signalLateCheckin,
+  signalExcessiveIdle,
+} = require('../services/karmaClient');
 
 // Helper to get branch filter from request
 const getBranchQuery = (req) => {
@@ -363,7 +368,10 @@ router.post('/start-day/:userId', auth, async (req, res) => {
         workLocationType
       });
     }
-    
+
+    // KARMA: runtime milestone — day started
+    signalNormalActivity(String(userId)).catch(() => {});
+
     res.json({
       success: true,
       message: `Day started successfully${workFromHome ? ' from home' : ' from office'}!`,
@@ -565,7 +573,14 @@ router.post('/end-day/:userId', auth, async (req, res) => {
         aimCompleted: todayAim ? (todayAim.completionStatus !== 'Pending') : false
       });
     }
-    
+
+    // KARMA: runtime milestone — day ended; flag idle if short hours
+    if (attendanceRecord.hoursWorked < 4) {
+      signalExcessiveIdle(String(userId), Math.round((8 - attendanceRecord.hoursWorked) * 60)).catch(() => {});
+    } else {
+      signalNormalActivity(String(userId)).catch(() => {});
+    }
+
     res.json({
       success: true,
       message: `Day ended successfully! You worked ${attendanceRecord.hoursWorked} hours today.`,
@@ -810,6 +825,9 @@ router.post('/validate-spam-hours/:recordId', auth, adminAuth, async (req, res) 
     }
 
     console.log(`✅ Admin validated spam record for ${record.user.name}: Granted exactly 8h (actual was: ${originalHours}h)`);
+
+    // KARMA: review outcome — attendance anomaly resolved
+    signalNormalActivity(String(record.user._id)).catch(() => {});
 
     res.json({
       success: true,

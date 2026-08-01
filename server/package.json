@@ -6,7 +6,7 @@
   "scripts": {
     "test": "jest --forceExit",
     "test:watch": "jest --watch",
-    "start": "node index.js"
+    "start": "node index.js",
   },
   "jest": {
     "testEnvironment": "node",

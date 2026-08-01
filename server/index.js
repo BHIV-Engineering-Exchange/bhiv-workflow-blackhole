@@ -309,6 +309,8 @@ const corsOptions = {
     "x-governance-authority",
     "X-Governance-Signature",
     "x-governance-signature",
+    "X-CLIENT-TIMESTAMP",
+    "x-client-timestamp",
   ],
   optionsSuccessStatus: 204,
 };

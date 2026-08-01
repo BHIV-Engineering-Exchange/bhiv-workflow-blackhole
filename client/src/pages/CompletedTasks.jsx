@@ -33,10 +33,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { CompletedTasksStats } from "../components/dashboard/CompletedTasksStats"
 import { API_URL } from "@/lib/api"
 import { formatDate, formatDateTime } from "@/lib/dateFormat"
+import { useAuth } from "../context/auth-context"
 
 const CompletedTasks = () => {
   const navigate = useNavigate()
   const { toast } = useToast()
+  const { user: authUser } = useAuth()
+  const isAdmin = authUser?.role === "Admin" || authUser?.role === "Manager"
   const [tasks, setTasks] = useState([])
   const [departments, setDepartments] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -536,7 +539,7 @@ const [isReviewing, setIsReviewing] = useState(false)
                         >
                           View
                         </Button>
-                        {submission && (
+                        {submission && isAdmin && (
                           <Button
                             size="sm"
                             className="h-8 bg-green-500 hover:bg-green-600 text-white"
@@ -668,7 +671,7 @@ const [isReviewing, setIsReviewing] = useState(false)
                                 >
                                   View
                                 </Button>
-                                {submission && (
+                                {submission && isAdmin && (
                                   <Button
                                     size="sm"
                                     className="h-8"
@@ -821,17 +824,19 @@ const [isReviewing, setIsReviewing] = useState(false)
                                 >
                                   View Task
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  className="h-8"
-                                  onClick={() => {
-                                    setSelectedSubmission(submission)
-                                    setReviewData({ status: submission.status || "Approved", feedback: submission.feedback || "" })
-                                    setReviewDialogOpen(true)
-                                  }}
-                                >
-                                  {submission.status === "Pending" ? "Review" : "Re-review"}
-                                </Button>
+                                {isAdmin && (
+                                  <Button
+                                    size="sm"
+                                    className="h-8"
+                                    onClick={() => {
+                                      setSelectedSubmission(submission)
+                                      setReviewData({ status: submission.status || "Approved", feedback: submission.feedback || "" })
+                                      setReviewDialogOpen(true)
+                                    }}
+                                  >
+                                    {submission.status === "Pending" ? "Review" : "Re-review"}
+                                  </Button>
+                                )}
                               </div>
                             </td>
                           </tr>
