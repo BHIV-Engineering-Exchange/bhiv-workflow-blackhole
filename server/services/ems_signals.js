@@ -14,6 +14,9 @@
  */
 
 const EventEmitter = require('events');
+const EmployeeActivity = require('../models/EmployeeActivity');
+const MonitoringAlert = require('../models/MonitoringAlert');
+const WorkSession = require('../models/WorkSession');
 
 class EMSSignalLayer extends EventEmitter {
   constructor() {
@@ -593,14 +596,68 @@ class EMSSignalLayer extends EventEmitter {
   }
 
   /**
+   * Flush current signal state to MongoDB for all tracked employees
+   */
+  async flushToMongo() {
+    for (const [employeeId, employee] of this.employeeSignals) {
+      try {
+        const stats = this.calculateSignalStatistics(employeeId);
+        const activityScore = stats.activityScore;
+        const riskLevel = stats.riskLevel;
+        const indicator = stats.productivityIndicator;
+
+        // 1. Persist snapshot to EmployeeActivity
+        await EmployeeActivity.create({
+          employee: employeeId,
+          session_id: employee.sessionId || 'unknown',
+          keystroke_count: employee.currentState.keystroke_rate,
+          mouse_activity_score: Math.min(100, (employee.currentState.mouse_movement / this.config.mouseMovementThreshold) * 100),
+          idle_duration: Math.floor(employee.currentState.idle_time / 1000),
+          productivity_score: activityScore,
+          active_application: { url: null, name: null, title: null },
+          timestamp: new Date(),
+        });
+
+        // 2. Update WorkSession productivity rollup
+        const session = await WorkSession.getTodaySession(employeeId);
+        if (session) {
+          await session.updateProductivity({
+            keystrokeCount: (session.productivity.keystrokeCount || 0) + employee.currentState.keystroke_rate,
+            mouseActivity: Math.round((session.productivity.mouseActivity || 0 + activityScore) / 2),
+            idleTime: (session.productivity.idleTime || 0) + Math.floor(employee.currentState.idle_time / 60000),
+          });
+        }
+
+        // 3. Fire MonitoringAlert on high risk or idle/distracted
+        if (riskLevel === 'high' || indicator === 'idle' || indicator === 'distracted') {
+          const alertType = indicator === 'idle' ? 'idle_timeout' : 'productivity_drop';
+          const severity = riskLevel === 'high' ? 'high' : 'medium';
+          await MonitoringAlert.createAlert({
+            employee: employeeId,
+            alert_type: alertType,
+            severity,
+            title: indicator === 'idle' ? 'Employee Idle Detected' : 'Productivity Drop Detected',
+            description: `Employee ${employeeId} — indicator: ${indicator}, risk: ${riskLevel}, score: ${activityScore}`,
+            session_id: employee.sessionId,
+            data: { productivity_score: activityScore, activity_data: employee.currentState },
+          });
+        }
+      } catch (err) {
+        console.error(`[EMS] flushToMongo failed for ${employeeId}:`, err.message);
+      }
+    }
+  }
+
+  /**
    * Start signal processor
    */
   startSignalProcessor() {
-    // Check idle time for all employees every 30 seconds
+    // Check idle time + flush to MongoDB every 30 seconds
     setInterval(() => {
       for (const [employeeId] of this.employeeSignals) {
         this.captureIdleTime(employeeId);
       }
+      this.flushToMongo();
     }, 30000);
 
     console.log('⚙️  [EMS] Signal processor started');
