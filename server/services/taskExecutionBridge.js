@@ -3,7 +3,9 @@ const crypto = require("crypto");
 
 const generateExecutionId = (taskId, userId) => {
   const hash = crypto.createHash("sha256");
-  hash.update(`task:${taskId}:user:${userId}`);
+  const tId = taskId && taskId._id ? taskId._id.toString() : taskId.toString();
+  const uId = userId && userId._id ? userId._id.toString() : userId.toString();
+  hash.update(`task:${tId}:user:${uId}`);
   return `exec_${hash.digest("hex").substring(0, 16)}`;
 };
 
