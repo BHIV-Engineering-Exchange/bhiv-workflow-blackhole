@@ -172,12 +172,25 @@ router.post('/start-day/:userId', auth, async (req, res) => {
     }
     
     // Validate geolocation
-    if (!latitude || !longitude) {
+    if (latitude === undefined || latitude === null || longitude === undefined || longitude === null) {
       return res.status(400).json({ 
         error: 'Geolocation data required',
         code: 'LOCATION_REQUIRED'
       });
     }
+    
+    const latNum = parseFloat(latitude);
+    const lngNum = parseFloat(longitude);
+    if (isNaN(latNum) || isNaN(lngNum)) {
+      return res.status(400).json({ 
+        error: 'Invalid geolocation coordinates',
+        code: 'LOCATION_REQUIRED'
+      });
+    }
+    latitude = latNum;
+    longitude = lngNum;
+
+    const formattedCoords = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -211,12 +224,12 @@ router.post('/start-day/:userId', auth, async (req, res) => {
         try {
           const geocodeResult = await reverseGeocode(latitude, longitude);
           // Always use the full address from geocoding result
-          wfhAddress = geocodeResult.fullAddress || geocodeResult.displayName || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+          wfhAddress = (geocodeResult && (geocodeResult.fullAddress || geocodeResult.displayName)) || formattedCoords;
           console.log(`📍 User ${userId} starting work from home at: ${wfhAddress} (${latitude}, ${longitude})`);
         } catch (error) {
           console.warn(`⚠️ Reverse geocoding failed for WFH location: ${error.message}`);
           // Always provide coordinates as fallback address
-          wfhAddress = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+          wfhAddress = formattedCoords;
           console.log(`📍 User ${userId} starting work from home at coordinates: ${wfhAddress}`);
         }
       } else {
@@ -256,12 +269,12 @@ router.post('/start-day/:userId', auth, async (req, res) => {
     if (!finalAddress || finalAddress === 'Work From Home' || finalAddress === 'Office Location' || finalAddress.toLowerCase().includes('work from home')) {
       try {
         const geocodeResult = await reverseGeocode(latitude, longitude);
-        finalAddress = geocodeResult.fullAddress || geocodeResult.displayName || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+        finalAddress = (geocodeResult && (geocodeResult.fullAddress || geocodeResult.displayName)) || formattedCoords;
         console.log(`📍 User ${userId} location geocoded: ${finalAddress} (${latitude}, ${longitude})`);
       } catch (error) {
         console.warn(`⚠️ Reverse geocoding failed: ${error.message}`);
         // Fallback to coordinates if geocoding fails
-        finalAddress = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+        finalAddress = formattedCoords;
         console.log(`📍 User ${userId} using coordinates as address fallback: ${finalAddress}`);
       }
     } else {
@@ -340,23 +353,27 @@ router.post('/start-day/:userId', auth, async (req, res) => {
     
     await dailyRecord.save();
     
-    // Update today's aim with work location if it exists (don't create default aims)
-    const Aim = require('../models/Aim');
-    let todayAim = await Aim.findOne({
-      user: userId,
-      date: {
-        $gte: today,
-        $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+    // Safely update today's aim with work location if it exists (don't create default aims)
+    try {
+      const Aim = require('../models/Aim');
+      let todayAim = await Aim.findOne({
+        user: userId,
+        date: {
+          $gte: today,
+          $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+        }
+      });
+      
+      if (todayAim) {
+        // Update existing aim with work location
+        todayAim.workLocation = workLocationType;
+        await todayAim.save();
+        console.log(`🏢 Updated aim work location to ${workLocationType} for user ${userId}`);
+      } else {
+        console.log(`📝 No aim found for user ${userId} - user should set their own aim`);
       }
-    });
-    
-    if (todayAim) {
-      // Update existing aim with work location
-      todayAim.workLocation = workLocationType;
-      await todayAim.save();
-      console.log(`🏢 Updated aim work location to ${workLocationType} for user ${userId}`);
-    } else {
-      console.log(`📝 No aim found for user ${userId} - user should set their own aim`);
+    } catch (aimErr) {
+      console.warn(`⚠️ Non-fatal: Failed to sync workLocation to Aim for user ${userId}:`, aimErr.message);
     }
     
     // Emit socket event
@@ -364,7 +381,7 @@ router.post('/start-day/:userId', auth, async (req, res) => {
       req.io.emit('attendance:day-started', {
         userId,
         startTime,
-        location: { latitude, longitude, address },
+        location: { latitude, longitude, address: finalAddress },
         workLocationType
       });
     }
@@ -376,7 +393,7 @@ router.post('/start-day/:userId', auth, async (req, res) => {
       success: true,
       message: `Day started successfully${workFromHome ? ' from home' : ' from office'}!`,
       startTime,
-      location: { latitude, longitude, address },
+      location: { latitude, longitude, address: finalAddress },
       workLocationType,
       distanceFromOffice: workFromHome ? null : geolib.getDistance(
         { latitude: OFFICE_COORDINATES.latitude, longitude: OFFICE_COORDINATES.longitude },
@@ -385,11 +402,11 @@ router.post('/start-day/:userId', auth, async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ Start day error for user', userId, ':', error);
+    console.error('❌ Start day error for user', req.params?.userId || 'unknown', ':', error);
     console.error('Error stack:', error.stack);
     res.status(500).json({ 
-      error: 'Failed to start day',
-      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      error: error.message || 'Failed to start day',
+      details: error.message,
       code: 'START_DAY_FAILED'
     });
   }
@@ -411,10 +428,12 @@ router.post('/end-day/:userId', auth, async (req, res) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     
+    // Find most recent open/unended attendance session for this user (supports overnight sessions across midnight)
     const attendanceRecord = await Attendance.findOne({
       user: userId,
-      date: today
-    });
+      startDayTime: { $exists: true, $ne: null },
+      $or: [{ endDayTime: { $exists: false } }, { endDayTime: null }]
+    }).sort({ startDayTime: -1 });
     
     if (!attendanceRecord || !attendanceRecord.startDayTime) {
       return res.status(400).json({ 
@@ -436,12 +455,16 @@ router.post('/end-day/:userId', auth, async (req, res) => {
     // =====================================
     
     // ✅ ONLY CHECK PROGRESS - AIM VALIDATION REMOVED
+    const sessionDate = attendanceRecord.date || today;
+    const sessionDateEnd = new Date(sessionDate);
+    sessionDateEnd.setDate(sessionDateEnd.getDate() + 1);
+
     const Progress = require('../models/Progress');
     const todayProgress = await Progress.findOne({
       user: userId,
       date: {
-        $gte: today,
-        $lt: tomorrow
+        $gte: sessionDate,
+        $lt: sessionDateEnd
       }
     });
     
@@ -465,8 +488,8 @@ router.post('/end-day/:userId', auth, async (req, res) => {
     const todayAim = await Aim.findOne({
       user: userId,
       date: {
-        $gte: today,
-        $lt: tomorrow
+        $gte: sessionDate,
+        $lt: sessionDateEnd
       }
     });
     
@@ -492,17 +515,17 @@ router.post('/end-day/:userId', auth, async (req, res) => {
       attendanceRecord.employeeNotes = notes;
     }
 
-    // Calculate detailed working hours BEFORE saving
+    // Calculate detailed working hours BEFORE saving with negative hours guard
     const startTime = attendanceRecord.startDayTime;
     const totalMilliseconds = endTime - startTime;
-    const totalMinutes = Math.floor(totalMilliseconds / (1000 * 60));
-    const hoursWorked = totalMilliseconds / (1000 * 60 * 60);
+    const totalMinutes = Math.max(0, Math.floor(totalMilliseconds / (1000 * 60)));
+    const hoursWorked = Math.max(0, totalMilliseconds / (1000 * 60 * 60));
 
     // 🔧 FETCH WORK SESSION TO GET BREAK TIME
     const WorkSession = require('../models/WorkSession');
     const workSession = await WorkSession.findOne({
       employee: userId,
-      date: { $gte: today, $lt: tomorrow }
+      date: { $gte: sessionDate, $lt: sessionDateEnd }
     });
     
     let breakTimeMinutes = 0;
@@ -536,7 +559,7 @@ router.post('/end-day/:userId', auth, async (req, res) => {
     const DailyAttendance = require('../models/DailyAttendance');
     const dailyRecord = await DailyAttendance.findOne({
       user: userId,
-      date: today
+      date: sessionDate
     });
     
     if (dailyRecord) {
@@ -583,7 +606,7 @@ router.post('/end-day/:userId', auth, async (req, res) => {
 
     res.json({
       success: true,
-      message: `Day ended successfully! You worked ${attendanceRecord.hoursWorked} hours today.`,
+      message: `Day ended successfully! You worked ${attendanceRecord.hoursWorked} hours.`,
       data: {
         endTime,
         startTime: attendanceRecord.startDayTime,
@@ -609,135 +632,14 @@ router.post('/end-day/:userId', auth, async (req, res) => {
 });
 
 /**
- * AUTO END DAY AT MIDNIGHT - NEW IMPLEMENTATION
- * This endpoint is called by a scheduled job at midnight (12:00 AM)
- * It auto-ends all unended work days and marks them as spam (Pending Review)
- * Admin can later validate these records (max 8 hours)
+ * AUTO END DAY AT MIDNIGHT - DISABLED
  */
 router.post('/auto-end-day-midnight', auth, async (req, res) => {
-  try {
-    // Only allow Admin or system to run this
-    if (req.user.role !== 'Admin') {
-      return res.status(403).json({ 
-        error: 'Only Admin can trigger midnight auto-end',
-        code: 'ADMIN_REQUIRED'
-      });
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    // Get yesterday's date (the day that just ended at midnight)
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-    
-    const yesterdayEnd = new Date(yesterday);
-    yesterdayEnd.setHours(23, 59, 59, 999);
-
-    console.log(`🕛 Running midnight auto-end for date: ${yesterday.toISOString().split('T')[0]}`);
-
-    // Find all attendance records from yesterday that started but haven't ended
-    const activeAttendance = await Attendance.find({
-      date: {
-        $gte: yesterday,
-        $lte: yesterdayEnd
-      },
-      startDayTime: { $exists: true, $ne: null },
-      endDayTime: { $exists: false }
-    }).populate('user', 'name email');
-
-    const autoEndedUsers = [];
-    const midnightTime = today; // Midnight of the new day
-
-    for (const record of activeAttendance) {
-      try {
-        // Calculate actual hours worked (from start to midnight)
-        const startTime = new Date(record.startDayTime);
-        const hoursWorked = (midnightTime - startTime) / (1000 * 60 * 60);
-
-        // Auto end the day at midnight
-        record.endDayTime = midnightTime;
-        record.hoursWorked = Math.round(hoursWorked * 100) / 100;
-        record.autoEnded = true;
-        record.spamStatus = 'Pending Review';
-        record.spamReason = 'User did not click End Day before midnight - auto-ended by system';
-        record.systemNotes = `Auto-ended at midnight. Original hours: ${record.hoursWorked}h. Admin validation grants exactly ${SPAM_VALIDATION_HOURS}h`;
-        record.employeeNotes = (record.employeeNotes || '') + ' [Auto-ended at midnight - Pending admin review]';
-
-        // Set overtime to 0 for spam records
-        record.overtimeHours = 0;
-        
-        // Mark as unverified pending review
-        record.approvalStatus = 'Pending';
-
-        await record.save();
-
-        // Also update DailyAttendance record
-        const dailyRecord = await DailyAttendance.findOne({
-          user: record.user._id,
-          date: {
-            $gte: yesterday,
-            $lte: yesterdayEnd
-          }
-        });
-
-        if (dailyRecord) {
-          dailyRecord.endDayTime = midnightTime;
-          dailyRecord.totalHoursWorked = record.hoursWorked;
-          dailyRecord.autoEnded = true;
-          dailyRecord.spamStatus = 'Pending Review';
-          dailyRecord.spamReason = 'User did not click End Day before midnight';
-          dailyRecord.systemNotes = `Auto-ended at midnight. Actual hours: ${record.hoursWorked}h. Admin validation grants exactly ${SPAM_VALIDATION_HOURS}h`;
-          await dailyRecord.save();
-        }
-
-        autoEndedUsers.push({
-          userId: record.user._id,
-          userName: record.user.name,
-          userEmail: record.user.email,
-          date: yesterday.toISOString().split('T')[0],
-          startTime: record.startDayTime,
-          hoursWorked: record.hoursWorked,
-          autoEndTime: midnightTime,
-          spamStatus: 'Pending Review'
-        });
-
-        console.log(`⚠️ Auto-ended work day for ${record.user.name} - ${record.hoursWorked}h (marked as spam)`);
-
-        // Emit socket event if available
-        if (req.io) {
-          req.io.emit('attendance:auto-ended-midnight', {
-            userId: record.user._id,
-            userName: record.user.name,
-            date: yesterday.toISOString().split('T')[0],
-            hoursWorked: record.hoursWorked,
-            reason: 'Did not end day before midnight',
-            spamStatus: 'Pending Review'
-          });
-        }
-      } catch (recordError) {
-        console.error(`Error auto-ending record for user ${record.user?.name}:`, recordError);
-      }
-    }
-
-    console.log(`✅ Midnight auto-end complete. Processed ${autoEndedUsers.length} records.`);
-
-    res.json({
-      success: true,
-      message: `Auto-ended ${autoEndedUsers.length} unfinished work day(s) at midnight`,
-      autoEndedUsers,
-      date: yesterday.toISOString().split('T')[0],
-      processedAt: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('Midnight auto-end error:', error);
-    res.status(500).json({ 
-      error: 'Failed to process midnight auto-end',
-      details: error.message 
-    });
-  }
+  return res.status(400).json({
+    success: false,
+    error: 'Midnight auto-end day is permanently disabled. Work days continue until manually ended by the user.',
+    code: 'AUTO_END_DISABLED'
+  });
 });
 
 /**
