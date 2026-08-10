@@ -116,6 +116,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
         submission.feedback = finalFeedback;
         submission.aiReviewDetails = {
             score: response.score,
+            result: response.result || (finalStatus === "Approved" ? "PASS" : "FAIL"),
             doneWell,
             missingWork,
             recommendations,
@@ -123,12 +124,49 @@ const invokeParikshak = async (submissionId, traceId, io) => {
         };
         await submission.save();
 
+        // Phase 2: MasterDB Integration - Candidate Execution History
+        try {
+            const TaskEvaluation = require('../models/TaskEvaluation');
+            const User = require('../models/User');
+            let adminUser = await User.findOne({ role: { $in: ['Admin', 'Manager'] } });
+            let evaluatorId = adminUser ? adminUser._id : user._id;
+            
+            await TaskEvaluation.create({
+                task: task._id,
+                submission: submission._id,
+                evaluatedBy: evaluatorId,
+                projectName: "Parikshak Automated Review",
+                moduleName: task.title.substring(0, 50),
+                submittedBy: user._id,
+                testingLevel: "Task",
+                testConductedBy: "PARIKSHAK_AI",
+                functionalTesting: {
+                    result: response.result === "PARTIAL" ? "PARTIAL" : (response.result === "PASS" || finalStatus === "Approved" ? "PASS" : "FAIL"),
+                    notes: doneWell
+                },
+                finalVerdict: finalStatus === "Approved" ? "APPROVED" : "REJECTED",
+                branch: task.branch
+            });
+            console.log(`[PARIKSHAK] Phase 2: MasterDB TaskEvaluation record created for ${task._id}`);
+        } catch (evalErr) {
+            console.error(`[PARIKSHAK] Failed to create TaskEvaluation record:`, evalErr.message);
+        }
+
         // Update task status and emit events
         let execContext;
         try {
             if (finalStatus === "Approved") {
                 execContext = await emitTaskCompletedEvent(submission, traceId, task.branch);
                 console.log(`[TRACE_EMITTED] Task completed (Automated) - trace_id=${execContext?.traceId}`);
+                
+                // Phase 2: KARMA Runtime Integration
+                try {
+                    const karmaClient = require('./karmaClient');
+                    await karmaClient.signalTaskCompleted(user._id.toString(), traceId);
+                    console.log(`[KARMA] signalTaskCompleted emitted for ${user._id}`);
+                } catch (karmaErr) {
+                    console.warn(`[KARMA] Failed to emit signalTaskCompleted:`, karmaErr.message);
+                }
                 
                 if (task.status !== "Completed") {
                     task.status = "Completed";

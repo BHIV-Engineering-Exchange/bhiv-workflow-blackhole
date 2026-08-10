@@ -16,6 +16,15 @@ const ParikshakReviewCard = ({ submission }) => {
             <Rocket className="h-4 w-4 text-white" />
           </div>
           <h3 className="font-semibold text-indigo-900 dark:text-indigo-200">AI Automated Review</h3>
+          {details.result && (
+            <Badge className={`${
+              details.result === 'PASS' ? 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/50 dark:text-green-300' :
+              details.result === 'PARTIAL' ? 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/50 dark:text-amber-300' :
+              'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/50 dark:text-red-300'
+            }`}>
+              {details.result}
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200 shadow-sm dark:bg-indigo-900/50 dark:text-indigo-300 dark:border-indigo-800">
