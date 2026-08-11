@@ -82,9 +82,15 @@ function startAttendancePersistenceCron() {
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
 
-      // Find all attendance records from today
+      // Find all attendance records from today OR active open sessions starting before today
       const todayAttendance = await Attendance.find({
-        date: { $gte: today, $lt: tomorrow }
+        $or: [
+          { date: { $gte: today, $lt: tomorrow } },
+          {
+            startDayTime: { $exists: true, $ne: null },
+            $or: [{ endDayTime: { $exists: false } }, { endDayTime: null }]
+          }
+        ]
       }).populate('user', 'name email department');
 
       // Get all AIMS from today
@@ -120,7 +126,7 @@ function startAttendancePersistenceCron() {
         // If not ended, calculate up to current time for reporting purposes only
         if (!endTime && attendance.startDayTime) {
           // Calculate hours worked up to now (for reporting) but don't auto-end
-          hoursWorked = (now - attendance.startDayTime) / (1000 * 60 * 60);
+          hoursWorked = Math.max(0, (now - attendance.startDayTime) / (1000 * 60 * 60));
           originalHours = hoursWorked;
           
           // Apply WFH cap for reporting if applicable
@@ -133,7 +139,7 @@ function startAttendancePersistenceCron() {
           console.log(`ℹ️ User ${attendance.user.name} has active work day (${Math.round(hoursWorked * 100) / 100}h${wfhCapApplied ? ' WFH capped' : ''}) - waiting for manual end`);
         } else if (endTime && attendance.startDayTime) {
           // Day already ended by user - calculate final hours
-          hoursWorked = (endTime - attendance.startDayTime) / (1000 * 60 * 60);
+          hoursWorked = Math.max(0, (endTime - attendance.startDayTime) / (1000 * 60 * 60));
           originalHours = hoursWorked;
           
           // Apply WFH cap if applicable (WFO employees keep actual hours)
@@ -148,17 +154,23 @@ function startAttendancePersistenceCron() {
           }
         }
 
+        const sessionDate = attendance.date || today;
+        const sessionDateStart = new Date(sessionDate);
+        sessionDateStart.setHours(0, 0, 0, 0);
+        const sessionDateEnd = new Date(sessionDateStart);
+        sessionDateEnd.setDate(sessionDateEnd.getDate() + 1);
+
         // Create or update DailyAttendance record
         let dailyRecord = await DailyAttendance.findOne({
           user: userId,
-          date: { $gte: today, $lt: tomorrow }
+          date: { $gte: sessionDateStart, $lt: sessionDateEnd }
         });
 
         // 🔧 FETCH WORK SESSION TO GET BREAK TIME (pause/resume time)
         const WorkSession = require('../models/WorkSession');
         const workSession = await WorkSession.findOne({
           employee: userId,
-          date: { $gte: today, $lt: tomorrow }
+          date: { $gte: sessionDateStart, $lt: sessionDateEnd }
         });
         
         let breakTimeMinutes = 0;
@@ -176,10 +188,10 @@ function startAttendancePersistenceCron() {
           // Create new daily record
           dailyRecord = new DailyAttendance({
             user: userId,
-            date: today,
+            date: sessionDate,
             startDayTime: attendance.startDayTime,
             endDayTime: endTime,
-            totalHoursWorked: hoursWorked,
+            totalHoursWorked: Math.round(hoursWorked * 100) / 100,
             breakTime: breakTimeMinutes, // Include break time from work session
             workLocationType: attendance.workLocationType || (wfhStatus ? 'Home' : 'Office'),
             startDayLocation: attendance.startDayLocation,
@@ -203,7 +215,7 @@ function startAttendancePersistenceCron() {
         } else {
           // Update existing record
           dailyRecord.endDayTime = endTime;
-          dailyRecord.totalHoursWorked = hoursWorked;
+          dailyRecord.totalHoursWorked = Math.round(hoursWorked * 100) / 100;
           dailyRecord.breakTime = breakTimeMinutes; // Include break time from work session
           dailyRecord.endDayLocation = attendance.endDayLocation;
           dailyRecord.dailyProgressCompleted = !!attendance.progressSubmitted;

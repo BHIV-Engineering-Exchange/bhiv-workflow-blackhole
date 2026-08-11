@@ -21,6 +21,38 @@ const getBranchQuery = (req) => {
   return {};
 };
 
+// Stream Parikshak Task Specification PDF directly from BHIV Server (Zero Parikshak edits required)
+router.get("/parikshak-pdf/:taskId", async (req, res) => {
+  try {
+    const taskId = req.params.taskId;
+    const path = require("path");
+    const { exec } = require("child_process");
+
+    const parikshakDir = path.resolve(__dirname, "../../../../bhiv-parikshak/Parikshak-system");
+    const pythonCmd = `python -c "import sys; sys.path.insert(0, '.'); from db.bhiv_task_details import get_bhiv_task_details; from evaluation_engine.report_pdf_generator import generate_next_task_pdf; details=get_bhiv_task_details('${taskId}'); details['next_task_id']='${taskId}'; pdf=generate_next_task_pdf(details); sys.stdout.buffer.write(pdf)"`;
+
+    const options = {
+      cwd: parikshakDir,
+      encoding: "buffer",
+      maxBuffer: 10 * 1024 * 1024,
+    };
+
+    exec(pythonCmd, options, (err, stdout, stderr) => {
+      if (err || !stdout || stdout.length === 0) {
+        console.error("PDF generation subprocess error:", stderr ? stderr.toString() : err);
+        return res.status(500).json({ error: "Failed to generate task PDF specification." });
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="task_spec_${taskId}.pdf"`);
+      return res.send(stdout);
+    });
+  } catch (error) {
+    console.error("Error generating Parikshak task PDF:", error);
+    res.status(500).json({ error: "Server error generating PDF" });
+  }
+});
+
 // Configure multer for memory storage
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -608,6 +640,10 @@ router.delete("/:id", auth, async (req, res) => {
     if (!task) {
       return res.status(404).json({ error: "Task not found" })
     }
+
+    // Clean up associated submissions for deleted task
+    const TaskSubmission = require("../models/TaskSubmission")
+    await TaskSubmission.deleteMany({ task: req.params.id })
 
     // Emit socket event for real-time updates
     if (req.io) {

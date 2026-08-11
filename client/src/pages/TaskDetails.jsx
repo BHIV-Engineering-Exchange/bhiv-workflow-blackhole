@@ -870,8 +870,73 @@ function TaskDetails() {
                 <TabsTrigger value="submission">Submission</TabsTrigger>
               </TabsList>
               <TabsContent value="description" className="space-y-4 pt-4">
+                {/* Parikshak PDF Download Banner if URL is detected */}
+                {(() => {
+                  const desc = task.description || "";
+                  const match = desc.match(/\[.*?\]\((http[s]?:\/\/[^\)]+task-pdf[^\)]*)\)/) ||
+                                desc.match(/(http[s]?:\/\/[^\s\)]+task-pdf[^\s\)]*)/) ||
+                                desc.match(/\[.*?\]\((http[s]?:\/\/[^\)]+\/pdf)\)/) ||
+                                desc.match(/(http[s]?:\/\/[^\s\)]+\/pdf)/);
+                  const pdfUrl = match ? match[1] : null;
+
+                  if (!pdfUrl) return null;
+                  return (
+                    <div className="p-4 bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-blue-500/10 border border-blue-500/30 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md backdrop-blur-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-blue-600 rounded-lg text-white shadow">
+                          <FileText className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900 dark:text-white text-sm">Official Parikshak Task PDF Briefing</p>
+                          <p className="text-xs text-muted-foreground">Download full task specification, deliverables, and acceptance criteria.</p>
+                        </div>
+                      </div>
+                      <a
+                        href={pdfUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-4 py-2.5 rounded-lg shadow transition-all hover:scale-105 active:scale-95"
+                      >
+                        <FileText className="h-4 w-4" /> Download Task PDF
+                      </a>
+                    </div>
+                  );
+                })()}
+
                 <div className="prose max-w-none dark:prose-invert">
-                  <p className="whitespace-pre-line">{task.description}</p>
+                  <div className="whitespace-pre-line text-sm leading-relaxed text-gray-800 dark:text-gray-200">
+                    {(() => {
+                      const desc = task.description || "";
+                      const parts = [];
+                      const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g;
+                      let lastIdx = 0;
+                      let match;
+
+                      while ((match = linkRegex.exec(desc)) !== null) {
+                        if (match.index > lastIdx) {
+                          parts.push(desc.substring(lastIdx, match.index));
+                        }
+                        const label = match[1];
+                        const url = match[2];
+                        parts.push(
+                          <a
+                            key={match.index}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 font-bold underline hover:text-blue-800 transition-colors my-1 px-1 py-0.5 bg-blue-50 dark:bg-blue-950/50 rounded"
+                          >
+                            📄 {label}
+                          </a>
+                        );
+                        lastIdx = match.index + match[0].length;
+                      }
+                      if (lastIdx < desc.length) {
+                        parts.push(desc.substring(lastIdx));
+                      }
+                      return parts.length > 0 ? parts : desc;
+                    })()}
+                  </div>
                 </div>
                 {documents[0].url && (
                   <div className="space-y-2">

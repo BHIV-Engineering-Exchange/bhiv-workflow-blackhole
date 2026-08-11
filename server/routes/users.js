@@ -100,7 +100,7 @@ router.get("/", async (req, res) => {
   try {
     const { includeExited } = req.query;
     const branchQuery = getBranchQuery(req);
-    
+
     // Build filter - show all active users filtered by branch
     const filter = { ...branchQuery };
     if (!includeExited || includeExited !== 'true') {
@@ -108,7 +108,7 @@ router.get("/", async (req, res) => {
     }
 
     const users = await User.find(filter).select("-password").populate("department", "name")
-    
+
     // Add active indicator to each user
     const usersWithIndicators = users.map(user => ({
       ...user.toObject(),
@@ -125,7 +125,7 @@ router.get("/", async (req, res) => {
 // Get user by ID - SHOW ALL USERS
 router.get("/:id", auth, async (req, res) => {
   try {
-    const user = await User.findOne({ 
+    const user = await User.findOne({
       _id: req.params.id,
       stillExist: 1 // Only return active users
     }).select("-password").populate("department", "name")
@@ -183,8 +183,8 @@ router.put("/:id/status", auth, adminAuth, async (req, res) => {
     }
 
     const user = await User.findByIdAndUpdate(
-      id, 
-      { $set: { stillExist } }, 
+      id,
+      { $set: { stillExist } },
       { new: true }
     ).select("-password").populate("department", "name")
 
@@ -213,14 +213,14 @@ router.put("/:id/work-mode", auth, adminAuth, async (req, res) => {
 
     // Validate workMode
     if (!['WFH', 'WFO'].includes(workMode)) {
-      return res.status(400).json({ 
-        error: "workMode must be 'WFH' (Work From Home) or 'WFO' (Work From Office)" 
+      return res.status(400).json({
+        error: "workMode must be 'WFH' (Work From Home) or 'WFO' (Work From Office)"
       })
     }
 
     const user = await User.findByIdAndUpdate(
-      id, 
-      { $set: { workMode } }, 
+      id,
+      { $set: { workMode } },
       { new: true }
     ).select("-password").populate("department", "name")
 
@@ -235,15 +235,15 @@ router.put("/:id/work-mode", auth, adminAuth, async (req, res) => {
 
     res.json({
       success: true,
-      message: workMode === 'WFH' 
-        ? "User set to Work From Home (8h/day max cap)" 
+      message: workMode === 'WFH'
+        ? "User set to Work From Home (8h/day max cap)"
         : "User set to Work From Office (no hour cap)",
       user,
       rules: {
         workMode,
         maxHoursPerDay: workMode === 'WFH' ? 8 : 'Unlimited',
         overtimeAllowed: workMode === 'WFO',
-        description: workMode === 'WFH' 
+        description: workMode === 'WFH'
           ? 'WFH employees are capped at 8 hours per calendar day. Sessions spanning midnight are auto-ended.'
           : 'WFO employees can work unlimited hours (12, 14, 16+ hours). No automatic capping.'
       }
@@ -264,8 +264,8 @@ router.put("/bulk/work-mode", auth, adminAuth, async (req, res) => {
     }
 
     if (!['WFH', 'WFO'].includes(workMode)) {
-      return res.status(400).json({ 
-        error: "workMode must be 'WFH' (Work From Home) or 'WFO' (Work From Office)" 
+      return res.status(400).json({
+        error: "workMode must be 'WFH' (Work From Home) or 'WFO' (Work From Office)"
       })
     }
 
@@ -299,7 +299,7 @@ router.put("/bulk/work-mode", auth, adminAuth, async (req, res) => {
 router.get("/admin/all", auth, adminAuth, async (req, res) => {
   try {
     const users = await User.find({}).select("-password").populate("department", "name")
-    
+
     // Add active indicator to each user
     const usersWithIndicators = users.map(user => ({
       ...user.toObject(),
@@ -426,6 +426,9 @@ router.get("/:id/submissions", auth, async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(50) // Limit to 50 most recent submissions
         .lean() // Use lean for better performance
+
+      // Filter out orphaned submissions whose task was deleted by admin
+      submissions = submissions.filter(s => s.task !== null && s.task !== undefined);
     } catch (submissionError) {
       console.log("TaskSubmission model not found or error:", submissionError.message)
       // Return empty array if TaskSubmission model doesn't exist
@@ -522,20 +525,20 @@ router.put("/:id/notifications/read-all", auth, async (req, res) => {
 router.post("/update-all-stillexist", async (req, res) => {
   try {
     console.log("🔄 Starting bulk update of stillExist field for all users...");
-    
+
     // Update all users to set stillExist: 1
     const result = await User.updateMany(
       {}, // All users
       { $set: { stillExist: 1 } }
     );
-    
+
     console.log(`✅ Updated ${result.modifiedCount} users with stillExist: 1`);
-    
+
     // Get count of all users for verification
     const totalUsers = await User.countDocuments({});
     const activeUsers = await User.countDocuments({ stillExist: 1 });
     const inactiveUsers = await User.countDocuments({ stillExist: 0 });
-    
+
     res.json({
       success: true,
       message: "All users updated successfully",
@@ -547,13 +550,13 @@ router.post("/update-all-stillexist", async (req, res) => {
         matchedCount: result.matchedCount
       }
     });
-    
+
   } catch (error) {
     console.error("❌ Error updating users stillExist field:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       error: "Failed to update users",
-      details: error.message 
+      details: error.message
     });
   }
 });

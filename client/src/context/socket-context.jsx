@@ -118,6 +118,12 @@ export const SocketProvider = ({ children }) => {
         setMonitoringAlerts(prev => [...prev, { type: 'new-alert', data, timestamp: Date.now() }]);
       });
 
+      // Parikshak review-complete handler
+      socketInstance.on('parikshak:review-complete', (data) => {
+        console.log('🤖 Parikshak review complete:', data);
+        window.dispatchEvent(new CustomEvent('parikshak:review-complete', { detail: data }));
+      });
+
       setSocket(socketInstance);
 
       // Cleanup on unmount

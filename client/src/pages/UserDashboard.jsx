@@ -17,6 +17,8 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
+  Bot,
+  ArrowRight,
 } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { useToast } from "../hooks/use-toast"
@@ -117,10 +119,14 @@ function UserDashboard() {
 
   const markReviewsAsSeen = async () => {
     try {
+      const storedUser = JSON.parse(localStorage.getItem("WorkflowUser"))
+      if (storedUser?.id && recentReviews.length > 0) {
+        const seenIds = JSON.parse(localStorage.getItem(`seen_submission_reviews_${storedUser.id}`) || "[]")
+        const updatedSeenIds = Array.from(new Set([...seenIds, ...recentReviews.map((r) => r._id)]))
+        localStorage.setItem(`seen_submission_reviews_${storedUser.id}`, JSON.stringify(updatedSeenIds))
+      }
       setHasNewReviews(false)
-      setRecentReviews([]) // Clear recentReviews
-      // Optional: Add API call to mark reviews as seen
-      // await api.post(`/users/${user.id}/mark-reviews-seen`, {});
+      setRecentReviews([])
     } catch (error) {
       console.error("Error marking reviews as seen:", error)
     }
@@ -150,12 +156,19 @@ function UserDashboard() {
         submissions: submissionsResponse?.length || 0
       })
 
-      const recentlyReviewed = (submissionsResponse || []).filter((submission) => {
+      // Filter out orphaned submissions whose task was deleted by admin
+      const validSubmissions = (submissionsResponse || []).filter(s => s && s.task && s.task._id);
+
+      const seenReviewIds = JSON.parse(localStorage.getItem(`seen_submission_reviews_${storedUser.id}`) || "[]")
+
+      const recentlyReviewed = validSubmissions.filter((submission) => {
         if (submission.status !== "Pending") {
           const reviewDate = new Date(submission.updatedAt)
           const sevenDaysAgo = new Date()
           sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-          return reviewDate > sevenDaysAgo
+          const isRecent = reviewDate > sevenDaysAgo
+          const isUnseen = !seenReviewIds.includes(submission._id)
+          return isRecent && isUnseen
         }
         return false
       })
@@ -173,7 +186,7 @@ function UserDashboard() {
         completionRate: 0,
       })
       setUserTasks(sortedTasks)
-      setSubmissions(submissionsResponse || [])
+      setSubmissions(validSubmissions)
       setRecentReviews(recentlyReviewed)
       setHasNewReviews(recentlyReviewed.length > 0)
       setCurrentPage(0)
@@ -206,7 +219,15 @@ function UserDashboard() {
   useEffect(() => {
     fetchUserDashboardData()
     const intervalId = setInterval(fetchUserDashboardData, 5 * 60 * 1000)
-    return () => clearInterval(intervalId)
+
+    // Refresh submissions instantly when Parikshak review completes
+    const onReviewComplete = () => fetchUserDashboardData()
+    window.addEventListener('parikshak:review-complete', onReviewComplete)
+
+    return () => {
+      clearInterval(intervalId)
+      window.removeEventListener('parikshak:review-complete', onReviewComplete)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id])
 
@@ -847,8 +868,86 @@ function UserDashboard() {
                   </div>
                 )}
 
-                {/* Reviewer Feedback */}
-                {selectedSubmission.feedback && (
+                {/* AI Score */}
+                {selectedSubmission.parikshakReview?.score != null && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-lg bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center ring-1 ring-purple-300 dark:ring-purple-800">
+                        <Bot className="h-4 w-4 text-purple-700 dark:text-purple-400" />
+                      </div>
+                      <p className="font-semibold text-sm text-gray-900 dark:text-white">AI Review Score</p>
+                    </div>
+                    <div className="rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/30 p-4 shadow-sm space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-3xl font-bold ${
+                          selectedSubmission.parikshakReview.score >= 85 ? "text-green-600 dark:text-green-400"
+                          : selectedSubmission.parikshakReview.score >= 60 ? "text-amber-600 dark:text-amber-400"
+                          : "text-red-600 dark:text-red-400"
+                        }`}>
+                          {selectedSubmission.parikshakReview.score}<span className="text-base font-normal text-gray-500">/100</span>
+                        </span>
+                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                          selectedSubmission.parikshakReview.status === "PASS" ? "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300"
+                          : selectedSubmission.parikshakReview.status === "PARTIAL" ? "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300"
+                          : "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300"
+                        }`}>
+                          {selectedSubmission.parikshakReview.status}
+                        </span>
+                      </div>
+                      <Progress value={selectedSubmission.parikshakReview.score} className="h-2" />
+                    </div>
+                  </div>
+                )}
+
+                {/* AI Review Comments */}
+                {selectedSubmission.parikshakReview?.review && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-lg bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center ring-1 ring-purple-300 dark:ring-purple-800">
+                        <Bot className="h-4 w-4 text-purple-700 dark:text-purple-400" />
+                      </div>
+                      <p className="font-semibold text-sm text-gray-900 dark:text-white">AI Review Comments</p>
+                    </div>
+                    <div className="rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/30 p-4 shadow-sm">
+                      <p className="text-sm whitespace-pre-line leading-relaxed text-gray-800 dark:text-gray-200">
+                        {selectedSubmission.parikshakReview.review}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Next Task Recommendation */}
+                {selectedSubmission.parikshakReview?.nextTask && (() => {
+                  const pr = selectedSubmission.parikshakReview
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="h-7 w-7 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center ring-1 ring-blue-300 dark:ring-blue-800">
+                          <ArrowRight className="h-4 w-4 text-blue-700 dark:text-blue-400" />
+                        </div>
+                        <p className="font-semibold text-sm text-gray-900 dark:text-white">Next Task Recommendation</p>
+                      </div>
+                      <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 shadow-sm space-y-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <p className="text-sm font-bold text-blue-900 dark:text-blue-100">
+                              {pr.nextTaskTitle || pr.nextTask}
+                            </p>
+                            <p className="text-xs text-blue-500 dark:text-blue-400">ID: {pr.nextTask}</p>
+                          </div>
+                        </div>
+                        {pr.nextTaskDescription && (
+                          <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed border-t border-blue-200 dark:border-blue-800 pt-2">
+                            {pr.nextTaskDescription}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Reviewer Feedback — manual reviews only (no parikshak) */}
+                {selectedSubmission.feedback && !selectedSubmission.parikshakReview?.review && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <div className={`h-7 w-7 rounded-lg flex items-center justify-center ring-1 ${
@@ -864,29 +963,18 @@ function UserDashboard() {
                       </div>
                       <p className="font-semibold text-sm text-gray-900 dark:text-white">Reviewer Feedback</p>
                     </div>
-                    <div
-                      className={`rounded-lg border p-4 shadow-md ${
+                    <div className={`rounded-lg border p-4 shadow-md ${
+                      selectedSubmission.status === "Approved"
+                        ? "bg-green-50 dark:bg-green-950/30 border-green-300 dark:border-green-800"
+                        : "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800"
+                    }`}>
+                      <p className={`text-sm whitespace-pre-line leading-relaxed font-medium ${
                         selectedSubmission.status === "Approved"
-                          ? "bg-green-50 dark:bg-green-950/30 border-green-300 dark:border-green-800"
-                          : "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800"
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`mt-0.5 text-lg font-bold ${
-                          selectedSubmission.status === "Approved"
-                            ? "text-green-700 dark:text-green-400"
-                            : "text-red-700 dark:text-red-400"
-                        }`}>
-                          {selectedSubmission.status === "Approved" ? "✓" : "✕"}
-                        </div>
-                        <p className={`text-sm whitespace-pre-line leading-relaxed font-medium flex-1 ${
-                          selectedSubmission.status === "Approved"
-                            ? "text-green-900 dark:text-green-100"
-                            : "text-red-900 dark:text-red-100"
-                        }`}>
-                          {selectedSubmission.feedback}
-                        </p>
-                      </div>
+                          ? "text-green-900 dark:text-green-100"
+                          : "text-red-900 dark:text-red-100"
+                      }`}>
+                        {selectedSubmission.feedback}
+                      </p>
                     </div>
                   </div>
                 )}

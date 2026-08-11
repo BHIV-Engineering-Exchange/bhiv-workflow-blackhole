@@ -93,6 +93,11 @@ const UserSchema = new mongoose.Schema({
     default: 'blackhole_mumbai',
     index: true,
   },
+  // Parikshak — tracks user's current position in the task graph
+  currentParikshakTaskId: {
+    type: String,
+    default: null,
+  },
 })
 
 // Update the updatedAt field before saving

@@ -194,6 +194,8 @@ const branchRoutes = require('./routes/branchRoutes'); // Branch management rout
 const projectRoutes = require('./routes/projects'); // Project management routes
 const testerRoutes = require('./routes/tester'); // Tester routes
 const tantraExecutionRoutes = require('./routes/tantraExecution'); // Deterministic execution participation routes
+const taskIngestionRoutes = require('./routes/taskIngestion'); // Automated engineering task ingestion pipeline
+const setuConvergenceRoutes = require('./routes/setuConvergence'); // SETU EOS Constitutional Convergence Core
 const { startAttendancePersistenceCron, syncExistingAttendance } = require('./services/attendanceCronJobs'); // Attendance persistence cron
 // Middleware imports
 const auth = require('./middleware/auth');
@@ -580,6 +582,8 @@ app.use('/api/projects', projectRoutes); // Project management routes
 app.use('/api/tester', testerRoutes); // Tester routes
 app.use('/api/tantra', tantraExecutionRoutes); // Deterministic execution participation
 app.use('/api/integration', require('./routes/integrationHealth')); // TANTRA ecosystem integration health
+app.use('/api/tasks/ingest', taskIngestionRoutes); // Automated engineering task ingestion pipeline
+app.use('/api/setu/convergence', setuConvergenceRoutes); // SETU EOS Constitutional Convergence Core
 
 // app.use('/api/new/ai',aiRoutePy)
 
@@ -680,212 +684,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Midnight auto-end scheduler for unended work days
-const Attendance = require('./models/Attendance');
-const DailyAttendance = require('./models/DailyAttendance');
-const User = require('./models/User');
-
-// SIMPLE RULE: Spam validation = EXACTLY 8 hours for cumulative calculation
-const SPAM_VALIDATION_HOURS = 8;
-// WFH Maximum Hours Cap - ONLY applies to WFH employees
-const WFH_MAX_HOURS_PER_DAY = 8;
-
-/**
- * Midnight Auto-End Job
- * Runs at 12:00 AM every day to auto-end unfinished work sessions
- * - WFH employees: Hours capped at 8 hours max per calendar day
- * - WFO employees: NO cap, can work unlimited hours (12, 14, 16+)
- * Hours go to spam queue (WFH max 8h, WFO actual hours can be validated by admin)
- */
-const midnightAutoEndJob = async () => {
-  try {
-    console.log('🕛 Running midnight auto-end job...');
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Get yesterday's date (the day that just ended at midnight)
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-
-    const yesterdayEnd = new Date(yesterday);
-    yesterdayEnd.setHours(23, 59, 59, 999);
-
-    // Find all attendance records from yesterday that started but haven't ended
-    const activeAttendance = await Attendance.find({
-      date: {
-        $gte: yesterday,
-        $lte: yesterdayEnd
-      },
-      startDayTime: { $exists: true, $ne: null },
-      endDayTime: { $exists: false }
-    }).populate('user', 'name email');
-
-    const autoEndedCount = [];
-    const midnightTime = today; // Midnight of the new day
-
-    for (const record of activeAttendance) {
-      try {
-        // Calculate actual hours worked (from start to midnight)
-        const startTime = new Date(record.startDayTime);
-        let hoursWorked = (midnightTime - startTime) / (1000 * 60 * 60);
-
-        // Validation: Ensure hours are reasonable (max 24 hours in a day)
-        if (hoursWorked > 24 || hoursWorked < 0) {
-          console.error(`⚠️ Invalid hours calculation for ${record.user.name}: ${hoursWorked}h - Skipping`);
-          continue;
-        }
-
-        // ============================================
-        // WFH HOUR CAPPING LOGIC - ONLY FOR WFH EMPLOYEES
-        // WFO employees have NO cap - they can work unlimited hours
-        // ============================================
-        let isWFH = false;
-        const originalHours = hoursWorked;
-
-        // Check if user is WFH by workMode or workPattern
-        if (record.workPattern === 'Remote') {
-          isWFH = true;
-        } else if (record.user?._id) {
-          const userDoc = await User.findById(record.user._id).select('workMode').lean();
-          if (userDoc?.workMode === 'WFH') {
-            isWFH = true;
-          }
-        }
-
-        // Apply WFH cap ONLY for WFH employees
-        // WFO employees keep their actual hours (no cap)
-        if (isWFH && hoursWorked > WFH_MAX_HOURS_PER_DAY) {
-          hoursWorked = WFH_MAX_HOURS_PER_DAY;
-          console.log(`📍 WFH Cap Applied for ${record.user.name}: ${originalHours.toFixed(2)}h → ${hoursWorked}h`);
-        }
-
-        // MIDNIGHT SPAN LOGIC: Session spans from one day to next
-        const spanType = 'MIDNIGHT_SPAN';
-
-        // Determine fixed hours based on work mode
-        const fixedHours = isWFH ? WFH_MAX_HOURS_PER_DAY : SPAM_VALIDATION_HOURS;
-
-        // Auto end the day at midnight
-        record.endDayTime = midnightTime;
-        record.hoursWorked = Math.round(hoursWorked * 100) / 100;
-        record.autoEnded = true;
-        record.spamStatus = 'Pending Review';
-        record.spamReason = isWFH
-          ? 'WFH session spans midnight - auto-ended with 8h cap'
-          : 'Session spans midnight - auto-ended by system';
-        record.spanType = spanType; // Mark as midnight span
-        record.spanDetails = {
-          startDate: yesterday.toISOString().split('T')[0],
-          endDate: today.toISOString().split('T')[0],
-          actualHours: Math.round(originalHours * 100) / 100,
-          fixedHours: fixedHours,
-          splitRequired: Boolean(!isWFH && originalHours > 24), // Only split for WFO multi-day sessions
-          isWFH: isWFH
-        };
-        record.systemNotes = isWFH
-          ? `WFH Midnight span: ${originalHours.toFixed(2)}h actual → ${hoursWorked}h (8h max cap applied)`
-          : `WFO Midnight span: ${originalHours.toFixed(2)}h actual. Admin validation grants ${fixedHours}h fixed`;
-        record.employeeNotes = (record.employeeNotes || '') +
-          (isWFH
-            ? ' [WFH Auto-ended at midnight - 8h cap applied]'
-            : ' [Auto-ended at midnight - Span session pending admin review]');
-        record.overtimeHours = isWFH ? 0 : Math.max(0, hoursWorked - 8); // WFH has no overtime
-        record.approvalStatus = 'Pending';
-
-        await record.save();
-
-        // Also update DailyAttendance record
-        const dailyRecord = await DailyAttendance.findOne({
-          user: record.user._id,
-          date: {
-            $gte: yesterday,
-            $lte: yesterdayEnd
-          }
-        });
-
-        if (dailyRecord) {
-          dailyRecord.endDayTime = midnightTime;
-          dailyRecord.totalHoursWorked = record.hoursWorked;
-          dailyRecord.autoEnded = true;
-          dailyRecord.spamStatus = 'Pending Review';
-          dailyRecord.spamReason = isWFH
-            ? 'WFH session spans midnight - 8h cap applied'
-            : 'Session spans midnight - requires validation';
-          dailyRecord.spanType = 'MIDNIGHT_SPAN';
-          dailyRecord.spanDetails = record.spanDetails;
-          dailyRecord.systemNotes = isWFH
-            ? `WFH Midnight span: ${originalHours.toFixed(2)}h actual → ${record.hoursWorked}h (8h cap)`
-            : `WFO Midnight span: ${originalHours.toFixed(2)}h actual → ${SPAM_VALIDATION_HOURS}h fixed on validation`;
-          dailyRecord.overtimeHours = isWFH ? 0 : Math.max(0, record.hoursWorked - 8);
-          await dailyRecord.save();
-        }
-
-        autoEndedCount.push({
-          userName: record.user.name,
-          hoursWorked: record.hoursWorked,
-          isWFH: isWFH,
-          originalHours: originalHours
-        });
-
-        console.log(`⚠️ Auto-ended work day for ${record.user.name} - ${record.hoursWorked}h${isWFH ? ' (WFH capped)' : ' (WFO)'} (marked as spam)`);
-
-        // Emit socket event
-        io.emit('attendance:auto-ended-midnight', {
-          userId: record.user._id,
-          userName: record.user.name,
-          date: yesterday.toISOString().split('T')[0],
-          hoursWorked: record.hoursWorked,
-          reason: 'Did not end day before midnight',
-          spamStatus: 'Pending Review'
-        });
-      } catch (recordError) {
-        console.error(`Error auto-ending record for user ${record.user?.name}:`, recordError);
-      }
-    }
-
-    console.log(`✅ Midnight auto-end complete. Processed ${autoEndedCount.length} records.`);
-
-  } catch (error) {
-    console.error('❌ Midnight auto-end job error:', error);
-  }
-};
-
-// Schedule midnight job using setInterval
-const scheduleMidnightJob = () => {
-  const now = new Date();
-  const midnight = new Date(now);
-  midnight.setHours(24, 0, 0, 0); // Next midnight
-
-  const msUntilMidnight = midnight - now;
-
-  console.log(`🕛 Next midnight auto-end scheduled in ${Math.round(msUntilMidnight / 1000 / 60)} minutes`);
-  console.log(`   Next run at: ${midnight.toLocaleString()}`);
-
-  // Schedule for next midnight
-  setTimeout(() => {
-    midnightAutoEndJob();
-    // Then run every 24 hours
-    setInterval(midnightAutoEndJob, 24 * 60 * 60 * 1000);
-  }, msUntilMidnight);
-};
-
-// Manual trigger endpoint for testing (admin only)
-app.post('/api/admin/trigger-midnight-job', auth, adminAuth, async (req, res) => {
-  try {
-    console.log('🔧 Manually triggering midnight auto-end job...');
-    await midnightAutoEndJob();
-    res.json({
-      success: true,
-      message: 'Midnight auto-end job executed successfully',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('❌ Manual trigger error:', error);
-    res.status(500).json({ error: 'Failed to trigger midnight job', details: error.message });
-  }
-});
+// Midnight auto-end scheduler removed. Work sessions continue indefinitely until user manually ends day.
 
 // Start server
 const PORT = process.env.PORT || 5000;
@@ -918,11 +717,7 @@ async function startServer() {
     // Start HTTP server
     server.listen(PORT, async () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`🕛 Midnight Auto-End: ENABLED (unended days go to spam, validation grants exactly ${SPAM_VALIDATION_HOURS}h)`);
-      console.log(`📊 Spam validation rule: EXACTLY ${SPAM_VALIDATION_HOURS} hours (not more, not less)`);
-
-      // Schedule midnight auto-end job
-      scheduleMidnightJob();
+      console.log('🕛 Midnight Auto-End: DISABLED (Sessions continue across midnight until user manually ends day)');
 
       // Start attendance persistence cron job
       console.log('🕐 Starting attendance persistence cron job (runs daily at 11:59 PM)...');

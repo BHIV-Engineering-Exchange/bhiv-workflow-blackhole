@@ -1,7 +1,3 @@
-
-
-
-
 "use client"
 
 import { useState } from "react"
@@ -25,6 +21,8 @@ import {
   Calendar,
   CheckCircle2,
   XCircle,
+  Bot,
+  ArrowRight,
 } from "lucide-react"
 
 export function SubmissionFeedbackCard({
@@ -33,6 +31,7 @@ export function SubmissionFeedbackCard({
   onSubmitRevision,
 }) {
   const [expanded, setExpanded] = useState(false)
+  const pr = submission.parikshakReview
 
   const getStatusIcon = () => {
     if (submission.status === "Approved") {
@@ -77,6 +76,18 @@ export function SubmissionFeedbackCard({
     return "bg-gradient-to-br from-gray-50/80 via-white to-gray-50/80 dark:from-gray-800/50 dark:via-gray-800/50 dark:to-gray-800/50 border-gray-300/40 dark:border-gray-700/30"
   }
 
+  const getScoreColor = (score) => {
+    if (score >= 85) return "text-green-600 dark:text-green-400"
+    if (score >= 60) return "text-amber-600 dark:text-amber-400"
+    return "text-red-600 dark:text-red-400"
+  }
+
+  const getScoreBarColor = (score) => {
+    if (score >= 85) return "bg-green-500"
+    if (score >= 60) return "bg-amber-500"
+    return "bg-red-500"
+  }
+
   return (
     <Card className={`overflow-hidden transition-all duration-300 hover:shadow-xl backdrop-blur-sm border ${getCardStyle()} group`}>
       <CardHeader className="pb-3">
@@ -85,8 +96,8 @@ export function SubmissionFeedbackCard({
             {getStatusIcon()}
             <div>
               <CardTitle className="text-base font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-              {submission.task?.title || "Task Submission"}
-            </CardTitle>
+                {submission.task?.title || "Task Submission"}
+              </CardTitle>
               <div className="flex items-center gap-1.5 mt-1">
                 <Calendar className="h-3 w-3 text-gray-500 dark:text-gray-400" />
                 <CardDescription className="text-xs text-gray-600 dark:text-gray-400 font-medium">
@@ -100,6 +111,47 @@ export function SubmissionFeedbackCard({
       </CardHeader>
 
       <CardContent className="space-y-3 pt-0">
+
+        {/* AI Score Block */}
+        {pr?.score != null && (
+          <div className="rounded-xl border border-blue-200/60 dark:border-blue-800/40 bg-blue-50/60 dark:bg-blue-900/10 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Bot className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">AI Score</span>
+                <Badge className={`text-xs px-2 py-0.5 border-0 font-bold ${
+                  pr.status === "PASS"
+                    ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                    : pr.status === "PARTIAL"
+                    ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                    : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                }`}>
+                  {pr.status}
+                </Badge>
+              </div>
+              <span className={`text-lg font-bold ${getScoreColor(pr.score)}`}>
+                {pr.score}<span className="text-xs font-normal text-gray-500 dark:text-gray-400">/100</span>
+              </span>
+            </div>
+            {/* Score bar */}
+            <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${getScoreBarColor(pr.score)}`}
+                style={{ width: `${pr.score}%` }}
+              />
+            </div>
+            {/* Next task recommendation */}
+            {pr.nextTask && (
+              <div className="flex items-center gap-1.5 pt-0.5">
+                <ArrowRight className="h-3 w-3 text-blue-500 dark:text-blue-400 flex-shrink-0" />
+                <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                  Next: <span className="font-semibold">{pr.nextTask}</span>
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         {submission.feedback && (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -139,10 +191,7 @@ export function SubmissionFeedbackCard({
               rel="noopener noreferrer"
               className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium truncate flex items-center gap-1 transition-colors"
             >
-              {submission.githubLink.replace(
-                /^https?:\/\/(www\.)?github\.com\//,
-                ""
-              )}
+              {submission.githubLink.replace(/^https?:\/\/(www\.)?github\.com\//, "")}
               <ExternalLink className="h-3 w-3 flex-shrink-0" />
             </a>
           </div>
@@ -159,8 +208,8 @@ export function SubmissionFeedbackCard({
           View Details
         </Button>
         {submission.status === "Rejected" && (
-          <Button 
-            size="sm" 
+          <Button
+            size="sm"
             onClick={() => onSubmitRevision(submission)}
             className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 dark:from-blue-500 dark:to-blue-600 dark:hover:from-blue-600 dark:hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all font-semibold"
           >

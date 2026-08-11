@@ -26,17 +26,26 @@ router.get('/status', auth, async (req, res) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     
-    // Find today's attendance record
-    const attendance = await Attendance.findOne({
+    // Find active unended attendance session first (supports overnight shifts)
+    let attendance = await Attendance.findOne({
       user: userId,
-      date: {
-        $gte: today,
-        $lt: tomorrow
-      }
-    }).lean();
+      startDayTime: { $exists: true, $ne: null },
+      $or: [{ endDayTime: { $exists: false } }, { endDayTime: null }]
+    }).sort({ startDayTime: -1 }).lean();
+    
+    // If no active session, check today's record
+    if (!attendance) {
+      attendance = await Attendance.findOne({
+        user: userId,
+        date: {
+          $gte: today,
+          $lt: tomorrow
+        }
+      }).lean();
+    }
     
     // If no record exists or day has ended
-    if (!attendance || attendance.endTime) {
+    if (!attendance || attendance.endDayTime || attendance.endTime) {
       return res.json({
         dayStarted: false,
         startTime: null,
@@ -48,10 +57,10 @@ router.get('/status', auth, async (req, res) => {
     // Day is active
     return res.json({
       dayStarted: true,
-      startTime: attendance.startTime,
+      startTime: attendance.startDayTime || attendance.startTime,
       attendanceId: attendance._id,
       workLocation: attendance.workLocationType || 'Unknown',
-      location: attendance.location
+      location: attendance.startDayLocation || attendance.location
     });
     
   } catch (error) {

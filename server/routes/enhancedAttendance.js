@@ -174,10 +174,12 @@ router.post('/end-day', auth, async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // Find most recent open/unended attendance session for this user (supports overnight sessions across midnight)
     const attendanceRecord = await DailyAttendance.findOne({
       user: userId,
-      date: today
-    });
+      startDayTime: { $exists: true, $ne: null },
+      $or: [{ endDayTime: { $exists: false } }, { endDayTime: null }]
+    }).sort({ startDayTime: -1 });
 
     if (!attendanceRecord?.startDayTime) {
       return res.status(400).json({ 
@@ -200,6 +202,10 @@ router.post('/end-day', auth, async (req, res) => {
       });
     }
 
+    const sessionDate = attendanceRecord.date || today;
+    const sessionDateEnd = new Date(sessionDate);
+    sessionDateEnd.setDate(sessionDateEnd.getDate() + 1);
+
     // Check for mandatory daily aim completion
     const Aim = require('../models/Aim');
     const Progress = require('../models/Progress');
@@ -207,8 +213,8 @@ router.post('/end-day', auth, async (req, res) => {
     const todayAim = await Aim.findOne({
       user: userId,
       date: {
-        $gte: today,
-        $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+        $gte: sessionDate,
+        $lt: sessionDateEnd
       }
     });
 
@@ -250,8 +256,8 @@ router.post('/end-day', auth, async (req, res) => {
     const todayProgress = await Progress.findOne({
       user: userId,
       date: {
-        $gte: today,
-        $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+        $gte: sessionDate,
+        $lt: sessionDateEnd
       }
     });
 
@@ -297,11 +303,11 @@ router.post('/end-day', auth, async (req, res) => {
       };
     }
 
-    // Calculate working hours and update status
+    // Calculate working hours and update status with negative hours guard
     const startTime = attendanceRecord.startDayTime;
     const totalMilliseconds = endTime - startTime;
-    const totalHours = totalMilliseconds / (1000 * 60 * 60);
-    const totalMinutes = Math.floor(totalMilliseconds / (1000 * 60));
+    const totalHours = Math.max(0, totalMilliseconds / (1000 * 60 * 60));
+    const totalMinutes = Math.max(0, Math.floor(totalMilliseconds / (1000 * 60)));
 
     attendanceRecord.totalHoursWorked = Math.round(totalHours * 100) / 100;
     attendanceRecord.regularHours = Math.min(totalHours, 8);
@@ -355,7 +361,7 @@ router.post('/end-day', auth, async (req, res) => {
 
     res.json({
       success: true,
-      message: `Day ended successfully! You worked ${attendanceRecord.totalHoursWorked} hours today.`,
+      message: `Day ended successfully! You worked ${attendanceRecord.totalHoursWorked} hours.`,
       data: {
         attendanceId: attendanceRecord._id,
         startTime: attendanceRecord.startDayTime,
@@ -391,10 +397,19 @@ router.get('/today-status', auth, async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const attendanceRecord = await DailyAttendance.findOne({
+    // Check for open unended session first (supports overnight sessions)
+    let attendanceRecord = await DailyAttendance.findOne({
       user: userId,
-      date: today
-    });
+      startDayTime: { $exists: true, $ne: null },
+      $or: [{ endDayTime: { $exists: false } }, { endDayTime: null }]
+    }).sort({ startDayTime: -1 });
+
+    if (!attendanceRecord) {
+      attendanceRecord = await DailyAttendance.findOne({
+        user: userId,
+        date: today
+      });
+    }
 
     if (!attendanceRecord) {
       return res.json({
@@ -416,7 +431,7 @@ router.get('/today-status', auth, async (req, res) => {
     
     let currentHours = 0;
     if (hasStarted && !hasEnded) {
-      currentHours = (currentTime - attendanceRecord.startDayTime) / (1000 * 60 * 60);
+      currentHours = Math.max(0, (currentTime - attendanceRecord.startDayTime) / (1000 * 60 * 60));
     }
 
     res.json({
