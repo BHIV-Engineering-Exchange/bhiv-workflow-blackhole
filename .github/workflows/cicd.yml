@@ -47,6 +47,7 @@ jobs:
             proxy configurations/nginx.ssl.conf
             Monitoring/prometheus.yml
             Monitoring/datasource.yml
+            mongo-init.js
 
   build:
     name: Build production images
