@@ -10,21 +10,14 @@ const appPassword = process.env.MONGO_APP_PASSWORD;
 
 if (appUser && appPassword) {
   const appDb = db.getSiblingDB(dbName);
-  
-  // Check if user already exists before creating
-  const existingUser = appDb.getUser(appUser);
-  if (!existingUser) {
-    appDb.createUser({
-      user: appUser,
-      pwd: appPassword,
-      roles: [
-        { role: 'readWrite', db: dbName }
-      ]
-    });
-    print(`[Mongo Init] Dedicated user '${appUser}' created with readWrite role on database '${dbName}'.`);
-  } else {
-    print(`[Mongo Init] Dedicated user '${appUser}' already exists on database '${dbName}'.`);
-  }
+  appDb.createUser({
+    user: appUser,
+    pwd: appPassword,
+    roles: [
+      { role: 'readWrite', db: dbName }
+    ]
+  });
+  print(`[Mongo Init] Dedicated user '${appUser}' created with readWrite role on database '${dbName}'.`);
 } else {
   print('[Mongo Init] Warning: MONGO_APP_USERNAME or MONGO_APP_PASSWORD missing in environment.');
 }
