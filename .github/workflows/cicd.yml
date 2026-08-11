@@ -111,7 +111,7 @@ jobs:
 
       - name: Tar deployment files
         run: |
-          tar -czf deployment.tar.gz docker-compose.production.template.yml .env "proxy configurations" Monitoring
+          tar -czf deployment.tar.gz docker-compose.production.template.yml .env "proxy configurations" Monitoring mongo-init.js
 
       - name: Install sshpass
         run: |
