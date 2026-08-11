@@ -9,6 +9,7 @@ const User = require("../models/User")
 const auth = require("../middleware/auth")
 const crypto = require("crypto")
 const { emitTaskSubmittedEvent, emitTaskCompletedEvent, emitTaskFailedEvent } = require("../services/taskExecutionBridge")
+const { invokeParikshak } = require("../services/parikshakService")
 
 // Configure multer for memory storage
 const upload = multer({
@@ -272,6 +273,12 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       }
     }
 
+    // Phase 1: Trigger PARIKSHAK Review asynchronously
+    // We don't await this so the client gets a fast response.
+    invokeParikshak(submission._id, execContext?.traceId || traceId, req.io).catch(err => {
+      console.error("[PARIKSHAK] Uncaught error triggering review:", err);
+    });
+
     res.status(201).json({
       ...submission.toObject(),
       trace_id: execContext?.traceId,
@@ -365,6 +372,12 @@ router.put("/:id", auth, upload.single("document"), async (req, res) => {
         resubmittedBy: user.name,
       })
     }
+
+    // Phase 1: Trigger PARIKSHAK Review asynchronously on resubmission
+    let traceId = req.headers["x-trace-id"] || `trace_resub_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    invokeParikshak(updatedSubmission._id, traceId, req.io).catch(err => {
+      console.error("[PARIKSHAK] Uncaught error triggering review on resubmission:", err);
+    });
 
     res.json(updatedSubmission)
   } catch (error) {

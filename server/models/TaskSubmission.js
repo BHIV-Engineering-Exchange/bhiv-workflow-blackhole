@@ -99,6 +99,13 @@ const TaskSubmissionSchema = new mongoose.Schema({
   feedback: {
     type: String,
   },
+  aiReviewDetails: {
+    score: { type: Number },
+    doneWell: { type: String },
+    missingWork: { type: String },
+    recommendations: { type: String },
+    readiness: { type: String }
+  },
   reviewHistory: [{
     status: {
       type: String,

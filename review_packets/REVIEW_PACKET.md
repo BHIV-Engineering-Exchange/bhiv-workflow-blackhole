@@ -36,3 +36,8 @@ The PRANA telemetry integration executes seamlessly with zero manual interventio
 - Code integration passes all standard ecosystem heuristics.
 - Tracking scripts run entirely client-side, causing zero synchronous latency for the core Node backend.
 - PRANA integration possesses an inherent kill switch (`window.PRANA_DISABLED = true`) implemented during the logout phase as a fail-safe mechanism.
+## 8. Parikshak Integration & Runtime Validation (Phase 3 & 4)
+- **Automatic Review Trigger:** Task submissions automatically trigger an asynchronous review process with Parikshak.
+- **Trace Continuity:** The integration seamlessly preserves and propagates the execution trace via `taskExecutionBridge` and `executionEventEmitter`.
+- **Automatic Next Task Assignment:** Approved reviews automatically generate the subsequent canonical task packet, assign it to the same candidate, preserve dependencies, and align with the existing product tenant (`branch`).
+- **Runtime Validation:** End-to-End local integration tested natively confirming trace consistency and DB entity state propagation from Submission → Parikshak Review → Completed Task → Next Task Assignment.

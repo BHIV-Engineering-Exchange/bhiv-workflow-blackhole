@@ -31,6 +31,7 @@ import { Label } from "../components/ui/label"
 import { Textarea } from "../components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { CompletedTasksStats } from "../components/dashboard/CompletedTasksStats"
+import ParikshakReviewCard from "../components/submissions/ParikshakReviewCard"
 import { API_URL } from "@/lib/api"
 import { formatDate, formatDateTime } from "@/lib/dateFormat"
 import { useAuth } from "../context/auth-context"
@@ -500,6 +501,9 @@ const [isReviewing, setIsReviewing] = useState(false)
                               </div>
                             )}
                           </div>
+                          
+                          {/* AI Review Card */}
+                          <ParikshakReviewCard submission={submission} />
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center py-6 text-muted-foreground bg-muted/20 rounded-lg border border-dashed border-muted">

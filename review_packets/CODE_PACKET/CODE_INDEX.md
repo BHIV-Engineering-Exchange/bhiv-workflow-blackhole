@@ -20,3 +20,10 @@ This code index lists only the files modified to implement the PRANA session lif
 ### 4. `client/src/lib/prana-core/*` (New Directory)
 - **Changes Made:** Copied canonical PRANA telemetry engine files (`prana_packet_builder.js`, `prana_state_engine.js`, `bucket_bridge.js`, `signals.js`).
 - **Purpose:** Embeds the canonical monitoring engine directly within the Niyantran application bundle to prevent network segregation issues and guarantee uptime tracking.
+### 5. `server/services/parikshakService.js`
+- **Changes Made:** Implemented Phase 3 "Next Task Runtime" logic to parse the canonical task packet upon an "Approved" review status, automatically instantiating the follow-up task and assigning it back to the original candidate without manual intervention.
+- **Purpose:** Finalizes the end-to-end Niyantran/Parikshak workflow orchestration for closed-loop review and reassignment.
+
+### 6. `server/services/taskExecutionBridge.js`
+- **Changes Made:** Fixed execution trace string casting when entity objects are fully populated.
+- **Purpose:** Ensures TANTRA trace continuity passes rigorous runtime execution validation, resolving `missing_execution_start` conflicts during testing.
