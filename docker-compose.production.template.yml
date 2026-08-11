@@ -20,26 +20,33 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # database:
-  #   image: mongo:6.0
-  #   container_name: niyantran_database
-  #   restart: unless-stopped
-  #   # Public ports are OMITTED for security database isolation
-  #   volumes:
-  #     - mongodb_data:/data/db
-  #   networks:
-  #     - niyantran_network
-  #   healthcheck:
-  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #     start_period: 10s
-  #   logging:
-  #     driver: "json-file"
-  #     options:
-  #       max-size: "10m"
-  #       max-file: "3"
+  database:
+    image: mongo:6.0
+    container_name: niyantran_database
+    restart: unless-stopped
+    # Public ports are OMITTED for security & database isolation (private to niyantran_network)
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME:-root}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE:-niyantran}
+      - MONGO_APP_USERNAME=${MONGO_APP_USERNAME:-niyantran_app}
+      - MONGO_APP_PASSWORD=${MONGO_APP_PASSWORD}
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - niyantran_network
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh -u \"$${MONGO_INITDB_ROOT_USERNAME:-root}\" -p \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval \"db.adminCommand('ping')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ── TANTRA Ecosystem Services ────────────────────────────────────────────
   # Bucket: EXTERNAL — deployed on Render (https://bhiv-bucket-i1l6.onrender.com)
@@ -62,9 +69,9 @@ services:
       - .env
     networks:
       - niyantran_network
-    # depends_on:
-    #   database:
-    #     condition: service_healthy
+    depends_on:
+      database:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/ping"]
       interval: 15s
@@ -178,8 +185,8 @@ networks:
     driver: bridge
 
 volumes:
-  # mongodb_data:
-  #   driver: local
+  mongodb_data:
+    driver: local
   prometheus_data:
     driver: local
   grafana_data:

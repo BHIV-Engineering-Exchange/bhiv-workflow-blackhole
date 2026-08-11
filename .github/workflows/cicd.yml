@@ -24,11 +24,16 @@ jobs:
         run: |
           # Docker Compose config requires the env_file to exist to parse the schema.
           # We use a stub here — real secrets are injected at deploy time via GitHub secrets.
-          touch .env
+          cat <<EOF > .env
+          MONGO_INITDB_ROOT_USERNAME=root
+          MONGO_INITDB_ROOT_PASSWORD=stub_root_password
+          MONGO_INITDB_DATABASE=blackhole_db
+          MONGO_APP_USERNAME=niyantran_app
+          MONGO_APP_PASSWORD=stub_app_password
+          MONGODB_URI=mongodb://niyantran_app:stub_app_password@database:27017/blackhole_db?authSource=blackhole_db
+          EOF
 
       - name: Validate Docker Compose files
-        env:
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
         run: |
           docker compose -f docker-compose.production.yml config
 
@@ -148,9 +153,6 @@ jobs:
             
             # Generate target compose file from template by substituting the image tag
             sed "s|IMG_TAG|${{ needs.build.outputs.sha_short }}|g" docker-compose.production.template.yml > docker-compose.production.yml
-            
-            # ATLAS URL's runtime injection
-            export MONGODB_URI='${{ secrets.MONGODB_URI }}'
 
             # Validate compose config before deploy
             docker compose -f docker-compose.production.yml config
