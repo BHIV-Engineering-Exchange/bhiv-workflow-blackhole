@@ -67,11 +67,11 @@ const invokeParikshak = async (submissionId, traceId, io) => {
             }
         }
 
-        // 4. Handle failure to connect
+        // 4. Handle failure to connect -> Keep in Pending status for manual review
         if (!response) {
-            console.error(`[PARIKSHAK] Exhausted all retries for submission ${submissionId}. Marking as System Error.`);
-            submission.status = "Rejected";
-            submission.feedback = "System Error: Parikshak review service is currently unavailable. Please contact an administrator.";
+            console.warn(`[PARIKSHAK] Exhausted all retries for submission ${submissionId}. Queuing for manual review.`);
+            submission.status = "Pending";
+            submission.feedback = "Parikshak AI review service is currently offline. Your submission is queued in Pending status for manual review by an admin.";
             await submission.save();
             return;
         }
