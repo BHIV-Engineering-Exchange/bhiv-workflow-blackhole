@@ -187,11 +187,13 @@ const buildOriginAllowlist = () => {
   const httpsHosts = new Set([
     "niyantran.blackholeinfiverse.com",
     "blackhole-workflow.vercel.app",
+    "niyantrankendra.blackholeinfiverse.com",
   ]);
   const httpHostsWithPort = new Set(["localhost:5173", "localhost"]);
   const socketOrigins = [
     "https://niyantran.blackholeinfiverse.com",
     "https://blackhole-workflow.vercel.app",
+    "https://niyantrankendra.blackholeinfiverse.com",
     "http://localhost:5173",
   ];
 
