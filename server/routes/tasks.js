@@ -10,6 +10,7 @@ const Notification = require("../models/Notification")
 const { isValidOrgEmail, ORG_EMAIL_ERROR } = require("../utils/orgEmail")
 const mongoose = require("mongoose")
 const { signalTaskCreated, signalTaskCompleted } = require("../services/karmaClient")
+const { executeConstitutionalPipeline } = require("../services/setuConvergenceService")
 
 
 // Helper to get branch filter from request
@@ -69,14 +70,16 @@ const upload = multer({
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "text/plain",
       "text/html",
+      "text/markdown",
+      "",
     ]
-    const validExtensions = /\.(pdf|doc|docx|txt|html)$/i
-    const mimetypeValid = validTypes.includes(file.mimetype)
+    const validExtensions = /\.(pdf|doc|docx|txt|html|md)$/i
+    const mimetypeValid = validTypes.includes(file.mimetype) || file.originalname.endsWith('.md')
     const extnameValid = validExtensions.test(file.originalname)
 
     if (!mimetypeValid || !extnameValid) {
       console.error(`Invalid file: mimetype=${file.mimetype}, originalname=${file.originalname}`)
-      return cb(new Error("Only PDF, DOC, DOCX, TXT, and HTML files are allowed"))
+      return cb(new Error("Only PDF, DOC, DOCX, MD, TXT, and HTML files are allowed"))
     }
 
     // Validate file content for HTML
@@ -477,22 +480,44 @@ router.post("/", auth, upload.single("document"), async (req, res) => {
       fileType = req.file.mimetype;
     }
 
-    const task = new Task({
-      title,
-      description,
-      department,
-      assignee,
-      priority: priority || "Medium",
-      status: status || "Pending",
-      dependencies: dependencies ? JSON.parse(dependencies) : [],
-      links: links ? links.split(',').map(link => link.trim()) : [],
-      dueDate: dueDate || null,
-      createdBy: user || req.user.id,
-      notes,
-      fileType,
-      branch: selectedBranch,
-    });
-    const savedTask = await task.save();
+    let savedTask = null;
+
+    console.log(`[SETU-CONVERGENCE] Routing Standard Task Creation through 11-Stage SETU EOS Pipeline...`);
+
+    await executeConstitutionalPipeline(
+      {
+        intent: "CREATE_ENGINEERING_TASK",
+        domain: "workflow",
+        targetCapability: "NIYANTRAN",
+        action: "create_standard_task",
+        priority: priority || "Medium",
+        tenantId: selectedBranch,
+        actor: { userId: req.user ? req.user.id : user || "system", role: "employee" },
+        payload: { title, description, department, assignee, priority, status, branch: selectedBranch },
+      },
+      {
+        tenantId: selectedBranch,
+        capabilityHandler: async () => {
+          const task = new Task({
+            title,
+            description,
+            department: new mongoose.Types.ObjectId(department),
+            assignee: new mongoose.Types.ObjectId(assignee),
+            priority: priority || "Medium",
+            status: status || "Pending",
+            dependencies: dependencies ? JSON.parse(dependencies) : [],
+            links: links ? links.split(',').map(link => link.trim()) : [],
+            dueDate: dueDate || null,
+            createdBy: user || req.user.id,
+            notes,
+            fileType,
+            branch: selectedBranch,
+          });
+          savedTask = await task.save();
+          return { status: "EXECUTED", capability: "NIYANTRAN_TASK_CREATE", taskId: savedTask._id };
+        },
+      }
+    );
 
     // Create notification for the assignee
     if (assigneeUser) {

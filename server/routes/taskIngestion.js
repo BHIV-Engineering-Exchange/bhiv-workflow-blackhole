@@ -72,16 +72,24 @@ router.post("/", upload.single("taskFile"), async (req, res) => {
       requireApproval: req.body.requireApproval === "true" || req.body.requireApproval === true,
       branch: req.headers["x-branch"] || req.body.branch || "blackhole_mumbai",
       creatorId: req.user ? req.user._id : null,
+      assignee: req.body.assignee || null,
+      department: req.body.department || null,
     };
 
     const result = await processTaskIngestion(fileBuffer, metadata);
 
     return res.json(result);
   } catch (error) {
-    console.error("[TASK-INGESTION-ROUTE] Failed:", error);
-    return res.status(500).json({
+    console.error("[TASK-INGESTION-ROUTE] Ingestion Failed:", error.message);
+    
+    // Return 400 for unreadable, empty, or malformed input documents
+    const isMalformedInput = error.message.includes("DOCUMENT_INGESTION_FAILED") || 
+                             error.message.includes("MALFORMED") ||
+                             error.message.includes("NO_READABLE_TEXT");
+                             
+    return res.status(isMalformedInput ? 400 : 500).json({
       ok: false,
-      error: "INGESTION_PROCESSING_FAILED",
+      error: isMalformedInput ? "MALFORMED_DOCUMENT_REJECTED" : "INGESTION_PROCESSING_FAILED",
       message: error.message,
     });
   }
