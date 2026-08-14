@@ -1,7 +1,7 @@
 # RUNTIME DEPENDENCY MATRIX
 
 **Release:** Bright Connection EOS Sprint  
-**Date:** 2026-08-11T06:06:29.508Z  
+**Date:** 2026-08-13T15:17:42.053Z  
 
 ---
 

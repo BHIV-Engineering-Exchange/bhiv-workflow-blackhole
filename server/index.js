@@ -196,6 +196,7 @@ const testerRoutes = require('./routes/tester'); // Tester routes
 const tantraExecutionRoutes = require('./routes/tantraExecution'); // Deterministic execution participation routes
 const taskIngestionRoutes = require('./routes/taskIngestion'); // Automated engineering task ingestion pipeline
 const setuConvergenceRoutes = require('./routes/setuConvergence'); // SETU EOS Constitutional Convergence Core
+const group2ContextRoutes = require('./routes/group2Context'); // Group 2 Science Context & SANSKAR layer
 const { startAttendancePersistenceCron, syncExistingAttendance } = require('./services/attendanceCronJobs'); // Attendance persistence cron
 // Middleware imports
 const auth = require('./middleware/auth');
@@ -474,7 +475,7 @@ app.get('/api/test-browser-detection', async (req, res) => {
 // Docs endpoint to dynamically inspect and return all registered API routes
 app.get('/docs', (req, res) => {
   const list = [];
-  
+
   function traverse(router, basePath = '') {
     if (!router || !router.stack) return;
     router.stack.forEach(layer => {
@@ -586,6 +587,7 @@ app.use('/api/tantra', tantraExecutionRoutes); // Deterministic execution partic
 app.use('/api/integration', require('./routes/integrationHealth')); // TANTRA ecosystem integration health
 app.use('/api/tasks/ingest', taskIngestionRoutes); // Automated engineering task ingestion pipeline
 app.use('/api/setu/convergence', setuConvergenceRoutes); // SETU EOS Constitutional Convergence Core
+app.use('/api/group2/context', group2ContextRoutes); // Group 2 Science Context & SANSKAR layer
 
 // app.use('/api/new/ai',aiRoutePy)
 
