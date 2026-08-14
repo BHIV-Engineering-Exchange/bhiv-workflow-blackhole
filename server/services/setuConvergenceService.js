@@ -102,6 +102,7 @@ async function executeConstitutionalPipeline(inputRequest, options = {}) {
       hash: currentHash,
       metadata: { actor: actor.userId, role: actor.role },
     });
+    console.log(`[SETU-CONVERGENCE] Stage 1: CUSTOMER_EMPLOYEE Completed [Trace: ${traceId}]`);
 
     // Stage 2: MITRA Gateway
     const intentRaw = inputRequest.intent || inputRequest.action || "generic_operation";
@@ -114,6 +115,7 @@ async function executeConstitutionalPipeline(inputRequest, options = {}) {
       hash: currentHash,
       metadata: { gateway: "MITRA_NATIVE" },
     });
+    console.log(`[SETU-CONVERGENCE] Stage 2: MITRA Conversational Gateway Completed [Intent: ${intentRaw}]`);
 
     // Stage 3: Intent Layer
     const resolvedIntent = {
@@ -130,6 +132,7 @@ async function executeConstitutionalPipeline(inputRequest, options = {}) {
       hash: currentHash,
       metadata: resolvedIntent,
     });
+    console.log(`[SETU-CONVERGENCE] Stage 3: INTENT_LAYER Resolved [Target: ${resolvedIntent.targetCapability}]`);
 
     // Stage 4: KESHAV Governance
     const keshavCheck = {
@@ -145,6 +148,7 @@ async function executeConstitutionalPipeline(inputRequest, options = {}) {
       hash: currentHash,
       metadata: keshavCheck,
     });
+    console.log(`[SETU-CONVERGENCE] Stage 4: KESHAV Governance Passed [Policy: GOV_POLICY_CONSTITUTIONAL_V1]`);
 
     // Stage 5: SANSKAR Policy
     const sanskarCheck = {
@@ -160,6 +164,7 @@ async function executeConstitutionalPipeline(inputRequest, options = {}) {
       hash: currentHash,
       metadata: sanskarCheck,
     });
+    console.log(`[SETU-CONVERGENCE] Stage 5: SANSKAR Policy & Tenant Isolation Verified [Tenant: ${tenantId}]`);
 
     // Stage 6: SARATHI Sovereign Router
     const sarathiRoute = {
@@ -175,6 +180,7 @@ async function executeConstitutionalPipeline(inputRequest, options = {}) {
       hash: currentHash,
       metadata: sarathiRoute,
     });
+    console.log(`[SETU-CONVERGENCE] Stage 6: SARATHI Sovereign Router Dispatched [Route: ${sarathiRoute.routeKey}]`);
 
     // Stage 7: RAJYA Sovereign Core
     const rajyaLock = {
@@ -189,6 +195,7 @@ async function executeConstitutionalPipeline(inputRequest, options = {}) {
       hash: currentHash,
       metadata: rajyaLock,
     });
+    console.log(`[SETU-CONVERGENCE] Stage 7: RAJYA_SOVEREIGN_CORE Sovereign Lock Acquired`);
 
     // Stage 8: Workflow Executor
     const executorState = {
@@ -204,6 +211,7 @@ async function executeConstitutionalPipeline(inputRequest, options = {}) {
       hash: currentHash,
       metadata: executorState,
     });
+    console.log(`[SETU-CONVERGENCE] Stage 8: WORKFLOW_EXECUTOR State Machine Verified`);
 
     // Stage 9: Enterprise Capability Fabric
     const capabilityResult = options.capabilityHandler
@@ -218,6 +226,7 @@ async function executeConstitutionalPipeline(inputRequest, options = {}) {
       hash: currentHash,
       metadata: capabilityResult,
     });
+    console.log(`[SETU-CONVERGENCE] Stage 9: ENTERPRISE_CAPABILITY_FABRIC Capability Executed [${resolvedIntent.targetCapability}]`);
 
     // Stage 10: Evidence Generation
     const evidenceLog = {
@@ -235,6 +244,7 @@ async function executeConstitutionalPipeline(inputRequest, options = {}) {
       hash: currentHash,
       metadata: evidenceLog,
     });
+    console.log(`[SETU-CONVERGENCE] Stage 10: EVIDENCE Cryptographic Lineage Hash Generated`);
 
     // Stage 11: Replay & Observability
     executionRecord.completedStages.push("REPLAY_OBSERVABILITY");
@@ -244,6 +254,7 @@ async function executeConstitutionalPipeline(inputRequest, options = {}) {
       hash: currentHash,
       metadata: { observabilityStatus: "EMITTED", replayable: true },
     });
+    console.log(`[SETU-CONVERGENCE] Stage 11: REPLAY_OBSERVABILITY Telemetry Dispatched [LineageHash: ${currentHash.substring(0, 16)}...]`);
 
     executionRecord.status = "COMPLETED";
     executionRecord.completedAt = new Date().toISOString();

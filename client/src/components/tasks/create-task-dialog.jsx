@@ -283,20 +283,24 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null, o
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      const ext = file.name.split(".").pop().toLowerCase();
+      const validExtensions = ["pdf", "doc", "docx", "txt", "html", "md"];
       const validTypes = [
         "application/pdf",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "text/plain",
         "text/html",
+        "text/markdown",
+        "",
       ];
-      if (!validTypes.includes(file.type)) {
-        toast.error("Only PDF, DOC, DOCX, TXT, and HTML files are allowed.");
+      if (!validTypes.includes(file.type) && !validExtensions.includes(ext)) {
+        toast.error("Only PDF, DOC, DOCX, MD, TXT, and HTML files are allowed.");
         return;
       }
 
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error("File size must be less than 10MB");
+      if (file.size > 15 * 1024 * 1024) {
+        toast.error("File size must be less than 15MB");
         return;
       }
 
@@ -305,8 +309,8 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null, o
   };
 
   const handleSubmit = async () => {
-    if (!formData.title || !formData.department || !formData.assignee) {
-      toast.error("Please fill in all required fields (Title, Department, Assignee)");
+    if (!documentFile && (!formData.title || !formData.department || !formData.assignee)) {
+      toast.error("Please fill in all required fields (Title, Department, Assignee) or attach a Task Document.");
       return;
     }
 
@@ -326,36 +330,64 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null, o
         return;
       }
     }
-
-    setIsLoading(true);
+      setIsLoading(true);
 
     try {
-      // ✅ FIXED: Use authenticated API method for task creation
+      const token = localStorage.getItem("WorkflowToken");
+      const selectedBranch = localStorage.getItem("selectedBranch");
+
+      // 🌉 IF DOCUMENT ATTACHED: Use SETU Task Ingestion Gateway API (/api/tasks/ingest)
+      if (documentFile) {
+        const ingestFormData = new FormData();
+        ingestFormData.append("taskFile", documentFile);
+        ingestFormData.append("branch", selectedBranch || "blackhole_mumbai");
+        if (formData.assignee) ingestFormData.append("assignee", formData.assignee);
+        if (formData.department) ingestFormData.append("department", formData.department);
+        if (formData.description) ingestFormData.append("content", formData.description);
+
+        console.log("Ingesting task document via SETU Gateway API:", documentFile.name);
+
+        const response = await fetch(`${API_URL}/tasks/ingest`, {
+          method: "POST",
+          headers: {
+            ...(token && { "x-auth-token": token }),
+            ...(selectedBranch && selectedBranch !== "all" && { "x-branch": selectedBranch }),
+          },
+          body: ingestFormData,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || errorData.error || `SETU Ingestion Failed: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        console.log("SETU Task Ingestion Successful:", result);
+
+        if (onTaskCreated && result.task) onTaskCreated(result.task);
+        toast.success(`Task Ingested via SETU EOS [${result.ingestionId || 'Success'}]`);
+        onOpenChange(false);
+        return;
+      }
+
+      // Standard Task Creation Fallback (Without Attached Document)
       const formDataToSend = new FormData();
       formDataToSend.append("title", formData.title);
-      // ✅ Provide default description if empty (backend requires description)
       formDataToSend.append("description", formData.description.trim() || "No description provided");
       formDataToSend.append("department", formData.department);
       formDataToSend.append("assignee", formData.assignee);
       formDataToSend.append("priority", formData.priority);
       formDataToSend.append("status", formData.status);
       formDataToSend.append("dependencies", JSON.stringify(formData.dependencies));
-      formDataToSend.append("user", user.id);
+      if (user?.id) formDataToSend.append("user", user.id);
       formDataToSend.append("links", formData.links || "");
 
       if (dueDate) {
         formDataToSend.append("dueDate", format(dueDate, "yyyy-MM-dd"));
       }
-      if (documentFile) {
-        formDataToSend.append("document", documentFile);
-        formDataToSend.append("fileType", documentFile.type);
-      }
 
       console.log("Creating task with data:", formData);
 
-      // ✅ Use authenticated fetch API instead of axios
-      const token = localStorage.getItem("WorkflowToken");
-      const selectedBranch = localStorage.getItem("selectedBranch");
       const response = await fetch(`${API_URL}/tasks`, {
         method: "POST",
         headers: {
@@ -849,7 +881,7 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null, o
               <Input
                 id="document"
                 type="file"
-                accept=".pdf,.doc,.docx,.txt,.html"
+                accept=".pdf,.doc,.docx,.txt,.html,.md"
                 onChange={handleFileChange}
                 className="h-12 px-4 bg-white/10 dark:bg-slate-800/50 border-2 border-dashed border-white/30 dark:border-slate-700 hover:border-white/50 dark:hover:border-slate-600 focus:border-accent focus-visible:ring-4 focus-visible:ring-accent/30 rounded-xl transition-all duration-300 cursor-pointer text-gray-900 dark:text-slate-100 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gradient-to-r file:from-accent file:to-accent/80 file:text-accent-foreground hover:file:from-accent/90 hover:file:to-accent/70 file:transition-all file:duration-300 backdrop-blur-xl"
               />
