@@ -273,6 +273,7 @@ const mongoose = require("mongoose")
 const nodemailer = require("nodemailer")
 const { isValidOrgEmail, ORG_EMAIL_ERROR } = require("../utils/orgEmail")
 const { signalUserLogin, signalUserLogout, signalSessionResume, signalTaskCreated } = require("../services/karmaClient")
+const emsSignals = require("../services/ems_signals")
 require('dotenv').config()
 
 
@@ -484,7 +485,9 @@ router.post("/register", async (req, res) => {
 
     res.status(201).json({ token, user: payload })
 
-    // Fire-and-forget KARMA signal — registration counts as first login
+    // Fire-and-forget PRANA & KARMA signals — registration counts as first login
+    const sessionId = `sess_${Date.now()}`;
+    try { emsSignals.initializeEmployee(String(newUser._id), sessionId); } catch(e) {}
     signalUserLogin(String(newUser._id)).catch(() => {});
   } catch (error) {
     console.error("Registration error:", error)
@@ -525,7 +528,9 @@ router.post("/login", async (req, res) => {
 
     res.json({ token, user: payload })
 
-    // Fire-and-forget KARMA signal
+    // Fire-and-forget PRANA & KARMA signals
+    const sessionId = `sess_${Date.now()}`;
+    try { emsSignals.initializeEmployee(String(user._id), sessionId); } catch(e) {}
     signalUserLogin(String(user._id)).catch(() => {});
   } catch (error) {
     console.error("Login error:", error)
@@ -533,8 +538,9 @@ router.post("/login", async (req, res) => {
   }
 })
 
-// Logout route — emits KARMA lifecycle signal
+// Logout route — emits PRANA and KARMA lifecycle signals
 router.post("/logout", authMiddleware, async (req, res) => {
+  try { emsSignals.stopTracking(String(req.user.id)); } catch(e) {}
   signalUserLogout(String(req.user.id)).catch(() => {});
   res.json({ message: "Logged out" });
 })
@@ -571,13 +577,21 @@ router.post("/verify-password", authMiddleware, async (req, res) => {
   }
 })
 
-// Protected route to get user data
+// Protected route to get user data & Session recovery
 router.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password")
     if (!user) {
       return res.status(404).json({ error: "User not found" })
     }
+
+    // PRANA & KARMA Session Recovery after refresh
+    const sessionId = `sess_rec_${Date.now()}`;
+    try { emsSignals.initializeEmployee(String(user._id), sessionId); } catch(e) {}
+    if (typeof signalSessionResume === 'function') {
+      signalSessionResume(String(user._id)).catch(() => {});
+    }
+
     res.json(user)
   } catch (error) {
     console.error("Error fetching user:", error)
