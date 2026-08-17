@@ -76,16 +76,20 @@ function cleanAndFormatTaskText(rawText) {
     title = titleMatch[1].trim();
   }
 
-  // Fallback to first prominent line
+  // Fallback to first prominent readable line (excluding PDF binary metadata noise)
   if (!title) {
-    const lines = cleaned.split("\n").map((l) => l.trim()).filter(Boolean);
+    const lines = cleaned
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !/(Skia\/PDF|Google Docs Renderer|obj|endobj|%PDF|Catalog|Pages|stream|endstream)/i.test(l));
+    
     if (lines.length > 0) {
       title = lines[0].replace(/^(#+|Task\s*Title:|Task:|Title:|\d+\.)/i, "").trim();
     }
   }
 
-  if (!title || title.length < 3) {
-    title = "Engineering Task Packet";
+  if (!title || title.length < 3 || /(Skia\/PDF|Google Docs Renderer|obj|endobj|%PDF)/i.test(title)) {
+    title = "Ingested Task Document";
   }
 
   if (title.length > 120) {
@@ -431,7 +435,7 @@ async function processTaskIngestion(fileBuffer, metadata = {}) {
   canonicalPacket.provenance.lineageHash = setuExecution.lineageHash || (setuExecution.record && setuExecution.record.lineageHash) || "";
   canonicalPacket.provenance.setuPipelineConverged = setuExecution.ok;
 
-  // Step 7: Candidate Notification
+  // Candidate Notification
   let notificationSent = false;
   if (resolution.assignee) {
     try {
@@ -448,12 +452,25 @@ async function processTaskIngestion(fileBuffer, metadata = {}) {
     }
   }
 
+  // Populate assignee and department on task object for clean UI rendering
+  let populatedTask = null;
+  if (newTask && newTask._id) {
+    try {
+      populatedTask = await Task.findById(newTask._id)
+        .populate("department", "name color")
+        .populate("assignee", "name avatar email stillExist")
+        .populate("dependencies", "title status");
+    } catch (popErr) {
+      console.warn("[TASK-INGESTION] Task population notice:", popErr.message);
+    }
+  }
+
   return {
     ok: true,
     status: "TASK_INGESTED_SUCCESSFULLY",
     ingestionId: canonicalPacket.ingestionId,
     taskId: newTask._id,
-    task: newTask,
+    task: populatedTask ? populatedTask.toObject() : newTask,
     canonicalPacket,
     assigneeResolved: !!resolution.assignee,
     notificationSent,

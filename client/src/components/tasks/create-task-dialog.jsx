@@ -49,6 +49,7 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null, o
   const [filteredDependencies, setFilteredDependencies] = useState([]);
   const [showDependencyDropdown, setShowDependencyDropdown] = useState(false);
 
+  const [creationMode, setCreationMode] = useState("manual"); // "manual" | "ai_ingest"
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -309,9 +310,16 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null, o
   };
 
   const handleSubmit = async () => {
-    if (!documentFile && (!formData.title || !formData.department || !formData.assignee)) {
-      toast.error("Please fill in all required fields (Title, Department, Assignee) or attach a Task Document.");
-      return;
+    if (creationMode === "ai_ingest") {
+      if (!documentFile) {
+        toast.error("Please attach a Task Document for AI Automated Ingestion.");
+        return;
+      }
+    } else {
+      if (!formData.title || !formData.department || !formData.assignee) {
+        toast.error("Please fill in all required fields (Title, Department, Assignee).");
+        return;
+      }
     }
 
     if (dueDate) {
@@ -330,14 +338,15 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null, o
         return;
       }
     }
-      setIsLoading(true);
+
+    setIsLoading(true);
 
     try {
       const token = localStorage.getItem("WorkflowToken");
       const selectedBranch = localStorage.getItem("selectedBranch");
 
-      // 🌉 IF DOCUMENT ATTACHED: Use SETU Task Ingestion Gateway API (/api/tasks/ingest)
-      if (documentFile) {
+      // ⚡ OPTION 2: AUTOMATED DOCUMENT INGESTION MODE (/api/tasks/ingest)
+      if (creationMode === "ai_ingest") {
         const ingestFormData = new FormData();
         ingestFormData.append("taskFile", documentFile);
         ingestFormData.append("branch", selectedBranch || "blackhole_mumbai");
@@ -365,12 +374,12 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null, o
         console.log("SETU Task Ingestion Successful:", result);
 
         if (onTaskCreated && result.task) onTaskCreated(result.task);
-        toast.success(`Task Ingested via SETU EOS [${result.ingestionId || 'Success'}]`);
+        toast.success("Task created successfully");
         onOpenChange(false);
         return;
       }
 
-      // Standard Task Creation Fallback (Without Attached Document)
+      // ✍️ OPTION 1: MANUAL TASK CREATION MODE (/api/tasks)
       const formDataToSend = new FormData();
       formDataToSend.append("title", formData.title);
       formDataToSend.append("description", formData.description.trim() || "No description provided");
@@ -381,12 +390,15 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null, o
       formDataToSend.append("dependencies", JSON.stringify(formData.dependencies));
       if (user?.id) formDataToSend.append("user", user.id);
       formDataToSend.append("links", formData.links || "");
+      if (documentFile) {
+        formDataToSend.append("document", documentFile);
+      }
 
       if (dueDate) {
         formDataToSend.append("dueDate", format(dueDate, "yyyy-MM-dd"));
       }
 
-      console.log("Creating task with data:", formData);
+      console.log("Creating manual task with data:", formData);
 
       const response = await fetch(`${API_URL}/tasks`, {
         method: "POST",
@@ -426,6 +438,40 @@ export function CreateTaskDialog({ open, onOpenChange, defaultAssignee = null, o
         {/* Scrollable Content Area */}
         <div className="px-7 pt-7 pb-6 overflow-y-auto max-h-[calc(92vh-130px)] scrollbar-thin scrollbar-thumb-white/20 dark:scrollbar-thumb-slate-700 scrollbar-track-transparent hover:scrollbar-thumb-white/30 dark:hover:scrollbar-thumb-slate-600">
           <div className="grid gap-6">
+
+            {/* Mode Selector Toggle */}
+            <div className="flex items-center justify-between p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setCreationMode("manual")}
+                className={cn(
+                  "flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2",
+                  creationMode === "manual"
+                    ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-md border border-slate-200 dark:border-slate-700"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                )}
+              >
+                <span>✍️</span> Manual Task Creation
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreationMode("ai_ingest")}
+                className={cn(
+                  "flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2",
+                  creationMode === "ai_ingest"
+                    ? "bg-white dark:bg-slate-900 text-primary dark:text-primary shadow-md border border-slate-200 dark:border-slate-700"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                )}
+              >
+                <span>⚡</span> AI Document Ingestion
+              </button>
+            </div>
+
+            {creationMode === "ai_ingest" && (
+              <div className="p-4 bg-primary/10 border border-primary/30 rounded-xl text-sm text-slate-700 dark:text-slate-300">
+                <span className="font-bold text-primary">🤖 AI Automated Mode:</span> Upload a task specification document (PDF, DOCX, TXT, MD). The SETU EOS engine will extract the task title, description, and assign candidates automatically.
+              </div>
+            )}
             {/* Task Title */}
             <div className="grid gap-2.5">
               <Label htmlFor="title" className="text-sm font-bold text-gray-900 dark:text-slate-200 flex items-center gap-1.5">
