@@ -187,7 +187,7 @@ const AdminChatbot = () => {
         : "inset-x-3 bottom-3 sm:inset-x-auto sm:bottom-6 sm:right-6"
     }`}>
       <Card 
-        className={`border-none shadow-2xl transition-all duration-300 ${
+        className={`border-none shadow-2xl transition-all duration-300 flex flex-col overflow-hidden ${
           isFullscreen 
             ? "w-full h-full rounded-none" 
             : isMinimized 
@@ -201,11 +201,11 @@ const AdminChatbot = () => {
           boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
         }}
       >
-        <CardHeader className="p-3 sm:p-5 flex flex-row items-center justify-between space-y-0 border-b border-white/10">
+        <CardHeader className="p-3 sm:p-4 flex flex-row items-center justify-between space-y-0 border-b border-white/10 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg">
-                <Brain className="h-6 w-6 text-white" />
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg">
+                <Brain className="h-5 w-5 text-white" />
               </div>
               <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-gray-800 animate-pulse"></div>
             </div>
@@ -264,9 +264,7 @@ const AdminChatbot = () => {
 
         {!isMinimized && (
           <>
-            <CardContent className={`p-0 ${
-              isFullscreen ? "h-[calc(100dvh-180px)]" : "h-[calc(100dvh-170px)] sm:h-[calc(700px-180px)]"
-            }`}
+            <CardContent className="p-0 flex-1 min-h-0 overflow-hidden"
             style={{
               background: 'rgba(20, 20, 20, 0.6)'
             }}
@@ -359,7 +357,7 @@ const AdminChatbot = () => {
               </ScrollArea>
             </CardContent>
 
-            <div className="p-3 sm:p-5 border-t border-white/10"
+            <div className="p-3 sm:p-4 border-t border-white/10 flex-shrink-0"
               style={{
                 background: 'rgba(20, 20, 20, 0.8)'
               }}
