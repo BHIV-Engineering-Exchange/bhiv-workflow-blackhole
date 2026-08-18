@@ -17,50 +17,115 @@ const { uploadToCloudinary } = require("../utils/cloudinary");
 const crypto = require("crypto");
 
 /**
+ * Safely parses text from PDF buffer using pdf-parse (v1 or v2)
+ */
+async function parsePdfBuffer(fileBuffer) {
+  try {
+    const pdfLib = require("pdf-parse");
+    if (typeof pdfLib === "function") {
+      const data = await pdfLib(fileBuffer);
+      if (data && typeof data.text === "string") return data.text;
+    } else if (pdfLib && pdfLib.PDFParse) {
+      const uint8 = new Uint8Array(fileBuffer);
+      const parser = new pdfLib.PDFParse(uint8);
+      await parser.load();
+      const result = await parser.getText();
+      if (typeof result === "string") return result;
+      if (result && typeof result.text === "string") return result.text;
+      if (result && Array.isArray(result.pages)) {
+        return result.pages.map((p) => (typeof p.text === "string" ? p.text : String(p.text || ""))).join("\n");
+      }
+    }
+  } catch (err) {
+    console.warn("[TASK-INGESTION] pdf-parse parser notice:", err.message);
+  }
+  return "";
+}
+
+/**
  * Extracts raw text from multi-format files (PDF, DOCX, MD, TXT)
  */
-function extractTextFromDocument(fileBuffer, mimeType = "", filename = "") {
-  const ext = filename.split(".").pop().toLowerCase();
-  
-  if (fileBuffer instanceof Buffer) {
-    let rawContent = fileBuffer.toString("utf-8");
+async function extractTextFromDocument(fileBuffer, mimeType = "", filename = "") {
+  try {
+    const ext = (filename || "").split(".").pop().toLowerCase();
+    
+    if (fileBuffer instanceof Buffer) {
+      // Handle plain text, markdown, or doc files directly
+      if (ext === "md" || ext === "txt" || ext === "doc" || mimeType.includes("text") || mimeType.includes("markdown")) {
+        const text = fileBuffer.toString("utf-8");
+        if (text && text.trim().length > 0) return text;
+      }
 
-    // Handle plain text or markdown directly
-    if (ext === "md" || ext === "txt" || mimeType.includes("text") || mimeType.includes("markdown")) {
-      return rawContent;
+      // Word .docx XML tag extraction
+      if (ext === "docx" || mimeType.includes("word") || mimeType.includes("officedocument")) {
+        const rawContent = fileBuffer.toString("utf-8");
+        const wtMatches = rawContent.match(/<w:t[^>]*>([^<]+)<\/w:t>/gi);
+        if (wtMatches && wtMatches.length > 0) {
+          const docxText = wtMatches.map((m) => m.replace(/<[^>]+>/g, "")).join(" ");
+          if (docxText && docxText.trim().length > 0) return docxText;
+        }
+        // Fallback ASCII text extraction
+        const cleanAscii = rawContent.replace(/<[^>]+>/g, " ").replace(/[\x00-\x1F\x7F-\xFF]/g, " ").replace(/\s+/g, " ").trim();
+        if (cleanAscii.length > 20) return cleanAscii;
+      }
+
+      // PDF Extraction via parsePdfBuffer
+      if (ext === "pdf" || mimeType.includes("pdf")) {
+        const parsedText = await parsePdfBuffer(fileBuffer);
+        if (typeof parsedText === "string" && parsedText.trim().length > 0) {
+          return parsedText;
+        }
+
+        // Safe fallback for simple / uncompressed PDF text streams
+        const rawContent = fileBuffer.toString("latin1");
+        const textMatches = [];
+        const pdfTextRegex = /\(([^()\\]|\\[\s\S])*\)/g;
+        let match;
+        while ((match = pdfTextRegex.exec(rawContent)) !== null) {
+          let str = match[0].slice(1, -1);
+          str = str.replace(/\\([()\\])/g, "$1").replace(/\\n/g, "\n").replace(/\\r/g, "\r");
+          if (/[a-zA-Z0-9]/.test(str) && !/[\x00-\x08\x0E-\x1F\x7F-\xFF]/.test(str)) {
+            textMatches.push(str.trim());
+          }
+        }
+        const extractedFallback = textMatches.filter((t) => t.length > 1).join(" ");
+        if (extractedFallback && extractedFallback.trim().length > 0) {
+          return extractedFallback;
+        }
+      }
+
+      // Fallback cleaning for raw ASCII text streams
+      let rawContent = fileBuffer.toString("utf-8");
+      let textContent = rawContent
+        .replace(/%PDF-[0-9\.]+/g, " ")
+        .replace(/obj[\s\S]*?endobj/g, " ")
+        .replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, " ");
+      
+      const cleanLines = textContent
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0 && /[a-zA-Z0-9]/.test(line) && !/^\d+\s+\d+\s+(?:obj|\(|<)/i.test(line) && !/^[0-9a-fA-F<>\s\\%\/]+$/.test(line));
+
+      return cleanLines.join("\n") || "Ingested Task Document Content";
     }
 
-    // Clean binary non-printable control sequences for PDF / DOCX
-    let textContent = rawContent
-      .replace(/%PDF-[0-9\.]+/g, " ")
-      .replace(/obj[\s\S]*?endobj/g, (match) => {
-        // extract readable string text inside PDF obj blocks
-        const textMatches = match.match(/\(([^\)]+)\)/g);
-        return textMatches ? textMatches.join(" ") : match;
-      })
-      .replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, " ");
-    
-    // Filter out long sequences of unprintable characters
-    const cleanLines = textContent
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0 && /[a-zA-Z0-9]/.test(line));
+    if (typeof fileBuffer === "string") {
+      return fileBuffer;
+    }
 
-    return cleanLines.join("\n") || rawContent;
+    return String(fileBuffer || "");
+  } catch (err) {
+    console.warn("[TASK-INGESTION] Document text extraction error:", err.message);
+    return "";
   }
-
-  if (typeof fileBuffer === "string") {
-    return fileBuffer;
-  }
-
-  return String(fileBuffer || "");
 }
 
 /**
  * AI Cleaning & Formatting Algorithm — removes noise and normalizes structure
  */
 function cleanAndFormatTaskText(rawText) {
-  let cleaned = rawText
+  const strInput = typeof rawText === "string" ? rawText : String(rawText || "");
+  let cleaned = strInput
     // Strip common intern notes or boilerplate markers
     .replace(/(INTERNAL USE ONLY|DRAFT TASK PACKET|INTERN UPLOAD|MANUAL WORKFLOW)/gi, "")
     // Normalize headers
@@ -69,26 +134,39 @@ function cleanAndFormatTaskText(rawText) {
     .replace(/ {2,}/g, " ")
     .trim();
 
-  // Explicit title pattern detection (Task Title: ..., Task: ...)
+  // Helper to detect PDF binary gibberish noise
+  const isGibberish = (str) => {
+    if (!str || str.length < 3) return true;
+    if (/(Skia\/PDF|Google Docs Renderer|obj|endobj|%PDF|Catalog|Pages|stream|endstream)/i.test(str)) return true;
+    if (/^\d+\s+\d+\s+(?:obj|\(|<)/i.test(str)) return true; // e.g. "3 0 (>É%..." or "3 0 obj"
+    if (/[^\x20-\x7E\s]/.test(str) && (str.match(/[^\x20-\x7E\s]/g) || []).length > 2) return true; // high non-ASCII count
+    if ((str.match(/[0-9a-fA-F]{8,}/g) || []).length > 2) return true;
+    return false;
+  };
+
+  // Explicit title pattern detection (Task Title: ..., Task: ..., Title: ...)
   let title = null;
   const titleMatch = cleaned.match(/(?:Task\s*Title|Task|Title)\s*:\s*([^\n]+)/i);
-  if (titleMatch && titleMatch[1] && titleMatch[1].trim().length > 3) {
-    title = titleMatch[1].trim();
-  }
-
-  // Fallback to first prominent readable line (excluding PDF binary metadata noise)
-  if (!title) {
-    const lines = cleaned
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0 && !/(Skia\/PDF|Google Docs Renderer|obj|endobj|%PDF|Catalog|Pages|stream|endstream)/i.test(l));
-    
-    if (lines.length > 0) {
-      title = lines[0].replace(/^(#+|Task\s*Title:|Task:|Title:|\d+\.)/i, "").trim();
+  if (titleMatch && titleMatch[1]) {
+    const candidate = titleMatch[1].trim();
+    if (!isGibberish(candidate) && candidate.length > 3) {
+      title = candidate;
     }
   }
 
-  if (!title || title.length < 3 || /(Skia\/PDF|Google Docs Renderer|obj|endobj|%PDF)/i.test(title)) {
+  // Fallback to first prominent readable line
+  if (!title) {
+    const lines = cleaned
+      .split("\n")
+      .map((l) => l.replace(/^(#+|Task\s*Title:|Task:|Title:|\d+\.)/i, "").trim())
+      .filter((l) => l.length > 3 && !isGibberish(l) && /[a-zA-Z]/.test(l));
+
+    if (lines.length > 0) {
+      title = lines[0];
+    }
+  }
+
+  if (!title || isGibberish(title) || title.length < 3) {
     title = "Ingested Task Document";
   }
 
@@ -110,7 +188,7 @@ function cleanAndFormatTaskText(rawText) {
   if (assigneeMatch && assigneeMatch[1]) {
     let rawAssignee = assigneeMatch[1].trim();
     rawAssignee = rawAssignee.split(/(?:priority|department|dept|project|overview|##|\r|\n)/i)[0].trim();
-    if (rawAssignee.length > 0) {
+    if (rawAssignee.length > 0 && !isGibberish(rawAssignee)) {
       assigneeHint = rawAssignee;
     }
   }
@@ -121,7 +199,7 @@ function cleanAndFormatTaskText(rawText) {
   if (projectMatch && projectMatch[1]) {
     let rawProj = projectMatch[1].trim();
     rawProj = rawProj.split(/(?:priority|assignee|department|dept|overview|##|\r|\n)/i)[0].trim();
-    if (rawProj.length > 0) {
+    if (rawProj.length > 0 && !isGibberish(rawProj)) {
       projectHint = rawProj;
     }
   }
@@ -132,7 +210,7 @@ function cleanAndFormatTaskText(rawText) {
   if (deptMatch && deptMatch[1]) {
     let rawDept = deptMatch[1].trim();
     rawDept = rawDept.split(/(?:priority|assignee|owner|project|overview|##|\r|\n)/i)[0].trim();
-    if (rawDept.length > 0) {
+    if (rawDept.length > 0 && !isGibberish(rawDept)) {
       departmentHint = rawDept;
     }
   }
@@ -145,7 +223,7 @@ function cleanAndFormatTaskText(rawText) {
     projectHint,
     departmentHint,
     cleanedLength: cleaned.length,
-    rawLength: rawText.length,
+    rawLength: strInput.length,
   };
 }
 
@@ -298,7 +376,10 @@ async function processTaskIngestion(fileBuffer, metadata = {}) {
   const creatorId = metadata.creatorId || null;
 
   // Step 1: Document Ingestion
-  const rawText = extractTextFromDocument(fileBuffer, mimeType, filename);
+  let rawText = await extractTextFromDocument(fileBuffer, mimeType, filename);
+  if (typeof rawText !== "string") {
+    rawText = String(rawText || "");
+  }
 
   if (!rawText || rawText.trim().length === 0 || !/[a-zA-Z0-9]/.test(rawText)) {
     throw new Error("DOCUMENT_INGESTION_FAILED: Document content is empty or contains no readable text.");

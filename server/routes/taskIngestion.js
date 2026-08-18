@@ -76,6 +76,8 @@ router.post("/", upload.single("taskFile"), async (req, res) => {
       department: req.body.department || null,
     };
 
+    delete require.cache[require.resolve("../services/taskIngestionService")];
+    const { processTaskIngestion } = require("../services/taskIngestionService");
     const result = await processTaskIngestion(fileBuffer, metadata);
 
     return res.json(result);
