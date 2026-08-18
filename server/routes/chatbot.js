@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const Groq = require('groq-sdk');
+const uniguruAIService = require('../services/uniguruAIService');
 const auth = require('../middleware/auth');
 const User = require('../models/User');
 const Task = require('../models/Task');
@@ -11,15 +11,7 @@ const Aim = require('../models/Aim');
 const AIReview = require('../models/AIReview');
 const SalaryAttendance = require('../models/SalaryAttendance');
 
-// Initialize Groq client
-const apiKey = process.env.GROQ_API_KEY || process.env.XAI_API_KEY;
-console.log('🔑 Groq API Key status:', apiKey ? '✅ Configured' : '❌ Not configured');
-
-const groq = new Groq({
-  apiKey: apiKey,
-});
-
-// Store conversation history (in production, use Redis or database)
+// Store conversation history
 const conversationHistory = new Map();
 
 /**
@@ -191,32 +183,9 @@ IMPORTANT: Use this detailed department data to answer accurately. Provide speci
       history = history.slice(-10);
     }
 
-    // Check if Groq API key is configured
-    if (!process.env.GROQ_API_KEY && !process.env.XAI_API_KEY) {
-      console.error('❌ GROQ_API_KEY not configured');
-      return res.status(500).json({ 
-        error: 'AI service not configured. Please add GROQ_API_KEY to server/.env file.' 
-      });
-    }
-
-    console.log('🤖 Calling Groq API with model:', process.env.GROQ_MODEL || 'llama-3.3-70b-versatile');
-
-    // Call Groq API
-    const chatCompletion = await groq.chat.completions.create({
-      messages: [
-        {
-          role: 'system',
-          content: systemPrompt,
-        },
-        ...history,
-      ],
-      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-      temperature: 0.3, // Lower temperature for more accurate, focused responses
-      max_tokens: 1500, // Increased for more detailed answers
-      top_p: 0.9,
-    });
-
-    const aiResponse = chatCompletion.choices[0]?.message?.content || 'I apologize, I could not generate a response.';
+    console.log('🤖 Calling UniGuru AI for admin chatbot...');
+    const result = await uniguruAIService.chat(message, historyKey, { systemPrompt });
+    const aiResponse = result.answer || 'I apologize, I could not generate a response.';
 
     console.log('✅ AI Response generated (length):', aiResponse.length);
     console.log('💬 AI Response preview:', aiResponse.substring(0, 150) + '...');

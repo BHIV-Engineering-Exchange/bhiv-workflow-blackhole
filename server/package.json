@@ -38,7 +38,6 @@
     "gemini-ai": "^2.2.1",
     "geolib": "^3.3.4",
     "googleapis": "^148.0.0",
-    "groq-sdk": "^0.34.0",
     "html2canvas": "^1.4.1",
     "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.2",

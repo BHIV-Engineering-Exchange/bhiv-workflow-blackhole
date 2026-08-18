@@ -2,12 +2,10 @@ const Tesseract = require('tesseract.js');
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
+const uniguruAIService = require('./uniguruAIService');
 
 class OCRAnalysisService {
   constructor() {
-    this.groqApiKey = process.env.GROQ_API_KEY;
-    this.groqApiUrl = 'https://api.groq.com/openai/v1/chat/completions';
-    this.groqModel = process.env.GROQ_MODEL || 'llama3-8b-8192';
     this.ocrWorker = null;
     this.initializeOCR();
   }
@@ -58,20 +56,15 @@ class OCRAnalysisService {
    */
   async analyzeScreenshotWithOCR(imagePath, context = {}) {
     try {
-      // Step 1: Extract text using OCR
       const ocrResult = await this.extractTextFromScreenshot(imagePath);
-      
-      // Step 2: Get current employee task
       const currentTask = await this.getCurrentEmployeeTask(context.employeeId);
       
-      // Step 3: Analyze with AI for work relevance
       const aiAnalysis = await this.analyzeWorkRelevance(
         ocrResult.text, 
         context, 
         currentTask
       );
 
-      // Step 4: Combine results
       const combinedAnalysis = {
         ocr: ocrResult,
         task: currentTask,
@@ -89,39 +82,19 @@ class OCRAnalysisService {
   }
 
   /**
-   * Analyze work relevance using AI
+   * Analyze work relevance using UniGuru AI
    */
   async analyzeWorkRelevance(extractedText, context, currentTask) {
-    if (!this.groqApiKey || !extractedText.trim()) {
+    if (!extractedText || !extractedText.trim()) {
       return this.createBasicAnalysis(extractedText, context, currentTask);
     }
 
     try {
       const prompt = this.buildWorkRelevancePrompt(extractedText, context, currentTask);
-      
-      const response = await axios.post(this.groqApiUrl, {
-        model: this.groqModel,
-        messages: [
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        max_tokens: 800,
-        temperature: 0.2
-      }, {
-        headers: {
-          'Authorization': `Bearer ${this.groqApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 15000
-      });
-
-      const aiResponse = response.data.choices[0]?.message?.content;
-      return this.parseAIAnalysis(aiResponse, extractedText, currentTask);
-      
+      const result = await uniguruAIService.ask(prompt, { domain: 'OCR & Task Alignment' });
+      return this.parseAIAnalysis(result.answer, extractedText, currentTask);
     } catch (error) {
-      console.error('AI analysis error:', error);
+      console.error('UniGuru AI analysis error:', error);
       return this.createBasicAnalysis(extractedText, context, currentTask);
     }
   }
