@@ -15,6 +15,107 @@ const Notification = require("../models/Notification");
 const { executeConstitutionalPipeline } = require("./setuConvergenceService");
 const { uploadToCloudinary } = require("../utils/cloudinary");
 const crypto = require("crypto");
+const zlib = require("zlib");
+
+/**
+ * Helper to detect PDF binary gibberish noise
+ */
+function isGibberish(str) {
+  if (!str || str.length < 3) return true;
+  if (/(Skia\/PDF|Google Docs Renderer|PDFKit|CreationDate|ModDate|Producer|obj|endobj|%PDF|Catalog|Pages|stream|endstream|\/Type|\/Page|\/Font|\/Encoding|\/MediaBox|\/Resources|\/Parent|\/Contents|\/ProcSet|\/Filter|xref|trailer|startxref|%%EOF)/i.test(str)) return true;
+  if (/^\/[A-Z][a-zA-Z0-9]+/i.test(str)) return true;
+  if (/^\(?D:\d+/i.test(str)) return true;
+  if (/^(xref|trailer|startxref|%%EOF|EOF)$/i.test(str) || /^\s*%/.test(str)) return true;
+  if (/^\d{10}\s+\d{5}\s+[fn]/i.test(str)) return true;
+  if (/^\d+\s+\d+\s+(?:obj|\(|<)/i.test(str)) return true; // e.g. "3 0 (>É%..." or "3 0 obj"
+  if (/[^\x20-\x7E\s]/.test(str) && (str.match(/[^\x20-\x7E\s]/g) || []).length > 2) return true; // high non-ASCII count
+  if ((str.match(/[0-9a-fA-F]{8,}/g) || []).length > 2) return true;
+  return false;
+}
+
+/**
+ * Native zlib stream decompression fallback for compressed FlateDecode PDF streams
+ */
+function extractPdfStreamText(fileBuffer) {
+  try {
+    const streamStartMarker = Buffer.from("stream");
+    const streamEndMarker = Buffer.from("endstream");
+    const extractedStrings = [];
+    let searchPos = 0;
+
+    while (searchPos < fileBuffer.length) {
+      const startIdx = fileBuffer.indexOf(streamStartMarker, searchPos);
+      if (startIdx === -1) break;
+
+      let contentStart = startIdx + streamStartMarker.length;
+      if (fileBuffer[contentStart] === 0x0d && fileBuffer[contentStart + 1] === 0x0a) {
+        contentStart += 2;
+      } else if (fileBuffer[contentStart] === 0x0a || fileBuffer[contentStart] === 0x0d) {
+        contentStart += 1;
+      }
+
+      const endIdx = fileBuffer.indexOf(streamEndMarker, contentStart);
+      if (endIdx === -1) break;
+
+      let contentEnd = endIdx;
+      if (fileBuffer[contentEnd - 1] === 0x0a) contentEnd--;
+      if (fileBuffer[contentEnd - 1] === 0x0d) contentEnd--;
+
+      const streamBuffer = fileBuffer.subarray(contentStart, contentEnd);
+      let decompressed = null;
+
+      try {
+        decompressed = zlib.inflateSync(streamBuffer).toString("utf-8");
+      } catch (e1) {
+        try {
+          decompressed = zlib.unzipSync(streamBuffer).toString("utf-8");
+        } catch (e2) {
+          try {
+            decompressed = zlib.inflateRawSync(streamBuffer).toString("utf-8");
+          } catch (e3) {
+            decompressed = streamBuffer.toString("utf-8");
+          }
+        }
+      }
+
+      if (decompressed && typeof decompressed === "string") {
+        const innerStrRegex = /\(([^()\\]|\\[\s\S])*\)/g;
+        let tMatch;
+
+        while ((tMatch = innerStrRegex.exec(decompressed)) !== null) {
+          let str = tMatch[0].slice(1, -1);
+          str = str
+            .replace(/\\([()\\])/g, "$1")
+            .replace(/\\n/g, "\n")
+            .replace(/\\r/g, "\r")
+            .replace(/\\t/g, "\t");
+
+          if (str.length > 1 && /[a-zA-Z0-9]/.test(str) && !isGibberish(str)) {
+            extractedStrings.push(str.trim());
+          }
+        }
+
+        if (extractedStrings.length === 0) {
+          const rawTokens = decompressed
+            .replace(/<[^>]+>/g, " ")
+            .split(/[\r\n\t]+/)
+            .map((s) => s.trim())
+            .filter((s) => s.length > 2 && /[a-zA-Z0-9]/.test(s) && !isGibberish(s));
+          extractedStrings.push(...rawTokens);
+        }
+      }
+
+      searchPos = endIdx + streamEndMarker.length;
+    }
+
+    if (extractedStrings.length > 0) {
+      return extractedStrings.join("\n");
+    }
+  } catch (err) {
+    console.warn("[TASK-INGESTION] PDF stream decompression fallback notice:", err.message);
+  }
+  return "";
+}
 
 /**
  * Safely parses text from PDF buffer using pdf-parse (v1 or v2)
@@ -44,15 +145,16 @@ async function parsePdfBuffer(fileBuffer) {
 /**
  * Extracts raw text from multi-format files (PDF, DOCX, MD, TXT)
  */
-async function extractTextFromDocument(fileBuffer, mimeType = "", filename = "") {
+async function extractTextFromDocument(fileBuffer, mimeType = "", filename = "", metadata = {}) {
   try {
     const ext = (filename || "").split(".").pop().toLowerCase();
-    
-    if (fileBuffer instanceof Buffer) {
+    const fallbackMetaText = (metadata.content || metadata.taskText || metadata.description || "").trim();
+
+    if (fileBuffer instanceof Buffer && fileBuffer.length > 0) {
       // Handle plain text, markdown, or doc files directly
       if (ext === "md" || ext === "txt" || ext === "doc" || mimeType.includes("text") || mimeType.includes("markdown")) {
         const text = fileBuffer.toString("utf-8");
-        if (text && text.trim().length > 0) return text;
+        if (text && text.trim().length > 0 && /[a-zA-Z0-9]/.test(text)) return text;
       }
 
       // Word .docx XML tag extraction
@@ -61,18 +163,24 @@ async function extractTextFromDocument(fileBuffer, mimeType = "", filename = "")
         const wtMatches = rawContent.match(/<w:t[^>]*>([^<]+)<\/w:t>/gi);
         if (wtMatches && wtMatches.length > 0) {
           const docxText = wtMatches.map((m) => m.replace(/<[^>]+>/g, "")).join(" ");
-          if (docxText && docxText.trim().length > 0) return docxText;
+          if (docxText && docxText.trim().length > 0 && /[a-zA-Z0-9]/.test(docxText)) return docxText;
         }
         // Fallback ASCII text extraction
         const cleanAscii = rawContent.replace(/<[^>]+>/g, " ").replace(/[\x00-\x1F\x7F-\xFF]/g, " ").replace(/\s+/g, " ").trim();
-        if (cleanAscii.length > 20) return cleanAscii;
+        if (cleanAscii.length > 20 && /[a-zA-Z0-9]/.test(cleanAscii)) return cleanAscii;
       }
 
-      // PDF Extraction via parsePdfBuffer
+      // PDF Extraction via parsePdfBuffer & zlib stream inflation fallback
       if (ext === "pdf" || mimeType.includes("pdf")) {
         const parsedText = await parsePdfBuffer(fileBuffer);
-        if (typeof parsedText === "string" && parsedText.trim().length > 0) {
+        if (typeof parsedText === "string" && parsedText.trim().length > 0 && /[a-zA-Z0-9]/.test(parsedText)) {
           return parsedText;
+        }
+
+        // Native zlib stream decompression fallback for compressed FlateDecode PDF streams
+        const zlibExtracted = extractPdfStreamText(fileBuffer);
+        if (zlibExtracted && zlibExtracted.trim().length > 0 && /[a-zA-Z0-9]/.test(zlibExtracted)) {
+          return zlibExtracted;
         }
 
         // Safe fallback for simple / uncompressed PDF text streams
@@ -88,12 +196,12 @@ async function extractTextFromDocument(fileBuffer, mimeType = "", filename = "")
           }
         }
         const extractedFallback = textMatches.filter((t) => t.length > 1 && !isGibberish(t)).join("\n");
-        if (extractedFallback && extractedFallback.trim().length > 0) {
+        if (extractedFallback && extractedFallback.trim().length > 0 && /[a-zA-Z0-9]/.test(extractedFallback)) {
           return extractedFallback;
         }
       }
 
-      // Fallback cleaning for raw ASCII text streams
+      // Fallback cleaning for raw text streams
       let rawContent = fileBuffer.toString("utf-8");
       let textContent = rawContent
         .replace(/%PDF-[0-9\.]+/g, " ")
@@ -105,17 +213,29 @@ async function extractTextFromDocument(fileBuffer, mimeType = "", filename = "")
         .map((line) => line.trim())
         .filter((line) => line.length > 0 && /[a-zA-Z0-9]/.test(line) && !/^\d+\s+\d+\s+(?:obj|\(|<)/i.test(line) && !/^[0-9a-fA-F<>\s\\%\/]+$/.test(line));
 
-      return cleanLines.join("\n");
+      const cleanBufferText = cleanLines.join("\n");
+      if (cleanBufferText && cleanBufferText.trim().length > 0 && /[a-zA-Z0-9]/.test(cleanBufferText)) {
+        return cleanBufferText;
+      }
     }
 
-    if (typeof fileBuffer === "string") {
+    if (typeof fileBuffer === "string" && fileBuffer.trim().length > 0 && /[a-zA-Z0-9]/.test(fileBuffer)) {
       return fileBuffer;
     }
 
-    return String(fileBuffer || "");
+    // Fallback to metadata text if document buffer was empty or contained unparseable binary content
+    if (fallbackMetaText && fallbackMetaText.length > 0 && /[a-zA-Z0-9]/.test(fallbackMetaText)) {
+      return fallbackMetaText;
+    }
+
+    if (metadata.title && metadata.title.length > 0 && /[a-zA-Z0-9]/.test(metadata.title)) {
+      return `Task Title: ${metadata.title}`;
+    }
+
+    return "";
   } catch (err) {
     console.warn("[TASK-INGESTION] Document text extraction error:", err.message);
-    return "";
+    return metadata.content || metadata.taskText || metadata.description || "";
   }
 }
 
@@ -391,7 +511,7 @@ async function processTaskIngestion(fileBuffer, metadata = {}) {
   const creatorId = metadata.creatorId || null;
 
   // Step 1: Document Ingestion
-  let rawText = await extractTextFromDocument(fileBuffer, mimeType, filename);
+  let rawText = await extractTextFromDocument(fileBuffer, mimeType, filename, metadata);
   if (typeof rawText !== "string") {
     rawText = String(rawText || "");
   }

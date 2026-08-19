@@ -78,6 +78,10 @@ router.post("/", upload.any(), async (req, res) => {
       creatorId: req.user ? req.user._id : null,
       assignee: req.body.assignee || null,
       department: req.body.department || null,
+      content: req.body.content || req.body.taskText || req.body.description || null,
+      taskText: req.body.taskText || req.body.content || req.body.description || null,
+      description: req.body.description || req.body.content || req.body.taskText || null,
+      title: req.body.title || req.body.taskTitle || null,
     };
 
     delete require.cache[require.resolve("../services/taskIngestionService")];
