@@ -22,19 +22,18 @@ const crypto = require("crypto");
 async function parsePdfBuffer(fileBuffer) {
   try {
     const pdfLib = require("pdf-parse");
+    const PDFClass = pdfLib.PDFParse || (typeof pdfLib === "function" ? pdfLib : null);
+    if (PDFClass && typeof PDFClass === "function" && PDFClass.prototype && typeof PDFClass.prototype.load === "function") {
+      const uint8 = new Uint8Array(fileBuffer);
+      const parser = new PDFClass({ data: uint8 });
+      await parser.load();
+      const res = await parser.getText();
+      if (typeof res === "string" && res.trim().length > 0) return res;
+      if (res && typeof res.text === "string" && res.text.trim().length > 0) return res.text;
+    }
     if (typeof pdfLib === "function") {
       const data = await pdfLib(fileBuffer);
-      if (data && typeof data.text === "string") return data.text;
-    } else if (pdfLib && pdfLib.PDFParse) {
-      const uint8 = new Uint8Array(fileBuffer);
-      const parser = new pdfLib.PDFParse(uint8);
-      await parser.load();
-      const result = await parser.getText();
-      if (typeof result === "string") return result;
-      if (result && typeof result.text === "string") return result.text;
-      if (result && Array.isArray(result.pages)) {
-        return result.pages.map((p) => (typeof p.text === "string" ? p.text : String(p.text || ""))).join("\n");
-      }
+      if (data && typeof data.text === "string" && data.text.trim().length > 0) return data.text;
     }
   } catch (err) {
     console.warn("[TASK-INGESTION] pdf-parse parser notice:", err.message);
@@ -84,11 +83,11 @@ async function extractTextFromDocument(fileBuffer, mimeType = "", filename = "")
         while ((match = pdfTextRegex.exec(rawContent)) !== null) {
           let str = match[0].slice(1, -1);
           str = str.replace(/\\([()\\])/g, "$1").replace(/\\n/g, "\n").replace(/\\r/g, "\r");
-          if (/[a-zA-Z0-9]/.test(str) && !/[\x00-\x08\x0E-\x1F\x7F-\xFF]/.test(str)) {
+          if (/[a-zA-Z0-9]/.test(str) && !/[\x00-\x08\x0E-\x1F\x7F-\xFF]/.test(str) && !isGibberish(str)) {
             textMatches.push(str.trim());
           }
         }
-        const extractedFallback = textMatches.filter((t) => t.length > 1).join(" ");
+        const extractedFallback = textMatches.filter((t) => t.length > 1 && !isGibberish(t)).join("\n");
         if (extractedFallback && extractedFallback.trim().length > 0) {
           return extractedFallback;
         }
@@ -137,7 +136,11 @@ function cleanAndFormatTaskText(rawText) {
   // Helper to detect PDF binary gibberish noise
   const isGibberish = (str) => {
     if (!str || str.length < 3) return true;
-    if (/(Skia\/PDF|Google Docs Renderer|PDFKit|CreationDate|ModDate|Producer|obj|endobj|%PDF|Catalog|Pages|stream|endstream)/i.test(str)) return true;
+    if (/(Skia\/PDF|Google Docs Renderer|PDFKit|CreationDate|ModDate|Producer|obj|endobj|%PDF|Catalog|Pages|stream|endstream|\/Type|\/Page|\/Font|\/Encoding|\/MediaBox|\/Resources|\/Parent|\/Contents|\/ProcSet|\/Filter|xref|trailer|startxref|%%EOF)/i.test(str)) return true;
+    if (/^\/[A-Z][a-zA-Z0-9]+/i.test(str)) return true;
+    if (/^\(?D:\d+/i.test(str)) return true;
+    if (/^(xref|trailer|startxref|%%EOF|EOF)$/i.test(str) || /^\s*%/.test(str)) return true;
+    if (/^\d{10}\s+\d{5}\s+[fn]/i.test(str)) return true;
     if (/^\d+\s+\d+\s+(?:obj|\(|<)/i.test(str)) return true; // e.g. "3 0 (>É%..." or "3 0 obj"
     if (/[^\x20-\x7E\s]/.test(str) && (str.match(/[^\x20-\x7E\s]/g) || []).length > 2) return true; // high non-ASCII count
     if ((str.match(/[0-9a-fA-F]{8,}/g) || []).length > 2) return true;
@@ -457,8 +460,8 @@ async function processTaskIngestion(fileBuffer, metadata = {}) {
           description: canonicalPacket.taskDetails.description,
           priority: canonicalPacket.taskDetails.priority,
           status: taskStatus === "Pending Approval" ? "Pending" : taskStatus,
-          department: resolution.department ? new (require("mongoose").Types.ObjectId)(resolution.department) : null,
-          assignee: resolution.assignee ? new (require("mongoose").Types.ObjectId)(resolution.assignee) : null,
+          department: resolution.department ? (resolution.department._id || resolution.department) : null,
+          assignee: resolution.assignee ? (resolution.assignee._id || resolution.assignee) : null,
           dueDate: canonicalPacket.taskDetails.dueDate,
           dependencies,
           branch: metadata.branch || "blackhole_mumbai",
@@ -506,8 +509,8 @@ async function processTaskIngestion(fileBuffer, metadata = {}) {
     description: canonicalPacket.taskDetails.description,
     priority: canonicalPacket.taskDetails.priority,
     status: taskStatus === "Pending Approval" ? "Pending" : taskStatus,
-    department: resolution.department ? new (require("mongoose").Types.ObjectId)(resolution.department) : null,
-    assignee: resolution.assignee ? new (require("mongoose").Types.ObjectId)(resolution.assignee) : null,
+    department: resolution.department ? (resolution.department._id || resolution.department) : null,
+    assignee: resolution.assignee ? (resolution.assignee._id || resolution.assignee) : null,
     dueDate: canonicalPacket.taskDetails.dueDate,
     dependencies,
     branch: metadata.branch || "blackhole_mumbai",
