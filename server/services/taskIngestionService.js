@@ -18,7 +18,7 @@ const crypto = require("crypto");
 const zlib = require("zlib");
 
 /**
- * Helper to detect PDF binary gibberish noise
+ * Helper to detect PDF binary gibberish noise and content stream operators
  */
 function isGibberish(str) {
   if (!str || str.length < 3) return true;
@@ -27,10 +27,43 @@ function isGibberish(str) {
   if (/^\(?D:\d+/i.test(str)) return true;
   if (/^(xref|trailer|startxref|%%EOF|EOF)$/i.test(str) || /^\s*%/.test(str)) return true;
   if (/^\d{10}\s+\d{5}\s+[fn]/i.test(str)) return true;
-  if (/^\d+\s+\d+\s+(?:obj|\(|<)/i.test(str)) return true; // e.g. "3 0 (>É%..." or "3 0 obj"
-  if (/[^\x20-\x7E\s]/.test(str) && (str.match(/[^\x20-\x7E\s]/g) || []).length > 2) return true; // high non-ASCII count
+  if (/^\d+\s+\d+\s+(?:obj|\(|<)/i.test(str)) return true;
+  if (/[^\x20-\x7E\s]/.test(str) && (str.match(/[^\x20-\x7E\s]/g) || []).length > 2) return true;
   if ((str.match(/[0-9a-fA-F]{8,}/g) || []).length > 2) return true;
+  // Detect PDF content stream operators used for positioning (Tm, TJ, cm, BT, ET, Tf, Td, TD, Tj, Do, gs, cs, CS, SCN, scn, q, Q, re, W, n, S, s, f, F, B, b)
+  if (/^[\d\s.\-]+(Tm|TJ|cm|BT|ET|Tf|Td|TD|Tj|Do|gs|cs|CS|SCN|scn|RG|rg|K|k|re|Tw|Tc|TL|Ts|Tr|T\*)(\s|$)/.test(str)) return true;
+  if (/^\[[\d\s.\-]+\]\s*(TJ|Tj)$/.test(str.trim())) return true; // arrays of only numbers before TJ
   return false;
+}
+
+/**
+ * Checks if a string looks like real prose text (not PDF operators or gibberish).
+ * Returns true if the text is plausibly human-readable content.
+ */
+function isReadableProse(text) {
+  if (!text || text.trim().length < 10) return false;
+  const lines = text.split(/\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+  if (lines.length === 0) return false;
+
+  // Count lines that look like PDF content stream operators
+  const pdfOpPattern = /^([\d.\s\-]+)?(Tm|TJ|cm|BT|ET|Tf|Td|TD|Tj|Do|gs|q|Q|re|Tw|Tc|TL|Ts|T\*|RG|rg|K|k|SCN|scn)(\s|$)/i;
+  const numericHeavy = /^[\[\]\d\s.\-]+$/;
+  let opLineCount = 0;
+  let proseLineCount = 0;
+
+  for (const line of lines) {
+    if (pdfOpPattern.test(line) || numericHeavy.test(line)) {
+      opLineCount++;
+    } else if (/[a-zA-Z]{3,}/.test(line) && !/^[\d\s.\-]+$/.test(line)) {
+      proseLineCount++;
+    }
+  }
+
+  // If more than 40% of lines are PDF operators, reject as non-prose
+  if (lines.length > 3 && opLineCount / lines.length > 0.4) return false;
+  // Must have at least some prose lines
+  if (proseLineCount === 0 && lines.length > 2) return false;
+  return true;
 }
 
 /**
@@ -90,19 +123,13 @@ function extractPdfStreamText(fileBuffer) {
             .replace(/\\r/g, "\r")
             .replace(/\\t/g, "\t");
 
-          if (str.length > 1 && /[a-zA-Z0-9]/.test(str) && !isGibberish(str)) {
+          // Only accept strings that are real words (>=3 letters), not just PDF operator shortcodes
+          if (str.length > 1 && /[a-zA-Z]{3,}/.test(str) && !isGibberish(str)) {
             extractedStrings.push(str.trim());
           }
         }
-
-        if (extractedStrings.length === 0) {
-          const rawTokens = decompressed
-            .replace(/<[^>]+>/g, " ")
-            .split(/[\r\n\t]+/)
-            .map((s) => s.trim())
-            .filter((s) => s.length > 2 && /[a-zA-Z0-9]/.test(s) && !isGibberish(s));
-          extractedStrings.push(...rawTokens);
-        }
+        // NOTE: rawTokens fallback removed — it picked up PDF content-stream operator lines
+        // (e.g. "Tm", "TJ", "cm") which are not human-readable text.
       }
 
       searchPos = endIdx + streamEndMarker.length;
@@ -179,7 +206,7 @@ async function extractTextFromDocument(fileBuffer, mimeType = "", filename = "",
 
         // Native zlib stream decompression fallback for compressed FlateDecode PDF streams
         const zlibExtracted = extractPdfStreamText(fileBuffer);
-        if (zlibExtracted && zlibExtracted.trim().length > 0 && /[a-zA-Z0-9]/.test(zlibExtracted)) {
+        if (zlibExtracted && zlibExtracted.trim().length > 0 && isReadableProse(zlibExtracted)) {
           return zlibExtracted;
         }
 
@@ -201,20 +228,28 @@ async function extractTextFromDocument(fileBuffer, mimeType = "", filename = "",
         }
       }
 
-      // Fallback cleaning for raw text streams
+      // Fallback cleaning for raw text streams (non-PDF or last resort)
       let rawContent = fileBuffer.toString("utf-8");
       let textContent = rawContent
         .replace(/%PDF-[0-9\.]+/g, " ")
         .replace(/obj[\s\S]*?endobj/g, " ")
         .replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, " ");
       
+      const pdfOpLinePattern = /^([\d.\s\-]+)?(Tm|TJ|cm|BT|ET|Tf|Td|TD|Tj|Do|gs|q|Q|re|Tw|Tc|TL|Ts|T\*|RG|rg|K|k|w|J|j|M|d|ri)(\s|$)/i;
       const cleanLines = textContent
         .split("\n")
         .map((line) => line.trim())
-        .filter((line) => line.length > 0 && /[a-zA-Z0-9]/.test(line) && !/^\d+\s+\d+\s+(?:obj|\(|<)/i.test(line) && !/^[0-9a-fA-F<>\s\\%\/]+$/.test(line));
+        .filter((line) =>
+          line.length > 0 &&
+          /[a-zA-Z]{3,}/.test(line) &&
+          !/^\d+\s+\d+\s+(?:obj|\(|<)/i.test(line) &&
+          !/^[0-9a-fA-F<>\s\\%\/]+$/.test(line) &&
+          !pdfOpLinePattern.test(line) &&
+          !/^\[([\d\s.\-]+)\]\s*(TJ|Tj)$/.test(line.trim())
+        );
 
       const cleanBufferText = cleanLines.join("\n");
-      if (cleanBufferText && cleanBufferText.trim().length > 0 && /[a-zA-Z0-9]/.test(cleanBufferText)) {
+      if (cleanBufferText && cleanBufferText.trim().length > 0 && isReadableProse(cleanBufferText)) {
         return cleanBufferText;
       }
     }
@@ -252,20 +287,6 @@ function cleanAndFormatTaskText(rawText) {
     // Multiple spaces to single space
     .replace(/ {2,}/g, " ")
     .trim();
-
-  // Helper to detect PDF binary gibberish noise
-  const isGibberish = (str) => {
-    if (!str || str.length < 3) return true;
-    if (/(Skia\/PDF|Google Docs Renderer|PDFKit|CreationDate|ModDate|Producer|obj|endobj|%PDF|Catalog|Pages|stream|endstream|\/Type|\/Page|\/Font|\/Encoding|\/MediaBox|\/Resources|\/Parent|\/Contents|\/ProcSet|\/Filter|xref|trailer|startxref|%%EOF)/i.test(str)) return true;
-    if (/^\/[A-Z][a-zA-Z0-9]+/i.test(str)) return true;
-    if (/^\(?D:\d+/i.test(str)) return true;
-    if (/^(xref|trailer|startxref|%%EOF|EOF)$/i.test(str) || /^\s*%/.test(str)) return true;
-    if (/^\d{10}\s+\d{5}\s+[fn]/i.test(str)) return true;
-    if (/^\d+\s+\d+\s+(?:obj|\(|<)/i.test(str)) return true; // e.g. "3 0 (>É%..." or "3 0 obj"
-    if (/[^\x20-\x7E\s]/.test(str) && (str.match(/[^\x20-\x7E\s]/g) || []).length > 2) return true; // high non-ASCII count
-    if ((str.match(/[0-9a-fA-F]{8,}/g) || []).length > 2) return true;
-    return false;
-  };
 
   // Explicit title pattern detection (Task Title: ..., Task: ..., Title: ...)
   let title = null;
