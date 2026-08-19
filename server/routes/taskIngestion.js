@@ -44,16 +44,20 @@ router.get("/supported-formats", (req, res) => {
 // POST /api/tasks/ingest
 // File upload document ingestion endpoint (PDF, DOCX, MD, TXT)
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/", upload.single("taskFile"), async (req, res) => {
+router.post("/", upload.any(), async (req, res) => {
   try {
     let fileBuffer;
     let filename = "task_packet.txt";
     let mimeType = "text/plain";
 
-    if (req.file) {
-      fileBuffer = req.file.buffer;
-      filename = req.file.originalname;
-      mimeType = req.file.mimetype;
+    const uploadedFile = (req.files && req.files.length > 0) 
+      ? (req.files.find((f) => f.fieldname === "taskFile" || f.fieldname === "document" || f.fieldname === "file") || req.files[0])
+      : req.file;
+
+    if (uploadedFile) {
+      fileBuffer = uploadedFile.buffer;
+      filename = uploadedFile.originalname;
+      mimeType = uploadedFile.mimetype;
     } else if (req.body.taskText || req.body.content) {
       fileBuffer = Buffer.from(req.body.taskText || req.body.content, "utf-8");
       filename = req.body.filename || "pasted_task_packet.md";
