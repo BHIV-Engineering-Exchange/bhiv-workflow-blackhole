@@ -19,9 +19,9 @@ async function runPhase2Validation() {
 
   const testResults = [];
 
-  const runTestCase = (testName, fn) => {
+  const runTestCase = async (testName, fn) => {
     try {
-      const res = fn();
+      const res = await fn();
       testResults.push({ name: testName, status: "PASSED", details: res });
       console.log(`✅ [PASS] ${testName}`);
     } catch (err) {
@@ -31,7 +31,7 @@ async function runPhase2Validation() {
   };
 
   // Test 1: Plain Text Ingestion
-  runTestCase("1. Plain Text Ingestion & Noise Removal", () => {
+  await runTestCase("1. Plain Text Ingestion & Noise Removal", async () => {
     const rawTxt = `
       INTERNAL USE ONLY - DRAFT TASK PACKET
       Task Title: Fix Biometric Attendance Sync Bug
@@ -42,7 +42,7 @@ async function runPhase2Validation() {
       Description:
       Ensure biometric attendance logs sync seamlessly with salary calculations.
     `;
-    const extracted = extractTextFromDocument(rawTxt, "text/plain", "task.txt");
+    const extracted = await extractTextFromDocument(rawTxt, "text/plain", "task.txt");
     const cleaned = cleanAndFormatTaskText(extracted);
     const canonical = generateCanonicalTaskPacket(cleaned, "task.txt", "text/plain");
 
@@ -53,7 +53,7 @@ async function runPhase2Validation() {
   });
 
   // Test 2: Markdown File Ingestion
-  runTestCase("2. Markdown File Ingestion & Structural Preservation", () => {
+  await runTestCase("2. Markdown File Ingestion & Structural Preservation", async () => {
     const rawMd = `
     # TASK: Optimize Database Query Performance
     Project: MasterDB Analytics
@@ -65,7 +65,7 @@ async function runPhase2Validation() {
     - Reduce dashboard query latency under 100ms.
     `;
 
-    const extracted = extractTextFromDocument(rawMd, "text/markdown", "performance.md");
+    const extracted = await extractTextFromDocument(rawMd, "text/markdown", "performance.md");
     const cleaned = cleanAndFormatTaskText(extracted);
     const canonical = generateCanonicalTaskPacket(cleaned, "performance.md", "text/markdown");
 
@@ -75,7 +75,7 @@ async function runPhase2Validation() {
   });
 
   // Test 3: PDF Document Structure Parsing
-  runTestCase("3. PDF Document Structure Ingestion", () => {
+  await runTestCase("3. PDF Document Structure Ingestion", async () => {
     const pdfSimulatedBuffer = Buffer.from(
       `%PDF-1.4
       Task: Implement Bright Connection Sovereign Gateway
@@ -87,7 +87,7 @@ async function runPhase2Validation() {
       EOF`
     );
 
-    const extracted = extractTextFromDocument(pdfSimulatedBuffer, "application/pdf", "architectural_spec.pdf");
+    const extracted = await extractTextFromDocument(pdfSimulatedBuffer, "application/pdf", "architectural_spec.pdf");
     const cleaned = cleanAndFormatTaskText(extracted);
 
     if (!cleaned.title.includes("Implement Bright Connection Sovereign Gateway")) {
@@ -97,7 +97,7 @@ async function runPhase2Validation() {
   });
 
   // Test 4: DOCX Document Structure Parsing
-  runTestCase("4. DOCX Document Structure Ingestion", () => {
+  await runTestCase("4. DOCX Document Structure Ingestion", async () => {
     const docxSimulatedBuffer = Buffer.from(
       `PK\x03\x04
       Task Title: Setup Continuous Delivery Pipeline for Parikshak
@@ -109,7 +109,7 @@ async function runPhase2Validation() {
       `
     );
 
-    const extracted = extractTextFromDocument(docxSimulatedBuffer, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "pipeline.docx");
+    const extracted = await extractTextFromDocument(docxSimulatedBuffer, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "pipeline.docx");
     const cleaned = cleanAndFormatTaskText(extracted);
 
     if (!cleaned.title.includes("Setup Continuous Delivery Pipeline for Parikshak")) {
@@ -119,7 +119,7 @@ async function runPhase2Validation() {
   });
 
   // Test 5: End-to-End Ingestion Pipeline Mock (Without DB dependency)
-  runTestCase("5. End-to-End Pipeline & Provenance Verification", () => {
+  await runTestCase("5. End-to-End Pipeline & Provenance Verification", async () => {
     const rawContent = "Task: Build Replay Telemetry Adapter\nAssignee: telemetry_usr\nProject: EOS Telemetry";
     const cleaned = cleanAndFormatTaskText(rawContent);
     const packet = generateCanonicalTaskPacket(cleaned, "telemetry.txt", "text/plain");

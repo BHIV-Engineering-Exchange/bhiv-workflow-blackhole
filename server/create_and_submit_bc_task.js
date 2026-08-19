@@ -41,9 +41,10 @@ async function runLiveBrightConnectionFlow() {
   console.log("📍 STEP 1: Creating Bright Connection Field Visit Task Document...");
   const rawDocumentText = `
     Task Title: Bright Connection Dealer Visit & Stock Audit - Shree Ganesh Electricals
+    Department: Field Sales
     Tenant ID: tenant_bright_connection
     Priority: High
-    Assignee: Rahul Agent
+    Assignee: Rudra Parmeshwar
     Route: Beat Route Goregaon West #03
     
     ## Field Objective
@@ -73,7 +74,7 @@ async function runLiveBrightConnectionFlow() {
     visitId: `VIS-${Date.now()}`,
     routeId: "beat_route_goregaon_west_03",
     dealerId: "dealer_mumbai_77",
-    agentId: "agent_rahul_01",
+    agentId: "rudra_parmeshwar",
     lat: 19.160122,
     lng: 72.839720,
     displayPhotoUrl: "https://res.cloudinary.com/dfqrz8kcp/image/upload/v1/shelf_display_01.jpg",
@@ -110,7 +111,7 @@ async function runLiveBrightConnectionFlow() {
       domain: "workflow",
       targetCapability: "PARIKSHAK",
       tenantId,
-      actor: { userId: "field_agent_rahul", role: "field_agent" },
+      actor: { userId: "rudra_parmeshwar", role: "field_agent" },
       parameters: {
         taskId: ingestionResult.taskId,
         mduEvidence,

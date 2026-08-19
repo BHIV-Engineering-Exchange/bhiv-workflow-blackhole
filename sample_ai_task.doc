@@ -1,0 +1,19 @@
+================================================================================
+ENGINEERING TASK SPECIFICATION PACKET (.DOC FORMAT)
+================================================================================
+
+Task Title: Web Development Real-time Event Dispatcher & AI Workflow Engine
+Department: Web Development
+Assignee Candidate: Rudra Parmeshwar
+Priority: High
+Target Date: 2026-08-30
+
+OVERVIEW & OBJECTIVES:
+Implement real-time notification dispatching and event listener hooks for Web Development AI task ingestions.
+Assigned to lead developer Rudra Parmeshwar in Web Development department.
+
+KEY DELIVERABLES:
+1. Real-time WebSocket event emission upon SETU EOS AI task ingestion completion.
+2. Candidate assignment for Rudra Parmeshwar with Web Development department routing.
+3. End-to-end task status updates in task dashboard.
+================================================================================

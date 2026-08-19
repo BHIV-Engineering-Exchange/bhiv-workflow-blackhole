@@ -50,7 +50,11 @@ const invokeParikshak = async (submissionId, traceId, io) => {
                 }
                 
                 const startTime = Date.now();
-                const res = await axios.post(PARIKSHAK_URL, payload, config);
+                const targetUrl = PARIKSHAK_URL.endsWith("/parikshak/review")
+                    ? PARIKSHAK_URL
+                    : `${PARIKSHAK_URL.replace(/\/$/, "")}/parikshak/review`;
+
+                const res = await axios.post(targetUrl, payload, config);
                 const runtimeMs = Date.now() - startTime;
                 console.log(`[PARIKSHAK] API Call succeeded in ${runtimeMs}ms on attempt ${attempt === 0 ? 1 : attempt}`);
                 

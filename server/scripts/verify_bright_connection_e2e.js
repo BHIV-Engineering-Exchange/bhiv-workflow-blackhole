@@ -105,7 +105,7 @@ async function runBrightConnectionCertification() {
   3. Ensure deterministic single execution path with zero bypasses.
   `;
 
-  const extractedText = extractTextFromDocument(sampleTaskMarkdown, "text/markdown", "bright_connection_task.md");
+  const extractedText = await extractTextFromDocument(sampleTaskMarkdown, "text/markdown", "bright_connection_task.md");
   const cleanedResult = cleanAndFormatTaskText(extractedText);
   const canonicalPacket = generateCanonicalTaskPacket(cleanedResult, "bright_connection_task.md", "text/markdown");
 

@@ -139,7 +139,7 @@ async function executePhase5CertificationDemo() {
   - Configure TLS/SSL termination rules.
   - Setup zero-downtime health probes.
   `;
-  const cleaned = cleanAndFormatTaskText(extractTextFromDocument(sampleDoc, "text/markdown", "prod_hardening.md"));
+  const cleaned = cleanAndFormatTaskText(await extractTextFromDocument(sampleDoc, "text/markdown", "prod_hardening.md"));
   const canonicalPacket = generateCanonicalTaskPacket(cleaned, "prod_hardening.md", "text/markdown");
 
   recordStageEvidence(8, "Automated Engineering Task Document Ingestion", {

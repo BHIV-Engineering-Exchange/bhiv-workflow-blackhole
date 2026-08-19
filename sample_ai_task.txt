@@ -1,0 +1,19 @@
+================================================================================
+ENGINEERING TASK SPECIFICATION PACKET (.TXT FORMAT)
+================================================================================
+
+Task Title: Web Development Frontend Optimization & AI Task Workflow Engine
+Department: Web Development
+Assignee Candidate: Rudra Parmeshwar
+Priority: High
+Target Date: 2026-08-30
+
+OVERVIEW & OBJECTIVES:
+Develop and optimize the frontend AI task ingestion module within the Web Development department. 
+The task engine must process user uploads (PDF, DOCX, TXT, MD) and route them to candidate Rudra Parmeshwar for candidate validation and execution.
+
+KEY DELIVERABLES:
+1. Build smooth drag-and-drop document upload interface.
+2. Ensure automated metadata extraction for candidate Rudra Parmeshwar under Web Development.
+3. Validate SETU EOS AI pipeline response and notifications.
+================================================================================

@@ -106,7 +106,7 @@ async function extractTextFromDocument(fileBuffer, mimeType = "", filename = "")
         .map((line) => line.trim())
         .filter((line) => line.length > 0 && /[a-zA-Z0-9]/.test(line) && !/^\d+\s+\d+\s+(?:obj|\(|<)/i.test(line) && !/^[0-9a-fA-F<>\s\\%\/]+$/.test(line));
 
-      return cleanLines.join("\n") || "Ingested Task Document Content";
+      return cleanLines.join("\n");
     }
 
     if (typeof fileBuffer === "string") {
@@ -331,8 +331,16 @@ async function resolveTaskAssigneeAndDepartment(candidateHint, departmentHint, m
 
     if (!department && departmentHint) {
       department = await Department.findOne({
-        name: new RegExp(departmentHint, "i"),
+        name: new RegExp(`^${departmentHint.trim()}$`, "i"),
       }).exec();
+
+      if (!department) {
+        try {
+          department = await Department.create({ name: departmentHint.trim(), description: `${departmentHint.trim()} Department` });
+        } catch (cErr) {
+          department = await Department.findOne({ name: new RegExp(departmentHint.trim(), "i") }).exec();
+        }
+      }
     }
 
     if (!department) {
@@ -343,8 +351,12 @@ async function resolveTaskAssigneeAndDepartment(candidateHint, departmentHint, m
   }
 
   // Pure in-memory fallback for department if DB lookup returned null
-  if (!department) {
-    department = new (require("mongoose").Types.ObjectId)();
+  if (!department || typeof department.name === "undefined") {
+    const deptId = require("mongoose").Types.ObjectId.isValid(department) ? department : new (require("mongoose").Types.ObjectId)();
+    department = {
+      _id: deptId,
+      name: departmentHint || "Field Sales",
+    };
   }
 
   // Pure in-memory fallback for candidate hint if DB lookup returned null
