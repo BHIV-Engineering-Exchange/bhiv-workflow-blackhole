@@ -45,21 +45,21 @@ function isReadableProse(text) {
   const lines = text.split(/\n/).map((l) => l.trim()).filter((l) => l.length > 0);
   if (lines.length === 0) return false;
 
-  // Count lines that look like PDF content stream operators
+  // Count lines that look like PDF content stream operators or known gibberish
   const pdfOpPattern = /^([\d.\s\-]+)?(Tm|TJ|cm|BT|ET|Tf|Td|TD|Tj|Do|gs|q|Q|re|Tw|Tc|TL|Ts|T\*|RG|rg|K|k|SCN|scn)(\s|$)/i;
   const numericHeavy = /^[\[\]\d\s.\-]+$/;
   let opLineCount = 0;
   let proseLineCount = 0;
 
   for (const line of lines) {
-    if (pdfOpPattern.test(line) || numericHeavy.test(line)) {
+    if (isGibberish(line) || pdfOpPattern.test(line) || numericHeavy.test(line)) {
       opLineCount++;
     } else if (/[a-zA-Z]{3,}/.test(line) && !/^[\d\s.\-]+$/.test(line)) {
       proseLineCount++;
     }
   }
 
-  // If more than 40% of lines are PDF operators, reject as non-prose
+  // If more than 40% of lines are PDF operators or known gibberish, reject
   if (lines.length > 3 && opLineCount / lines.length > 0.4) return false;
   // Must have at least some prose lines
   if (proseLineCount === 0 && lines.length > 2) return false;
@@ -242,6 +242,7 @@ async function extractTextFromDocument(fileBuffer, mimeType = "", filename = "",
         .filter((line) =>
           line.length > 0 &&
           /[a-zA-Z]{3,}/.test(line) &&
+          !isGibberish(line) &&
           !/^\d+\s+\d+\s+(?:obj|\(|<)/i.test(line) &&
           !/^[0-9a-fA-F<>\s\\%\/]+$/.test(line) &&
           !pdfOpLinePattern.test(line) &&
@@ -359,9 +360,16 @@ function cleanAndFormatTaskText(rawText) {
     }
   }
 
+  // Build a clean description — strip out any gibberish or PDF operator lines that slipped through
+  const pdfOpLinePatternDesc = /^([\d.\s\-]+)?(Tm|TJ|cm|BT|ET|Tf|Td|TD|Tj|Do|gs|q|Q|re|Tw|Tc|TL|Ts|T\*|RG|rg|K|k|w|J|j|M|d|ri)(\s|$)/i;
+  const descriptionLines = cleaned
+    .split("\n")
+    .filter((l) => l.trim().length > 0 && !isGibberish(l.trim()) && !pdfOpLinePatternDesc.test(l.trim()));
+  const description = descriptionLines.length > 0 ? descriptionLines.join("\n").trim() : "No description provided.";
+
   return {
     title,
-    description: cleaned,
+    description,
     priority,
     assigneeHint,
     projectHint,
