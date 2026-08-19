@@ -137,7 +137,7 @@ function cleanAndFormatTaskText(rawText) {
   // Helper to detect PDF binary gibberish noise
   const isGibberish = (str) => {
     if (!str || str.length < 3) return true;
-    if (/(Skia\/PDF|Google Docs Renderer|obj|endobj|%PDF|Catalog|Pages|stream|endstream)/i.test(str)) return true;
+    if (/(Skia\/PDF|Google Docs Renderer|PDFKit|CreationDate|ModDate|Producer|obj|endobj|%PDF|Catalog|Pages|stream|endstream)/i.test(str)) return true;
     if (/^\d+\s+\d+\s+(?:obj|\(|<)/i.test(str)) return true; // e.g. "3 0 (>É%..." or "3 0 obj"
     if (/[^\x20-\x7E\s]/.test(str) && (str.match(/[^\x20-\x7E\s]/g) || []).length > 2) return true; // high non-ASCII count
     if ((str.match(/[0-9a-fA-F]{8,}/g) || []).length > 2) return true;
