@@ -179,34 +179,34 @@ router.get('/employees/:id/activity', async (req, res) => {
       const start = new Date(date);
       const end = new Date(date);
       end.setDate(end.getDate() + 1);
-
+      
       activities = await EmployeeActivity.find({
         employee: employeeId,
         timestamp: { $gte: start, $lt: end }
       })
-        .sort({ timestamp: -1 })
-        .limit(parseInt(limit))
-        .populate('employee', 'name email');
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit))
+      .populate('employee', 'name email');
     } else if (startDate && endDate) {
       // Get activities for date range
       activities = await activityTracker.getActivityLogs(
-        employeeId,
-        startDate,
-        endDate,
+        employeeId, 
+        startDate, 
+        endDate, 
         parseInt(limit)
       );
     } else {
       // Get recent activities (last 24 hours)
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
-
+      
       activities = await EmployeeActivity.find({
         employee: employeeId,
         timestamp: { $gte: yesterday }
       })
-        .sort({ timestamp: -1 })
-        .limit(parseInt(limit))
-        .populate('employee', 'name email');
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit))
+      .populate('employee', 'name email');
     }
 
     // Get real-time status
@@ -266,10 +266,10 @@ router.get('/employees/:id/screenshots', async (req, res) => {
         },
         ...violationFilter
       })
-        .sort({ timestamp: -1 })
-        .limit(parseInt(limit))
-        .populate('employee', 'name email')
-        .select('-metadata.encryption_key');
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit))
+      .populate('employee', 'name email')
+      .select('-metadata.encryption_key');
     } else if (startDate && endDate) {
       screenshots = await ScreenCapture.find({
         employee: employeeId,
@@ -279,10 +279,10 @@ router.get('/employees/:id/screenshots', async (req, res) => {
         },
         ...violationFilter
       })
-        .sort({ timestamp: -1 })
-        .limit(parseInt(limit))
-        .populate('employee', 'name email')
-        .select('-metadata.encryption_key');
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit))
+      .populate('employee', 'name email')
+      .select('-metadata.encryption_key');
     } else {
       // Get recent violation screenshots only (last 7 days)
       const lastWeek = new Date();
@@ -293,9 +293,9 @@ router.get('/employees/:id/screenshots', async (req, res) => {
         timestamp: { $gte: lastWeek },
         ...violationFilter
       })
-        .sort({ timestamp: -1 })
-        .limit(parseInt(limit))
-        .populate('employee', 'name email');
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit))
+      .populate('employee', 'name email');
     }
 
     console.log(`📸 API RESPONSE: Returning ${screenshots?.length || 0} violation screenshots for employee ${employeeId}`);
@@ -604,12 +604,12 @@ router.get('/reports/:employeeId', async (req, res) => {
 
     // Get activity summary
     const activitySummary = await activityTracker.getActivitySummary(employeeId, startDate, endDate);
-
+    
     // Get daily metrics
     const dailyMetrics = [];
     const start = new Date(startDate);
     const end = new Date(endDate);
-
+    
     for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
       const dateStr = date.toISOString().split('T')[0];
       const metrics = await activityTracker.calculateDailyMetrics(employeeId, dateStr);
@@ -621,10 +621,10 @@ router.get('/reports/:employeeId', async (req, res) => {
 
     // Get alert statistics
     const alertStats = await MonitoringAlert.getAlertStats(employeeId, startDate, endDate);
-
+    
     // Get screenshot summary
     const screenshots = await ScreenCapture.getCapturesByDateRange(employeeId, startDate, endDate);
-
+    
     res.json({
       employeeId,
       reportPeriod: { startDate, endDate },
@@ -653,7 +653,7 @@ router.get('/status/:employeeId', async (req, res) => {
 
     const activityStatus = activityTracker.getActivityStatus(employeeId);
     const websiteStatus = websiteMonitor.getMonitoringStatus(employeeId);
-
+    
     res.json({
       employeeId,
       timestamp: new Date(),
@@ -1156,7 +1156,7 @@ router.post('/work-session/end', async (req, res) => {
   try {
     const { employeeId } = req.body;
     console.log(`🚀 WORK SESSION END REQUEST - Employee ID: ${employeeId}`);
-
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -1173,7 +1173,7 @@ router.post('/work-session/end', async (req, res) => {
     });
 
     if (!session) {
-      return res.status(400).json({
+      return res.status(400).json({ 
         success: false,
         error: 'No active work session found',
         code: 'SESSION_NOT_FOUND'
@@ -1181,7 +1181,7 @@ router.post('/work-session/end', async (req, res) => {
     }
 
     if (session.status === 'completed') {
-      return res.status(400).json({
+      return res.status(400).json({ 
         success: false,
         error: 'Work session already completed',
         code: 'SESSION_ALREADY_ENDED'
@@ -1191,11 +1191,11 @@ router.post('/work-session/end', async (req, res) => {
     // =====================================
     // MANDATORY VALIDATIONS BEFORE END SESSION
     // =====================================
-
+    
     // 1. Check for daily progress completion
     const Progress = require('../models/Progress');
     console.log(`🔍 Searching for progress - User: ${employeeId}, Date range: ${today.toISOString()} to ${tomorrow.toISOString()}`);
-
+    
     const todayProgress = await Progress.findOne({
       user: employeeId,
       date: {
@@ -1203,7 +1203,7 @@ router.post('/work-session/end', async (req, res) => {
         $lt: tomorrow
       }
     });
-
+    
     console.log(`📊 Progress found:`, todayProgress ? {
       id: todayProgress._id,
       user: todayProgress.user,
@@ -1212,7 +1212,7 @@ router.post('/work-session/end', async (req, res) => {
       achievements: todayProgress.achievements ? `"${todayProgress.achievements.substring(0, 50)}..."` : 'null',
       blockers: todayProgress.blockers ? `"${todayProgress.blockers.substring(0, 50)}..."` : 'null'
     } : 'NO PROGRESS FOUND');
-
+    
     // Check if progress exists (lenient validation)
     const hasProgressContent = todayProgress && (
       (todayProgress.notes && todayProgress.notes.trim() !== '') ||
@@ -1221,7 +1221,7 @@ router.post('/work-session/end', async (req, res) => {
       (todayProgress.tasksCompleted && todayProgress.tasksCompleted.length > 0) ||
       todayProgress.percentageCompleted !== undefined
     );
-
+    
     console.log(`📝 Progress validation result:`, {
       hasProgress: !!todayProgress,
       hasNotes: !!(todayProgress?.notes && todayProgress.notes.trim() !== ''),
@@ -1229,13 +1229,13 @@ router.post('/work-session/end', async (req, res) => {
       hasBlockers: !!(todayProgress?.blockers && todayProgress.blockers.trim() !== ''),
       hasProgressContent
     });
-
+    
     // RELAXED VALIDATION: Only warn, don't block
     if (!hasProgressContent) {
       console.log(`⚠️ User ${employeeId} is ending session without detailed progress - allowing anyway`);
       // Don't block - just log the warning
     }
-
+    
     console.log(`✅ Progress validation passed for work session end - Employee: ${employeeId}, Progress content found: ${hasProgressContent}`);
 
     // =====================================
@@ -1245,10 +1245,10 @@ router.post('/work-session/end', async (req, res) => {
     session.status = 'completed';
     session.endTime = new Date();
     await session.save();
-
+    
     console.log(`🏁 Work session ended for employee ${employeeId}`);
 
-    res.json({
+    res.json({ 
       success: true,
       message: 'Work session ended successfully! Progress validation passed.',
       data: {
@@ -1268,11 +1268,11 @@ router.post('/work-session/end', async (req, res) => {
       stack: error.stack,
       employeeId: req.body?.employeeId
     });
-    res.status(500).json({
+    res.status(500).json({ 
       success: false,
       error: 'Failed to end work session',
       details: error.message,
-      code: 'EXTERNAL_SYSTEM_ERROR'
+      code: 'SERVER_ERROR'
     });
   }
 });

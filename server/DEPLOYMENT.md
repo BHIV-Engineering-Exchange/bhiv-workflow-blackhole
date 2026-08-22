@@ -51,7 +51,7 @@ ACTIVITY_FLUSH_INTERVAL=30000      # Save to database every 30 seconds
 
 # Caching and Rate Limiting
 BROWSER_CACHE_TIMEOUT=2000         # Cache results for 2 seconds
-BROWSER_RATE_LIMITED=1000           # Minimum 1 second between checks
+BROWSER_RATE_LIMIT=1000           # Minimum 1 second between checks
 
 # Feature Toggles
 BROWSER_MONITORING_ENABLED=true    # Enable/disable browser monitoring
