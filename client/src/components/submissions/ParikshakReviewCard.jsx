@@ -1,75 +1,150 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Badge } from "../ui/badge";
-import { ThumbsUp, AlertTriangle, Lightbulb, Rocket, CheckCircle } from "lucide-react";
+import { ThumbsUp, AlertTriangle, Lightbulb, Rocket, CheckCircle, Code, ChevronDown, ChevronUp } from "lucide-react";
 import { formatDateTime } from "@/lib/dateFormat";
 
 const ParikshakReviewCard = ({ submission }) => {
+  const [showDebug, setShowDebug] = useState(false);
   const details = submission?.aiReviewDetails;
-  
-  if (!details || (!details.doneWell && !details.score)) return null;
+
+  useEffect(() => {
+    if (submission && details) {
+      console.groupCollapsed(`🔍 [PARIKSHAK FRONTEND DEBUG] Submission ID: ${submission._id}`);
+      console.log("Submission Status:", submission.status);
+      console.log("AI Review Result:", details.result || "N/A");
+      console.log("AI Score:", details.score !== undefined && details.score !== null ? `${details.score}/100` : "N/A");
+      console.log("GitHub Repository:", submission.githubLink || "None");
+      console.log("Done Well:", details.doneWell);
+      console.log("Missing Work:", details.missingWork);
+      console.log("Recommendations:", details.recommendations);
+      console.log("Production Readiness:", details.readiness);
+      console.log("Full Submission Data:", submission);
+      console.groupEnd();
+    }
+  }, [submission, details]);
+
+  if (!details || (!details.doneWell && details.score === undefined && !details.result)) return null;
+
+  const resultColor = 
+    details.result === 'PASS' 
+      ? 'bg-emerald-500/15 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800' 
+      : details.result === 'PARTIAL' 
+      ? 'bg-amber-500/15 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800' 
+      : 'bg-rose-500/15 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800';
 
   return (
-    <div className="mt-4 border border-indigo-500/20 rounded-lg overflow-hidden bg-gradient-to-br from-indigo-50/50 to-purple-50/50 dark:from-indigo-950/20 dark:to-purple-950/20 shadow-sm transition-all hover:shadow-md">
-      <div className="bg-indigo-500/10 px-4 py-3 border-b border-indigo-500/20 flex justify-between items-center flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <div className="bg-indigo-500 rounded-md p-1.5 flex items-center justify-center shadow-sm">
-            <Rocket className="h-4 w-4 text-white" />
+    <div className="mt-3 rounded-xl border border-indigo-200/80 dark:border-indigo-900/50 bg-gradient-to-b from-indigo-50/70 to-slate-50/70 dark:from-indigo-950/30 dark:to-slate-900/40 shadow-sm overflow-hidden transition-all">
+      {/* Header */}
+      <div className="bg-indigo-600/10 dark:bg-indigo-500/15 px-3 py-2 border-b border-indigo-200/60 dark:border-indigo-900/40 flex items-center justify-between flex-wrap gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className="bg-indigo-600 rounded-md p-1 flex items-center justify-center flex-shrink-0">
+            <Rocket className="h-3 w-3 text-white" />
           </div>
-          <h3 className="font-semibold text-indigo-900 dark:text-indigo-200">AI Automated Review</h3>
+          <span className="font-bold text-xs text-indigo-950 dark:text-indigo-200 truncate">
+            AI Review
+          </span>
           {details.result && (
-            <Badge className={`${
-              details.result === 'PASS' ? 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/50 dark:text-green-300' :
-              details.result === 'PARTIAL' ? 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/50 dark:text-amber-300' :
-              'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/50 dark:text-red-300'
-            }`}>
+            <Badge variant="outline" className={`text-[10px] font-bold px-1.5 py-0 rounded ${resultColor}`}>
               {details.result}
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200 shadow-sm dark:bg-indigo-900/50 dark:text-indigo-300 dark:border-indigo-800">
-            Score: {details.score || 0}/100
-          </Badge>
-          <span className="text-xs font-medium text-muted-foreground">{formatDateTime(submission.updatedAt)}</span>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {details.score !== undefined && details.score !== null && (
+            <Badge className="bg-indigo-600 text-white dark:bg-indigo-500 text-[11px] font-bold px-2 py-0.5 border-0">
+              Score: {details.score}/100
+            </Badge>
+          )}
+          {submission?.updatedAt && (
+            <span className="text-[10px] text-muted-foreground font-medium">
+              {formatDateTime(submission.updatedAt)}
+            </span>
+          )}
+          <button
+            onClick={() => setShowDebug(!showDebug)}
+            className="flex items-center gap-0.5 text-[10px] font-semibold text-indigo-700 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-100 bg-indigo-100/70 dark:bg-indigo-900/60 px-1.5 py-0.5 rounded transition-all"
+            title="Toggle Debug Info"
+          >
+            <Code className="h-3 w-3" />
+            <span>{showDebug ? 'Hide Logs' : 'Debug'}</span>
+            {showDebug ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+          </button>
         </div>
       </div>
       
-      <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Content - Single column for full card width readability */}
+      <div className="p-2.5 space-y-2">
         {/* What was done well */}
-        <div className="bg-white/60 dark:bg-black/20 rounded-lg p-3 border border-green-500/20 hover:bg-white/80 transition-colors">
-          <div className="flex items-center gap-2 mb-2 pb-2 border-b border-green-500/10">
-            <ThumbsUp className="h-4 w-4 text-green-600" />
-            <h4 className="font-semibold text-sm text-green-800 dark:text-green-400">What was done well</h4>
+        {details.doneWell && (
+          <div className="bg-emerald-50/80 dark:bg-emerald-950/30 rounded-lg p-2 border border-emerald-200/70 dark:border-emerald-800/40">
+            <div className="flex items-center gap-1.5 mb-1 text-emerald-800 dark:text-emerald-300 font-semibold text-xs">
+              <ThumbsUp className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+              <span>What was done well</span>
+            </div>
+            <p className="text-xs text-emerald-950/90 dark:text-emerald-200/90 leading-relaxed break-words whitespace-pre-wrap">
+              {details.doneWell}
+            </p>
           </div>
-          <p className="text-sm text-foreground/80 whitespace-pre-wrap">{details.doneWell || "N/A"}</p>
-        </div>
+        )}
 
         {/* Missing work */}
-        <div className="bg-white/60 dark:bg-black/20 rounded-lg p-3 border border-red-500/20 hover:bg-white/80 transition-colors">
-          <div className="flex items-center gap-2 mb-2 pb-2 border-b border-red-500/10">
-            <AlertTriangle className="h-4 w-4 text-red-600" />
-            <h4 className="font-semibold text-sm text-red-800 dark:text-red-400">Missing work</h4>
+        {details.missingWork && details.missingWork !== "None" && details.missingWork !== "N/A" && (
+          <div className="bg-rose-50/80 dark:bg-rose-950/30 rounded-lg p-2 border border-rose-200/70 dark:border-rose-800/40">
+            <div className="flex items-center gap-1.5 mb-1 text-rose-800 dark:text-rose-300 font-semibold text-xs">
+              <AlertTriangle className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400 flex-shrink-0" />
+              <span>Missing work</span>
+            </div>
+            <p className="text-xs text-rose-950/90 dark:text-rose-200/90 leading-relaxed break-words whitespace-pre-wrap">
+              {details.missingWork}
+            </p>
           </div>
-          <p className="text-sm text-foreground/80 whitespace-pre-wrap">{details.missingWork || "N/A"}</p>
-        </div>
+        )}
 
         {/* Recommendations */}
-        <div className="bg-white/60 dark:bg-black/20 rounded-lg p-3 border border-amber-500/20 hover:bg-white/80 transition-colors">
-          <div className="flex items-center gap-2 mb-2 pb-2 border-b border-amber-500/10">
-            <Lightbulb className="h-4 w-4 text-amber-600" />
-            <h4 className="font-semibold text-sm text-amber-800 dark:text-amber-400">Recommendations</h4>
+        {details.recommendations && details.recommendations !== "N/A" && (
+          <div className="bg-amber-50/80 dark:bg-amber-950/30 rounded-lg p-2 border border-amber-200/70 dark:border-amber-800/40">
+            <div className="flex items-center gap-1.5 mb-1 text-amber-800 dark:text-amber-300 font-semibold text-xs">
+              <Lightbulb className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+              <span>Recommendations</span>
+            </div>
+            <p className="text-xs text-amber-950/90 dark:text-amber-200/90 leading-relaxed break-words whitespace-pre-wrap">
+              {details.recommendations}
+            </p>
           </div>
-          <p className="text-sm text-foreground/80 whitespace-pre-wrap">{details.recommendations || "N/A"}</p>
-        </div>
+        )}
 
         {/* Readiness */}
-        <div className="bg-white/60 dark:bg-black/20 rounded-lg p-3 border border-blue-500/20 hover:bg-white/80 transition-colors">
-          <div className="flex items-center gap-2 mb-2 pb-2 border-b border-blue-500/10">
-            <CheckCircle className="h-4 w-4 text-blue-600" />
-            <h4 className="font-semibold text-sm text-blue-800 dark:text-blue-400">Readiness</h4>
+        {details.readiness && (
+          <div className="bg-blue-50/80 dark:bg-blue-950/30 rounded-lg p-2 border border-blue-200/70 dark:border-blue-800/40">
+            <div className="flex items-center gap-1.5 mb-1 text-blue-800 dark:text-blue-300 font-semibold text-xs">
+              <CheckCircle className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+              <span>Production Readiness</span>
+            </div>
+            <p className="text-xs text-blue-950/90 dark:text-blue-200/90 leading-relaxed break-words whitespace-pre-wrap">
+              {details.readiness}
+            </p>
           </div>
-          <p className="text-sm text-foreground/80 whitespace-pre-wrap">{details.readiness || "N/A"}</p>
-        </div>
+        )}
+
+        {/* Debug Console Panel */}
+        {showDebug && (
+          <div className="mt-2 rounded-lg bg-slate-950 p-2.5 text-slate-200 text-[11px] font-mono border border-slate-800 overflow-x-auto space-y-1">
+            <div className="flex justify-between items-center text-slate-400 text-[10px] border-b border-slate-800 pb-1 mb-1 font-sans">
+              <span className="font-bold text-indigo-400">Frontend Debug Console</span>
+              <span>Submission: {submission?._id}</span>
+            </div>
+            <div><span className="text-slate-400">Status:</span> <span className="text-amber-400">{submission?.status}</span></div>
+            <div><span className="text-slate-400">Score:</span> <span className="text-emerald-400">{details?.score ?? 'N/A'}/100</span></div>
+            <div><span className="text-slate-400">Verdict Result:</span> <span className="text-sky-400">{details?.result ?? 'N/A'}</span></div>
+            <div><span className="text-slate-400">GitHub Link:</span> <span className="text-violet-400">{submission?.githubLink || 'None'}</span></div>
+            <div className="pt-1">
+              <span className="text-slate-400 block mb-0.5">Raw AI Review Payload:</span>
+              <pre className="text-[10px] text-emerald-300 bg-slate-900 p-1.5 rounded border border-slate-800 overflow-x-auto whitespace-pre-wrap leading-snug">
+                {JSON.stringify(submission?.aiReviewDetails || submission?.parikshakReview || {}, null, 2)}
+              </pre>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -234,7 +234,7 @@ async function extractTextFromDocument(fileBuffer, mimeType = "", filename = "",
         .replace(/%PDF-[0-9\.]+/g, " ")
         .replace(/obj[\s\S]*?endobj/g, " ")
         .replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, " ");
-      
+
       const pdfOpLinePattern = /^([\d.\s\-]+)?(Tm|TJ|cm|BT|ET|Tf|Td|TD|Tj|Do|gs|q|Q|re|Tw|Tc|TL|Ts|T\*|RG|rg|K|k|w|J|j|M|d|ri)(\s|$)/i;
       const cleanLines = textContent
         .split("\n")
@@ -360,12 +360,67 @@ function cleanAndFormatTaskText(rawText) {
     }
   }
 
-  // Build a clean description — strip out any gibberish or PDF operator lines that slipped through
-  const pdfOpLinePatternDesc = /^([\d.\s\-]+)?(Tm|TJ|cm|BT|ET|Tf|Td|TD|Tj|Do|gs|q|Q|re|Tw|Tc|TL|Ts|T\*|RG|rg|K|k|w|J|j|M|d|ri)(\s|$)/i;
-  const descriptionLines = cleaned
-    .split("\n")
-    .filter((l) => l.trim().length > 0 && !isGibberish(l.trim()) && !pdfOpLinePatternDesc.test(l.trim()));
-  const description = descriptionLines.length > 0 ? descriptionLines.join("\n").trim() : "No description provided.";
+  // ── Extract only the actual Description/Overview section ────────────────
+  // Strategy:
+  //   1. Look for an explicit "Description:", "Overview:", "Summary:", "Task Description:",
+  //      "Objective:", or "Background:" label and capture everything until the next section header.
+  //   2. If not found, fall back to the first meaningful paragraph of prose that is NOT
+  //      a metadata key-value line (Title:, Assignee:, Priority:, etc.).
+  //   3. As a last resort, use "No description provided."
+  //   Never fall back to the entire document text.
+
+  let description = "";
+
+  // Pattern: a "Description" (or synonym) label at the start of a line, followed by content.
+  // Section ends at the next blank line followed by a heading-like line, OR at a known
+  // metadata key (Title, Priority, Assignee, Department, Deadline, Due, Status, Project, Phase).
+  const DESC_SECTION_PATTERN = /(?:^|\n)[ \t]*(?:task\s*)?(?:description|overview|summary|objective|background|scope|context|details?|problem\s*statement|goal)[ \t]*:[ \t]*([\s\S]*?)(?=\n[ \t]*(?:title|task\s*title|priority|assignee|assign\s*to|department|dept|due\s*date?|deadline|status|project|phase|sprint|repository|repo|owner|duration|acceptance\s*criteria|deliverables?|success\s*condition|authority|responsibility|non.?goals?|out.?of.?scope|learning|test|demo|reference|note|update|change|result|section|step|phase|\d+\.|##|—|---|===)[ \t]*:|$)/i;
+
+  const descSectionMatch = cleaned.match(DESC_SECTION_PATTERN);
+  if (descSectionMatch && descSectionMatch[1]) {
+    const raw = descSectionMatch[1].trim();
+    // Filter out any stray gibberish lines within the captured section
+    const pdfOpLinePatternDesc = /^([\d.\s\-]+)?(Tm|TJ|cm|BT|ET|Tf|Td|TD|Tj|Do|gs|q|Q|re|Tw|Tc|TL|Ts|T\*|RG|rg|K|k|w|J|j|M|d|ri)(\s|$)/i;
+    const sectionLines = raw
+      .split("\n")
+      .filter((l) => l.trim().length > 0 && !isGibberish(l.trim()) && !pdfOpLinePatternDesc.test(l.trim()));
+    if (sectionLines.length > 0) {
+      description = sectionLines.join("\n").trim();
+    }
+  }
+
+  // Fallback: find the first block of prose that is not a metadata key:value line
+  if (!description) {
+    const metaKeyPattern = /^(?:task\s*title|title|task|priority|assignee|assign\s*to|department|dept|due\s*date?|deadline|status|project|phase|sprint|repository|repo|owner|duration|candidate|branch|label|tag|type|version|date|time|created|issued|id)\s*:/i;
+    const pdfOpLinePatternDesc = /^([\d.\s\-]+)?(Tm|TJ|cm|BT|ET|Tf|Td|TD|Tj|Do|gs|q|Q|re|Tw|Tc|TL|Ts|T\*|RG|rg|K|k|w|J|j|M|d|ri)(\s|$)/i;
+    const allLines = cleaned.split("\n").map((l) => l.trim());
+    const proseLines = [];
+    let inProseBlock = false;
+
+    for (let i = 0; i < allLines.length; i++) {
+      const line = allLines[i];
+      if (!line || isGibberish(line) || pdfOpLinePatternDesc.test(line)) continue;
+      if (metaKeyPattern.test(line)) {
+        // If we've already collected some prose, stop here
+        if (inProseBlock && proseLines.length > 0) break;
+        continue;
+      }
+      // Skip very short lines that look like headings/labels (e.g. "Scope", "Overview")
+      if (line.length < 20 && /^[A-Z][a-zA-Z\s\/&-]+$/.test(line) && !line.includes(" ")) continue;
+      proseLines.push(line);
+      inProseBlock = true;
+      // Cap at a reasonable paragraph length (~500 chars total)
+      if (proseLines.join(" ").length > 500) break;
+    }
+
+    if (proseLines.length > 0) {
+      description = proseLines.join("\n").trim();
+    }
+  }
+
+  if (!description) {
+    description = "No description provided.";
+  }
 
   return {
     title,
@@ -384,7 +439,7 @@ function cleanAndFormatTaskText(rawText) {
  */
 function generateCanonicalTaskPacket(cleanedResult, filename, mimeType, fileBuffer = null) {
   const ingestionId = `ingest_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
-  
+
   let documentHash = "";
   if (fileBuffer) {
     const buf = Buffer.isBuffer(fileBuffer) ? fileBuffer : Buffer.from(String(fileBuffer), "utf-8");
@@ -557,7 +612,7 @@ async function processTaskIngestion(fileBuffer, metadata = {}) {
 
   // Step 4: Candidate & Department Detection
   const resolution = await resolveTaskAssigneeAndDepartment(cleanedResult.assigneeHint, cleanedResult.departmentHint, metadata);
-  
+
   if (resolution.assigneeUser) {
     canonicalPacket.candidateDetection.matchedUser = {
       id: resolution.assigneeUser._id,
@@ -574,12 +629,17 @@ async function processTaskIngestion(fileBuffer, metadata = {}) {
 
   // Step 5.5: Document Storage (Cloudinary Upload)
   let documentNote = `Ingested via SETU EOS Pipeline [Ingestion ID: ${canonicalPacket.ingestionId}]`;
+  // documentLinks stores the Cloudinary URL(s) for the source PDF/document.
+  // These are saved into task.links[] so the UI can render them as explicit clickable links.
+  const documentLinks = [];
   if (fileBuffer && Buffer.isBuffer(fileBuffer) && fileBuffer.length > 0) {
     try {
       const cloudinaryUrl = await uploadToCloudinary(fileBuffer, filename);
       if (cloudinaryUrl) {
         documentNote = `Document: ${cloudinaryUrl} (${filename})`;
         canonicalPacket.provenance.documentUrl = cloudinaryUrl;
+        // Store URL in links array — this is what the UI renders as the source document link
+        documentLinks.push(cloudinaryUrl);
       }
     } catch (cErr) {
       console.warn("[TASK-INGESTION] Cloudinary upload notice:", cErr.message);
@@ -616,6 +676,8 @@ async function processTaskIngestion(fileBuffer, metadata = {}) {
           branch: metadata.branch || "blackhole_mumbai",
           notes: documentNote,
           fileType: mimeType,
+          // Source document URL(s) stored as proper links — shown in the task detail UI
+          links: documentLinks,
         },
       },
     },
@@ -635,6 +697,7 @@ async function processTaskIngestion(fileBuffer, metadata = {}) {
           branch: taskPayload.branch || "blackhole_mumbai",
           notes: taskPayload.notes || documentNote,
           fileType: mimeType,
+          links: taskPayload.links && taskPayload.links.length > 0 ? taskPayload.links : documentLinks,
         });
 
         try {
@@ -665,6 +728,7 @@ async function processTaskIngestion(fileBuffer, metadata = {}) {
     branch: metadata.branch || "blackhole_mumbai",
     notes: documentNote,
     fileType: mimeType,
+    links: documentLinks,
   });
 
   if (!createdTask) {

@@ -335,49 +335,103 @@ export function TaskDetailsDialog({ task, open, onOpenChange }) {
           </div>
 
           <div>
-            <h3 className="text-sm font-medium mb-2">Document</h3>
+            <h3 className="text-sm font-medium mb-2">Source Document</h3>
             <div className="space-y-2">
-              {document.url ? (
-                <div className="flex items-center gap-2 text-sm">
-                  <FileText className="h-4 w-4 text-muted-foreground" />
-                  <a
-                    href={getDisplayUrl(document.url, document.mimeType)}
-                    target={isPDF || isHTML ? "_blank" : "_self"}
-                    rel="noopener noreferrer"
-                    download={!isPDF && !isHTML} // Download for non-PDF, non-HTML files
-                    className="text-blue-500 hover:underline"
-                  >
-                    {document.fileName} ({document.fileType})
-                  </a>
-                </div>
-              ) : (
-                <div className="text-sm text-muted-foreground">No document attached</div>
-              )}
+              {(() => {
+                // Primary source: parse from notes field ("Document: <url> (<filename>)")
+                const notesMatch = task.notes?.match(/^Document:\s*(.+?)\s*\((.+)\)$/);
+                const notesUrl = notesMatch ? notesMatch[1] : null;
+                const notesFilename = notesMatch ? notesMatch[2] : null;
+
+                // Fallback: first entry in task.links[] that looks like a URL
+                const linkUrl = !notesUrl && task.links && task.links.length > 0
+                  ? task.links[0]
+                  : null;
+
+                const docUrl = notesUrl || linkUrl;
+                const docFilename = notesFilename || (linkUrl ? linkUrl.split("/").pop().split("?")[0] : null);
+                const mimeType = task.fileType || "";
+
+                const fileTypeMap = {
+                  "application/pdf": "PDF",
+                  "application/msword": "DOC",
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+                  "text/plain": "TXT",
+                  "text/markdown": "MD",
+                };
+                const fileLabel = fileTypeMap[mimeType] || (docFilename?.split(".").pop()?.toUpperCase()) || "FILE";
+                const isPDF = mimeType === "application/pdf" || docFilename?.toLowerCase().endsWith(".pdf");
+                // Append Cloudinary flag for PDFs to force correct content type
+                const displayUrl = docUrl && isPDF ? `${docUrl}?_a=BAE6pY0` : docUrl;
+
+                if (!docUrl) {
+                  return <div className="text-sm text-muted-foreground">No source document attached</div>;
+                }
+
+                return (
+                  <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors">
+                    <FileText className="h-5 w-5 text-blue-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{docFilename || "Task Document"}</p>
+                      <p className="text-xs text-muted-foreground">{fileLabel} · Ingested source file</p>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <a
+                        href={displayUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 transition-colors"
+                        title="Open document in new tab"
+                      >
+                        <LinkIcon className="h-3 w-3" />
+                        Open
+                      </a>
+                      {!isPDF && (
+                        <a
+                          href={docUrl}
+                          download={docFilename || true}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                          title="Download document"
+                        >
+                          Download
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
-          <div>
-            <h3 className="text-sm font-medium mb-2">Links</h3>
-            <div className="space-y-2">
-              {task.links && task.links.length > 0 ? (
-                task.links.map((link, index) => (
-                  <div key={index} className="flex items-center gap-2 text-sm">
-                    <LinkIcon className="h-4 w-4 text-muted-foreground" />
-                    <a
-                      href={link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-500 hover:underline"
-                    >
-                      {link}
-                    </a>
-                  </div>
-                ))
-              ) : (
-                <div className="text-sm text-muted-foreground">No links provided</div>
-              )}
-            </div>
-          </div>
+          {/* Additional links (manual links added to task, excluding the source document URL) */}
+          {task.links && task.links.length > 0 && (() => {
+            // Filter out the source document URL already shown above to avoid duplication
+            const notesMatch = task.notes?.match(/^Document:\s*(.+?)\s*\((.+)\)$/);
+            const sourceUrl = notesMatch ? notesMatch[1] : null;
+            const extraLinks = task.links.filter((l) => l !== sourceUrl);
+            if (extraLinks.length === 0) return null;
+            return (
+              <div>
+                <h3 className="text-sm font-medium mb-2">Links</h3>
+                <div className="space-y-2">
+                  {extraLinks.map((link, index) => (
+                    <div key={index} className="flex items-center gap-2 text-sm">
+                      <LinkIcon className="h-4 w-4 text-muted-foreground" />
+                      <a
+                        href={link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-500 hover:underline truncate"
+                      >
+                        {link}
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
 
           <Separator />
 
