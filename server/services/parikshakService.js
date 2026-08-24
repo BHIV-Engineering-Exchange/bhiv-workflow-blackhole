@@ -100,8 +100,11 @@ const invokeParikshak = async (submissionId, traceId, io) => {
         if (!reviewText && Array.isArray(response.improvement_hints) && response.improvement_hints.length > 0) {
             reviewText = response.improvement_hints.join('\n');
         }
+        if (!reviewText && response.failure_type) {
+            reviewText = `Evaluation check failed (${response.failure_type}): Please ensure a valid GitHub repository URL is attached and detailed task completion notes (>50 words) are provided.`;
+        }
         if (!reviewText) {
-            reviewText = "Submission did not pass automated AI evaluation criteria.";
+            reviewText = "Submission did not pass automated AI evaluation criteria. Please ensure your GitHub repository URL is accessible and resubmit.";
         }
 
         let finalStatus = "Rejected"; // Default to rejected
@@ -135,10 +138,14 @@ const invokeParikshak = async (submissionId, traceId, io) => {
                 : "Submission passed initial automated structure intake.";
             missingWork = (responseStatus === "PASS" || responseStatus === "APPROVED")
                 ? "None"
-                : (reviewText || "Review feedback details to fix failed criteria.");
+                : (Array.isArray(response.failure_reasons) && response.failure_reasons.length > 0
+                    ? response.failure_reasons.join('\n')
+                    : (response.failure_type
+                        ? `Evaluation check failed (${response.failure_type}): Attach accessible GitHub repository URL and provide detailed submission notes (>50 words).`
+                        : reviewText));
             recommendations = (Array.isArray(response.improvement_hints) && response.improvement_hints.length > 0)
                 ? response.improvement_hints.join(' ')
-                : (finalStatus === "Approved" ? "Proceed to recommended next task." : "Follow engineering recommendations and resubmit.");
+                : (finalStatus === "Approved" ? "Proceed to recommended next task." : "Provide detailed task completion notes (>50 words) describing implementation architecture and resubmit.");
         }
 
         const passFailStatus = response.result || response.status || (finalStatus === "Approved" ? "PASS" : (responseStatus === "PARTIAL" ? "PARTIAL" : "FAIL"));

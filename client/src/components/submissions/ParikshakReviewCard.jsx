@@ -6,7 +6,7 @@ import { formatDateTime } from "@/lib/dateFormat";
 const ParikshakReviewCard = ({ submission }) => {
   const details = submission?.aiReviewDetails;
   
-  if (!details || (!details.doneWell && !details.score && !details.result)) return null;
+  if (!details || (!details.doneWell && details.score === undefined && !details.result)) return null;
 
   const resultColor = 
     details.result === 'PASS' 
@@ -33,9 +33,11 @@ const ParikshakReviewCard = ({ submission }) => {
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <Badge className="bg-indigo-600 text-white dark:bg-indigo-500 text-[11px] font-bold px-2 py-0.5 border-0">
-            Score: {details.score ?? 0}/100
-          </Badge>
+          {details.score !== undefined && details.score !== null && (
+            <Badge className="bg-indigo-600 text-white dark:bg-indigo-500 text-[11px] font-bold px-2 py-0.5 border-0">
+              Score: {details.score}/100
+            </Badge>
+          )}
           {submission?.updatedAt && (
             <span className="text-[10px] text-muted-foreground font-medium">
               {formatDateTime(submission.updatedAt)}
