@@ -24,15 +24,29 @@ const invokeParikshak = async (submissionId, traceId, io) => {
         const task = submission.task;
         const user = submission.user;
 
-        // 2. Build payload
+        const combinedDescription = [
+            task.description ? `Task Overview:\n${task.description}` : '',
+            submission.notes ? `Candidate Deliverables & Implementation Notes:\n${submission.notes}` : ''
+        ].filter(Boolean).join('\n\n') || 'No description provided';
+
         const payload = {
+            mode: 'task_review',
             title: task.title || 'Untitled Task',
-            description: task.description || submission.notes || 'No description provided',
+            task_title: task.title || 'Untitled Task',
+            description: combinedDescription,
+            task_description: combinedDescription,
             submitted_by: user.name || user._id.toString(),
+            submission: submission.notes || '',
             repo_url: submission.githubLink || '',
+            github_repo_link: submission.githubLink || '',
             current_task_id: (task.task_id && task.task_id.startsWith("T-")) ? task.task_id : "T-GOV-001",
+            previous_task_id: (task.task_id && task.task_id.startsWith("T-")) ? task.task_id : "T-GOV-001",
             trace_id: traceId
         };
+
+        const targetUrl = PARIKSHAK_URL.endsWith("/parikshak/review")
+            ? PARIKSHAK_URL
+            : `${PARIKSHAK_URL.replace(/\/$/, "")}/parikshak/review`;
 
         // 3. Make API call with exponential backoff (3 retries)
         let response = null;
@@ -51,13 +65,9 @@ const invokeParikshak = async (submissionId, traceId, io) => {
                 }
                 
                 const startTime = Date.now();
-                const targetUrl = PARIKSHAK_URL.endsWith("/parikshak/review")
-                    ? PARIKSHAK_URL
-                    : `${PARIKSHAK_URL.replace(/\/$/, "")}/parikshak/review`;
-
                 const res = await axios.post(targetUrl, payload, config);
                 const runtimeMs = Date.now() - startTime;
-                console.log(`[PARIKSHAK] API Call completed with status ${res.status} in ${runtimeMs}ms on attempt ${attempt === 0 ? 1 : attempt}`);
+                console.log(`[PARIKSHAK] API Call completed with status ${res.status} in ${runtimeMs}ms`);
                 
                 response = res.data;
                 break; // Success, exit retry loop
@@ -78,7 +88,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
 
         // 4. Handle failure to connect -> Keep in Pending status for manual review
         if (!response) {
-            console.warn(`[PARIKSHAK] Exhausted all retries for submission ${submissionId}. Queuing for manual review.`);
+            console.warn(`[PARIKSHAK_PROD_LOG] ⚠️ Exhausted all retries for submission ${submissionId}. Queuing for manual review.`);
             submission.status = "Pending";
             submission.feedback = "Parikshak AI review service is currently offline. Your submission is queued in Pending status for manual review by an admin.";
             await submission.save();
@@ -86,7 +96,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
         }
 
         // 5. Process Review Response
-        console.log(`[PARIKSHAK] Review Response: Status=${response.status}, Score=${response.score}`);
+        console.log(`[PARIKSHAK_PROD_LOG] 📊 Processing evaluation response: Status=${response.status || response.result}, Score=${response.score}`);
         
         const responseStatus = String(response.status || response.result || "").toUpperCase();
         const scoreVal = (response.score !== undefined && response.score !== null)
@@ -278,12 +288,15 @@ const invokeParikshak = async (submissionId, traceId, io) => {
             });
         }
 
-        // Notify the submitter
+        const statusMessage = finalStatus === "Approved"
+            ? "has been approved by Parikshak AI."
+            : "is currently under manual review by an admin.";
+
         await Notification.create({
             recipient: user._id,
             type: "submission_reviewed",
-            title: `Automated Review: ${finalStatus}`,
-            message: `Your submission for task '${task.title}' has been ${finalStatus.toLowerCase()} by Parikshak.`,
+            title: `Automated Review: ${finalStatus === "Approved" ? "Approved" : "Under Review"}`,
+            message: `Your submission for task '${task.title}' ${statusMessage}`,
             task: task._id
         });
         
@@ -309,12 +322,23 @@ const triggerReview = async ({
         const taskId = typeof task === 'string' ? task : (task._id || "task-default");
         const userId = typeof submission === 'object' ? (submission.user || "user-001") : "user-001";
         
+        const combinedDescription = [
+            task.description ? `Task Overview:\n${task.description}` : '',
+            submission.notes ? `Candidate Deliverables & Implementation Notes:\n${submission.notes}` : ''
+        ].filter(Boolean).join('\n\n') || 'No description provided';
+
         const payload = {
+            mode: 'task_review',
             title: task.title || 'Untitled Task',
-            description: task.description || submission.notes || 'No description provided',
+            task_title: task.title || 'Untitled Task',
+            description: combinedDescription,
+            task_description: combinedDescription,
             submitted_by: userName || 'Candidate',
+            submission: submission.notes || '',
             repo_url: submission.githubLink || '',
+            github_repo_link: submission.githubLink || '',
             current_task_id: (task.task_id && task.task_id.startsWith("T-")) ? task.task_id : "T-GOV-001",
+            previous_task_id: (task.task_id && task.task_id.startsWith("T-")) ? task.task_id : "T-GOV-001",
             trace_id: submission.trace_id || `trace-bhiv-${subId}`
         };
 

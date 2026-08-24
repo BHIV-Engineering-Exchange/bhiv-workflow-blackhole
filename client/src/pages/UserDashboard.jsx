@@ -88,6 +88,14 @@ function UserDashboard() {
     try {
       setIsLoading(true)
       
+      console.group("🚀 [FRONTEND LOG] Submitting Task Revision");
+      console.log("Task ID:", selectedSubmission.task._id);
+      console.log("Task Title:", selectedSubmission.task.title);
+      console.log("GitHub Repository:", selectedSubmission.githubLink);
+      console.log("Revision Notes:", revisionNotes);
+      console.log("Notes Word Count:", (revisionNotes || "").split(/\s+/).filter(Boolean).length);
+      console.groupEnd();
+
       // ✅ FIXED: Use authenticated API method
       await api.post('/submissions', {
         task: selectedSubmission.task._id,

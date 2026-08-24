@@ -1,11 +1,28 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Badge } from "../ui/badge";
-import { ThumbsUp, AlertTriangle, Lightbulb, Rocket, CheckCircle } from "lucide-react";
+import { ThumbsUp, AlertTriangle, Lightbulb, Rocket, CheckCircle, Code, ChevronDown, ChevronUp } from "lucide-react";
 import { formatDateTime } from "@/lib/dateFormat";
 
 const ParikshakReviewCard = ({ submission }) => {
+  const [showDebug, setShowDebug] = useState(false);
   const details = submission?.aiReviewDetails;
-  
+
+  useEffect(() => {
+    if (submission && details) {
+      console.groupCollapsed(`🔍 [PARIKSHAK FRONTEND DEBUG] Submission ID: ${submission._id}`);
+      console.log("Submission Status:", submission.status);
+      console.log("AI Review Result:", details.result || "N/A");
+      console.log("AI Score:", details.score !== undefined && details.score !== null ? `${details.score}/100` : "N/A");
+      console.log("GitHub Repository:", submission.githubLink || "None");
+      console.log("Done Well:", details.doneWell);
+      console.log("Missing Work:", details.missingWork);
+      console.log("Recommendations:", details.recommendations);
+      console.log("Production Readiness:", details.readiness);
+      console.log("Full Submission Data:", submission);
+      console.groupEnd();
+    }
+  }, [submission, details]);
+
   if (!details || (!details.doneWell && details.score === undefined && !details.result)) return null;
 
   const resultColor = 
@@ -43,6 +60,15 @@ const ParikshakReviewCard = ({ submission }) => {
               {formatDateTime(submission.updatedAt)}
             </span>
           )}
+          <button
+            onClick={() => setShowDebug(!showDebug)}
+            className="flex items-center gap-0.5 text-[10px] font-semibold text-indigo-700 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-100 bg-indigo-100/70 dark:bg-indigo-900/60 px-1.5 py-0.5 rounded transition-all"
+            title="Toggle Debug Info"
+          >
+            <Code className="h-3 w-3" />
+            <span>{showDebug ? 'Hide Logs' : 'Debug'}</span>
+            {showDebug ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+          </button>
         </div>
       </div>
       
@@ -97,6 +123,26 @@ const ParikshakReviewCard = ({ submission }) => {
             <p className="text-xs text-blue-950/90 dark:text-blue-200/90 leading-relaxed break-words whitespace-pre-wrap">
               {details.readiness}
             </p>
+          </div>
+        )}
+
+        {/* Debug Console Panel */}
+        {showDebug && (
+          <div className="mt-2 rounded-lg bg-slate-950 p-2.5 text-slate-200 text-[11px] font-mono border border-slate-800 overflow-x-auto space-y-1">
+            <div className="flex justify-between items-center text-slate-400 text-[10px] border-b border-slate-800 pb-1 mb-1 font-sans">
+              <span className="font-bold text-indigo-400">Frontend Debug Console</span>
+              <span>Submission: {submission?._id}</span>
+            </div>
+            <div><span className="text-slate-400">Status:</span> <span className="text-amber-400">{submission?.status}</span></div>
+            <div><span className="text-slate-400">Score:</span> <span className="text-emerald-400">{details?.score ?? 'N/A'}/100</span></div>
+            <div><span className="text-slate-400">Verdict Result:</span> <span className="text-sky-400">{details?.result ?? 'N/A'}</span></div>
+            <div><span className="text-slate-400">GitHub Link:</span> <span className="text-violet-400">{submission?.githubLink || 'None'}</span></div>
+            <div className="pt-1">
+              <span className="text-slate-400 block mb-0.5">Raw AI Review Payload:</span>
+              <pre className="text-[10px] text-emerald-300 bg-slate-900 p-1.5 rounded border border-slate-800 overflow-x-auto whitespace-pre-wrap leading-snug">
+                {JSON.stringify(submission?.aiReviewDetails || submission?.parikshakReview || {}, null, 2)}
+              </pre>
+            </div>
           </div>
         )}
       </div>
