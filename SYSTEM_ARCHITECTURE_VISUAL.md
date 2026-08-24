@@ -1,4 +1,4 @@
-# System Architecture - Real Data Flow Visualization
+ # System Architecture - Real Data Flow Visualization
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
