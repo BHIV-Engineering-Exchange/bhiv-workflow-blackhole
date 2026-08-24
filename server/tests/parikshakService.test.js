@@ -143,14 +143,14 @@ describe("triggerReview — PASS", () => {
 describe("triggerReview — FAIL", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it("sets submission status to Rejected", async () => {
+  it("sets submission status to Pending for manual review", async () => {
     mockAxiosPost.mockResolvedValueOnce({ data: parikshakResponse("FAIL", 30) });
     const { TaskSubmission, Notification } = makeMocks();
 
     await triggerReview({ submission: makeSubmission(), task: makeTask(), userName: "Bob", io: null, Notification, TaskSubmission });
 
     const setArg = TaskSubmission.findByIdAndUpdate.mock.calls[0][1].$set;
-    expect(setArg.status).toBe("Rejected");
+    expect(setArg.status).toBe("Pending");
     expect(setArg.parikshakReview.status).toBe("FAIL");
     expect(setArg.parikshakReview.score).toBe(30);
   });

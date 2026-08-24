@@ -30,7 +30,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
             description: task.description || submission.notes || 'No description provided',
             submitted_by: user.name || user._id.toString(),
             repo_url: submission.githubLink || '',
-            current_task_id: task.task_id || (String(task._id).startsWith("task") ? String(task._id) : `task-${task._id}`),
+            current_task_id: (task.task_id && task.task_id.startsWith("T-")) ? task.task_id : "T-GOV-001",
             trace_id: traceId
         };
 
@@ -107,18 +107,16 @@ const invokeParikshak = async (submissionId, traceId, io) => {
             reviewText = "Submission did not pass automated AI evaluation criteria. Please ensure your GitHub repository URL is accessible and resubmit.";
         }
 
-        let finalStatus = "Rejected"; // Default to rejected
+        let finalStatus = "Pending"; // Default fallback to manual admin review
         let finalFeedback = reviewText;
 
         if (responseStatus === "PASS" || responseStatus === "APPROVED" || responseStatus === "SUCCESS") {
             finalStatus = "Approved";
-        } else if (responseStatus === "PARTIAL" || responseStatus === "BORDERLINE") {
-            finalStatus = "Rejected";
-            finalFeedback = `PARTIAL SUCCESS (Score: ${scoreVal}) - You are close, please fix the following and resubmit:\n\n${reviewText}`;
         } else {
-            // FAIL
-            finalStatus = "Rejected";
-            finalFeedback = `FAILED (Score: ${scoreVal}) - Please review the feedback and resubmit:\n\n${reviewText}`;
+            // Rejection / FAIL / PARTIAL: Do not directly hard reject for candidate.
+            // Queue in "Pending" status for user, but preserve AI review score & details for Admin manual review.
+            finalStatus = "Pending";
+            finalFeedback = `Submission is under manual admin review. (AI Assessment: ${responseStatus || 'REJECTED'}, Score: ${scoreVal}/100).\n\nPreliminary Assessment:\n${reviewText}`;
         }
 
         // Extract structured fields
@@ -316,7 +314,7 @@ const triggerReview = async ({
             description: task.description || submission.notes || 'No description provided',
             submitted_by: userName || 'Candidate',
             repo_url: submission.githubLink || '',
-            current_task_id: task.task_id || (String(taskId).startsWith("task") ? String(taskId) : `task-${taskId}`),
+            current_task_id: (task.task_id && task.task_id.startsWith("T-")) ? task.task_id : "T-GOV-001",
             trace_id: submission.trace_id || `trace-bhiv-${subId}`
         };
 
@@ -348,13 +346,11 @@ const triggerReview = async ({
             reviewText = "Submission did not pass automated AI evaluation criteria.";
         }
 
-        let finalStatus = "Rejected";
+        let finalStatus = "Pending";
         if (responseStatus === "PASS" || responseStatus === "APPROVED" || responseStatus === "SUCCESS") {
             finalStatus = "Approved";
-        } else if (responseStatus === "PARTIAL" || responseStatus === "BORDERLINE") {
-            finalStatus = "Pending";
         } else {
-            finalStatus = "Rejected";
+            finalStatus = "Pending"; // Queue for manual admin review
         }
 
         if (TaskSubmissionModel && TaskSubmissionModel.findByIdAndUpdate) {
