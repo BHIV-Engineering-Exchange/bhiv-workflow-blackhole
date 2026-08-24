@@ -30,7 +30,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
             description: task.description || submission.notes || 'No description provided',
             submitted_by: user.name || user._id.toString(),
             repo_url: submission.githubLink || '',
-            current_task_id: task._id.toString(),
+            current_task_id: task.task_id || (String(task._id).startsWith("task") ? String(task._id) : `task-${task._id}`),
             trace_id: traceId
         };
 
@@ -43,7 +43,8 @@ const invokeParikshak = async (submissionId, traceId, io) => {
             try {
                 const config = {
                     headers: { 'Content-Type': 'application/json' },
-                    timeout: 30000 // 30s timeout per request
+                    timeout: 30000, // 30s timeout per request
+                    validateStatus: (status) => status < 600
                 };
                 if (PARIKSHAK_TOKEN) {
                     config.headers['Authorization'] = `Bearer ${PARIKSHAK_TOKEN}`;
@@ -56,13 +57,17 @@ const invokeParikshak = async (submissionId, traceId, io) => {
 
                 const res = await axios.post(targetUrl, payload, config);
                 const runtimeMs = Date.now() - startTime;
-                console.log(`[PARIKSHAK] API Call succeeded in ${runtimeMs}ms on attempt ${attempt === 0 ? 1 : attempt}`);
+                console.log(`[PARIKSHAK] API Call completed with status ${res.status} in ${runtimeMs}ms on attempt ${attempt === 0 ? 1 : attempt}`);
                 
                 response = res.data;
                 break; // Success, exit retry loop
             } catch (err) {
                 attempt++;
-                console.error(`[PARIKSHAK] API Call failed on attempt ${attempt}:`, err.message);
+                console.error(`[PARIKSHAK] API Call network error on attempt ${attempt}:`, err.message);
+                if (err.response && err.response.data) {
+                    response = err.response.data;
+                    break;
+                }
                 if (attempt <= 3) {
                     const delay = delays[attempt - 1];
                     console.log(`[PARIKSHAK] Retrying in ${delay / 1000}s...`);
@@ -83,78 +88,84 @@ const invokeParikshak = async (submissionId, traceId, io) => {
         // 5. Process Review Response
         console.log(`[PARIKSHAK] Review Response: Status=${response.status}, Score=${response.score}`);
         
-        let finalStatus = "Rejected"; // Default to rejected
-        let finalFeedback = response.review || "";
+        const responseStatus = String(response.status || response.result || "").toUpperCase();
+        const scoreVal = (response.score !== undefined && response.score !== null)
+            ? response.score
+            : ((response.readiness_percent !== undefined && response.readiness_percent !== null) ? response.readiness_percent : 0);
 
-        if (response.status === "PASS") {
+        let reviewText = response.review || response.detail || response.reason || "";
+        if (!reviewText && Array.isArray(response.failure_reasons) && response.failure_reasons.length > 0) {
+            reviewText = response.failure_reasons.join('\n');
+        }
+        if (!reviewText && Array.isArray(response.improvement_hints) && response.improvement_hints.length > 0) {
+            reviewText = response.improvement_hints.join('\n');
+        }
+        if (!reviewText) {
+            reviewText = "Submission did not pass automated AI evaluation criteria.";
+        }
+
+        let finalStatus = "Rejected"; // Default to rejected
+        let finalFeedback = reviewText;
+
+        if (responseStatus === "PASS" || responseStatus === "APPROVED" || responseStatus === "SUCCESS") {
             finalStatus = "Approved";
-        } else if (response.status === "PARTIAL") {
+        } else if (responseStatus === "PARTIAL" || responseStatus === "BORDERLINE") {
             finalStatus = "Rejected";
-            finalFeedback = `PARTIAL SUCCESS (Score: ${response.score}) - You are close, please fix the following and resubmit:\n\n${response.review}`;
+            finalFeedback = `PARTIAL SUCCESS (Score: ${scoreVal}) - You are close, please fix the following and resubmit:\n\n${reviewText}`;
         } else {
             // FAIL
             finalStatus = "Rejected";
-            finalFeedback = `FAILED (Score: ${response.score}) - Please review the feedback and resubmit:\n\n${response.review}`;
+            finalFeedback = `FAILED (Score: ${scoreVal}) - Please review the feedback and resubmit:\n\n${reviewText}`;
         }
 
         // Extract structured fields
         let doneWell = "Good effort on submitting the task.";
         let missingWork = "Review the feedback for details.";
         let recommendations = "Please check the AI review guidelines.";
-        let readiness = response.status === "PASS" ? "Production Ready" : "Requires Revisions";
+        let readiness = (responseStatus === "PASS" || responseStatus === "APPROVED") ? "Production Ready" : "Requires Revisions";
         
         if (response.review_details) {
             doneWell = response.review_details.done_well || doneWell;
             missingWork = response.review_details.missing_work || missingWork;
             recommendations = response.review_details.recommendations || recommendations;
             readiness = response.review_details.readiness || readiness;
-        } else if (response.review) {
-            // Basic heuristic fallback if they only send a string
-            doneWell = response.review;
-            missingWork = finalStatus === "Rejected" ? "Please review the full feedback text." : "None";
-            recommendations = "See detailed feedback for full context.";
+        } else {
+            doneWell = (responseStatus === "PASS" || responseStatus === "APPROVED")
+                ? (reviewText || "Clean codebase integration matching expected requirements.")
+                : "Submission passed initial automated structure intake.";
+            missingWork = (responseStatus === "PASS" || responseStatus === "APPROVED")
+                ? "None"
+                : (reviewText || "Review feedback details to fix failed criteria.");
+            recommendations = (Array.isArray(response.improvement_hints) && response.improvement_hints.length > 0)
+                ? response.improvement_hints.join(' ')
+                : (finalStatus === "Approved" ? "Proceed to recommended next task." : "Follow engineering recommendations and resubmit.");
         }
+
+        const passFailStatus = response.result || response.status || (finalStatus === "Approved" ? "PASS" : (responseStatus === "PARTIAL" ? "PARTIAL" : "FAIL"));
+        const nextTaskName = response.next_task || (response.next_task_proposal && response.next_task_proposal.title) || "";
 
         // Update submission
         submission.status = finalStatus;
         submission.feedback = finalFeedback;
         submission.aiReviewDetails = {
-            score: response.score,
-            result: response.result || (finalStatus === "Approved" ? "PASS" : "FAIL"),
+            score: scoreVal,
+            result: passFailStatus,
             doneWell,
             missingWork,
             recommendations,
             readiness
         };
+        submission.parikshakReview = {
+            status: passFailStatus,
+            score: scoreVal,
+            review: finalFeedback,
+            nextTask: nextTaskName,
+            reviewedAt: new Date()
+        };
         await submission.save();
 
-        // Phase 2: MasterDB Integration - Candidate Execution History
-        try {
-            const TaskEvaluation = require('../models/TaskEvaluation');
-            const User = require('../models/User');
-            let adminUser = await User.findOne({ role: { $in: ['Admin', 'Manager'] } });
-            let evaluatorId = adminUser ? adminUser._id : user._id;
-            
-            await TaskEvaluation.create({
-                task: task._id,
-                submission: submission._id,
-                evaluatedBy: evaluatorId,
-                projectName: "Parikshak Automated Review",
-                moduleName: task.title.substring(0, 50),
-                submittedBy: user._id,
-                testingLevel: "Task",
-                testConductedBy: "PARIKSHAK_AI",
-                functionalTesting: {
-                    result: response.result === "PARTIAL" ? "PARTIAL" : (response.result === "PASS" || finalStatus === "Approved" ? "PASS" : "FAIL"),
-                    notes: doneWell
-                },
-                finalVerdict: finalStatus === "Approved" ? "APPROVED" : "REJECTED",
-                branch: task.branch
-            });
-            console.log(`[PARIKSHAK] Phase 2: MasterDB TaskEvaluation record created for ${task._id}`);
-        } catch (evalErr) {
-            console.error(`[PARIKSHAK] Failed to create TaskEvaluation record:`, evalErr.message);
-        }
+        // Phase 2: MasterDB Integration - Candidate Execution History (Disabled per user preference)
+        // TaskEvaluation records will not be automatically generated on submission review.
 
         // Update task status and emit events
         let execContext;
@@ -181,16 +192,37 @@ const invokeParikshak = async (submissionId, traceId, io) => {
                 // Phase 3: Next Task Runtime
                 console.log(`[PARIKSHAK] Phase 3: Creating next task for assignee ${task.assignee}`);
                 
-                const nextTaskData = response.next_task || (response.review_details && response.review_details.next_task) || {};
+                let nextTaskTitle = "";
+                let nextTaskDescription = "";
+
+                if (typeof response.next_task === 'object' && response.next_task !== null) {
+                    nextTaskTitle = response.next_task.title || response.next_task.name || response.next_task.objective || "";
+                    nextTaskDescription = response.next_task.description || response.next_task.objective || "";
+                } else if (typeof response.next_task === 'string' && response.next_task.trim()) {
+                    const rawNext = response.next_task.trim();
+                    if (rawNext.toLowerCase().includes("test task") || rawNext.toLowerCase().startsWith("task-next")) {
+                        nextTaskTitle = `Phase 2: ${task.title}`;
+                    } else {
+                        nextTaskTitle = rawNext;
+                    }
+                }
+
+                if (!nextTaskTitle || nextTaskTitle.toLowerCase().includes("test task")) {
+                    nextTaskTitle = `Advanced Integration: ${task.title}`;
+                }
+
+                if (!nextTaskDescription) {
+                    nextTaskDescription = `Next production phase following successful evaluation of '${task.title}'.\n\nAutomated AI Review Summary:\n${doneWell}\n\nRecommended Guidelines:\n${recommendations}`;
+                }
                 
                 const newTask = new Task({
-                    title: nextTaskData.title || `Follow-up: ${task.title}`,
-                    description: nextTaskData.description || `Automated next task based on the completion of ${task.title}. \n\nParikshak Review:\n${doneWell}\n${recommendations}`,
+                    title: nextTaskTitle,
+                    description: nextTaskDescription,
                     status: "Pending",
-                    priority: nextTaskData.priority || task.priority,
+                    priority: task.priority || "Medium",
                     department: task.department,
                     assignee: task.assignee, // Assign same candidate
-                    dueDate: nextTaskData.dueDate ? new Date(nextTaskData.dueDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Default 7 days
+                    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Default 7 days
                     dependencies: task.dependencies, // Preserve dependencies
                     branch: task.branch, // Preserve product/tenant
                     progress: 0,
@@ -257,6 +289,121 @@ const invokeParikshak = async (submissionId, traceId, io) => {
     }
 };
 
+const triggerReview = async ({
+    submission,
+    task,
+    userName = "Candidate",
+    io = null,
+    Notification: NotificationModel = Notification,
+    TaskSubmission: TaskSubmissionModel = TaskSubmission
+} = {}) => {
+    try {
+        if (!submission || !task) return;
+        
+        const subId = typeof submission === 'string' ? submission : (submission._id || "sub-default");
+        const taskId = typeof task === 'string' ? task : (task._id || "task-default");
+        const userId = typeof submission === 'object' ? (submission.user || "user-001") : "user-001";
+        
+        const payload = {
+            title: task.title || 'Untitled Task',
+            description: task.description || submission.notes || 'No description provided',
+            submitted_by: userName || 'Candidate',
+            repo_url: submission.githubLink || '',
+            current_task_id: task.task_id || (String(taskId).startsWith("task") ? String(taskId) : `task-${taskId}`),
+            trace_id: submission.trace_id || `trace-bhiv-${subId}`
+        };
+
+        const config = {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 30000
+        };
+        if (PARIKSHAK_TOKEN) {
+            config.headers['Authorization'] = `Bearer ${PARIKSHAK_TOKEN}`;
+        }
+        
+        const targetUrl = PARIKSHAK_URL.endsWith("/parikshak/review")
+            ? PARIKSHAK_URL
+            : `${PARIKSHAK_URL.replace(/\/$/, "")}/parikshak/review`;
+
+        const res = await axios.post(targetUrl, payload, config);
+        const response = res.data;
+
+        const responseStatus = String(response.status || response.result || "").toUpperCase();
+        const scoreVal = (response.score !== undefined && response.score !== null)
+            ? response.score
+            : ((response.readiness_percent !== undefined && response.readiness_percent !== null) ? response.readiness_percent : 0);
+
+        let reviewText = response.review || response.detail || response.reason || "";
+        if (!reviewText && Array.isArray(response.failure_reasons) && response.failure_reasons.length > 0) {
+            reviewText = response.failure_reasons.join('\n');
+        }
+        if (!reviewText) {
+            reviewText = "Submission did not pass automated AI evaluation criteria.";
+        }
+
+        let finalStatus = "Rejected";
+        if (responseStatus === "PASS" || responseStatus === "APPROVED" || responseStatus === "SUCCESS") {
+            finalStatus = "Approved";
+        } else if (responseStatus === "PARTIAL" || responseStatus === "BORDERLINE") {
+            finalStatus = "Pending";
+        } else {
+            finalStatus = "Rejected";
+        }
+
+        if (TaskSubmissionModel && TaskSubmissionModel.findByIdAndUpdate) {
+            await TaskSubmissionModel.findByIdAndUpdate(subId, {
+                $set: {
+                    status: finalStatus,
+                    feedback: reviewText,
+                    parikshakReview: {
+                        status: response.status || finalStatus,
+                        score: scoreVal,
+                        review: reviewText,
+                        nextTask: response.next_task || "",
+                        reviewedAt: new Date()
+                    },
+                    aiReviewDetails: {
+                        score: scoreVal,
+                        result: response.status || finalStatus,
+                        doneWell: reviewText,
+                        missingWork: finalStatus === "Approved" ? "None" : reviewText,
+                        recommendations: "Review AI guidelines and update code",
+                        readiness: finalStatus === "Approved" ? "Production Ready" : "Requires Revisions"
+                    }
+                }
+            });
+        }
+
+        if (NotificationModel && NotificationModel.create) {
+            try {
+                await NotificationModel.create({
+                    recipient: userId,
+                    type: "submission_reviewed",
+                    title: `AI Review: ${response.status || finalStatus} (${scoreVal}/100)`,
+                    message: reviewText,
+                    task: taskId
+                });
+            } catch (err) {
+                console.warn("[PARIKSHAK] Notification creation failed:", err.message);
+            }
+        }
+
+        if (io && io.emit) {
+            io.emit("parikshak:review-complete", {
+                submissionId: subId,
+                taskId: taskId,
+                userId: userId,
+                status: response.status || finalStatus,
+                score: scoreVal,
+                nextTask: response.next_task || ""
+            });
+        }
+    } catch (err) {
+        console.error("[PARIKSHAK] triggerReview failed:", err.message);
+    }
+};
+
 module.exports = {
-    invokeParikshak
+    invokeParikshak,
+    triggerReview
 };

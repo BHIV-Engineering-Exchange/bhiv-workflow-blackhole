@@ -916,35 +916,7 @@ function UserDashboard() {
                   </div>
                 )}
 
-                {/* Next Task Recommendation */}
-                {selectedSubmission.parikshakReview?.nextTask && (() => {
-                  const pr = selectedSubmission.parikshakReview
-                  return (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-7 w-7 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center ring-1 ring-blue-300 dark:ring-blue-800">
-                          <ArrowRight className="h-4 w-4 text-blue-700 dark:text-blue-400" />
-                        </div>
-                        <p className="font-semibold text-sm text-gray-900 dark:text-white">Next Task Recommendation</p>
-                      </div>
-                      <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 shadow-sm space-y-2">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="space-y-1">
-                            <p className="text-sm font-bold text-blue-900 dark:text-blue-100">
-                              {pr.nextTaskTitle || pr.nextTask}
-                            </p>
-                            <p className="text-xs text-blue-500 dark:text-blue-400">ID: {pr.nextTask}</p>
-                          </div>
-                        </div>
-                        {pr.nextTaskDescription && (
-                          <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed border-t border-blue-200 dark:border-blue-800 pt-2">
-                            {pr.nextTaskDescription}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })()}
+
 
                 {/* Reviewer Feedback — manual reviews only (no parikshak) */}
                 {selectedSubmission.feedback && !selectedSubmission.parikshakReview?.review && (

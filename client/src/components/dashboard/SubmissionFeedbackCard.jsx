@@ -140,15 +140,7 @@ export function SubmissionFeedbackCard({
                 style={{ width: `${pr.score}%` }}
               />
             </div>
-            {/* Next task recommendation */}
-            {pr.nextTask && (
-              <div className="flex items-center gap-1.5 pt-0.5">
-                <ArrowRight className="h-3 w-3 text-blue-500 dark:text-blue-400 flex-shrink-0" />
-                <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
-                  Next: <span className="font-semibold">{pr.nextTask}</span>
-                </span>
-              </div>
-            )}
+
           </div>
         )}
 

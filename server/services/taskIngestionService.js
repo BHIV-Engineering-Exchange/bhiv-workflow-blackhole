@@ -234,7 +234,7 @@ async function extractTextFromDocument(fileBuffer, mimeType = "", filename = "",
         .replace(/%PDF-[0-9\.]+/g, " ")
         .replace(/obj[\s\S]*?endobj/g, " ")
         .replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, " ");
-      
+
       const pdfOpLinePattern = /^([\d.\s\-]+)?(Tm|TJ|cm|BT|ET|Tf|Td|TD|Tj|Do|gs|q|Q|re|Tw|Tc|TL|Ts|T\*|RG|rg|K|k|w|J|j|M|d|ri)(\s|$)/i;
       const cleanLines = textContent
         .split("\n")
@@ -439,7 +439,7 @@ function cleanAndFormatTaskText(rawText) {
  */
 function generateCanonicalTaskPacket(cleanedResult, filename, mimeType, fileBuffer = null) {
   const ingestionId = `ingest_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
-  
+
   let documentHash = "";
   if (fileBuffer) {
     const buf = Buffer.isBuffer(fileBuffer) ? fileBuffer : Buffer.from(String(fileBuffer), "utf-8");
@@ -612,7 +612,7 @@ async function processTaskIngestion(fileBuffer, metadata = {}) {
 
   // Step 4: Candidate & Department Detection
   const resolution = await resolveTaskAssigneeAndDepartment(cleanedResult.assigneeHint, cleanedResult.departmentHint, metadata);
-  
+
   if (resolution.assigneeUser) {
     canonicalPacket.candidateDetection.matchedUser = {
       id: resolution.assigneeUser._id,

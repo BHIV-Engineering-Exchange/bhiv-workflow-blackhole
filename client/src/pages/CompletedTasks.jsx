@@ -515,38 +515,38 @@ const [isReviewing, setIsReviewing] = useState(false)
                     </CardContent>
 
                     {/* ========== CARD FOOTER - ACTIONS ========== */}
-                    <CardFooter className="flex justify-between items-center border-t bg-muted/20 pt-3 pb-3">
-                      <div className="flex items-center gap-2">
+                    <CardFooter className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/20 p-3">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
                         {task.assignee ? (
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-7 w-7 ring-2 ring-green-500/20">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Avatar className="h-6 w-6 ring-1 ring-green-500/20 shrink-0">
                               <AvatarImage src={task.assignee.avatar || "/placeholder.svg"} />
-                              <AvatarFallback className="text-xs bg-green-500/10 text-green-600 dark:text-green-400 font-medium">
+                              <AvatarFallback className="text-[10px] bg-green-500/10 text-green-600 dark:text-green-400 font-medium">
                                 {task.assignee.name
                                   .split(" ")
                                   .map((n) => n[0])
                                   .join("")}
                               </AvatarFallback>
                             </Avatar>
-                            <span className="text-sm font-medium">{task.assignee.name}</span>
+                            <span className="text-xs font-medium truncate max-w-[100px] sm:max-w-[120px]">{task.assignee.name}</span>
                           </div>
                         ) : (
-                          <span className="text-sm text-muted-foreground italic">Unassigned</span>
+                          <span className="text-xs text-muted-foreground italic truncate">Unassigned</span>
                         )}
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <Button 
                           variant="outline" 
                           size="sm" 
                           onClick={() => navigate(`/tasks/${task._id}`)} 
-                          className="h-8 hover:bg-green-50 hover:border-green-300 dark:hover:bg-green-950/20"
+                          className="h-7 px-2.5 text-xs hover:bg-green-50 hover:border-green-300 dark:hover:bg-green-950/20"
                         >
                           View
                         </Button>
                         {submission && isAdmin && (
                           <Button
                             size="sm"
-                            className="h-8 bg-green-500 hover:bg-green-600 text-white"
+                            className="h-7 px-2.5 text-xs bg-green-500 hover:bg-green-600 text-white shrink-0"
                             onClick={() => {
                               setSelectedSubmission(submission)
                               setReviewData({ status: submission.status || "Approved", feedback: submission.feedback || "" })
