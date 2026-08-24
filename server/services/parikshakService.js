@@ -5,7 +5,7 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { emitTaskCompletedEvent, emitTaskFailedEvent } = require('./taskExecutionBridge');
 
-const PARIKSHAK_URL = process.env.PARIKSHAK_URL || 'http://localhost:8000/parikshak/review';
+const PARIKSHAK_URL = process.env.PARIKSHAK_URL || 'https://parikshak.blackholeinfiverse.com/parikshak/review';
 const PARIKSHAK_TOKEN = process.env.PARIKSHAK_TOKEN || '';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
