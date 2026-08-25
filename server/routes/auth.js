@@ -483,6 +483,19 @@ router.post("/register", async (req, res) => {
       // Continue with registration even if email fails
     })
 
+    const cookieOptions = {
+      domain: process.env.COOKIE_DOMAIN || ".blackholeinfiverse.com",
+      path: "/",
+      httpOnly: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 180 * 24 * 60 * 60 * 1000,
+    };
+    try {
+      res.cookie("WorkflowToken", token, cookieOptions);
+      res.cookie("x-auth-token", token, cookieOptions);
+    } catch (e) {}
+
     res.status(201).json({ token, user: payload })
 
     // Fire-and-forget PRANA & KARMA signals — registration counts as first login
@@ -525,6 +538,19 @@ router.post("/login", async (req, res) => {
     const token = jwt.sign(payload, process.env.JWT_SECRET || "jwtSecret", {
       expiresIn: "180d",
     })
+
+    const cookieOptions = {
+      domain: process.env.COOKIE_DOMAIN || ".blackholeinfiverse.com",
+      path: "/",
+      httpOnly: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 180 * 24 * 60 * 60 * 1000,
+    };
+    try {
+      res.cookie("WorkflowToken", token, cookieOptions);
+      res.cookie("x-auth-token", token, cookieOptions);
+    } catch (e) {}
 
     res.json({ token, user: payload })
 
