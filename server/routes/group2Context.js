@@ -32,39 +32,90 @@ router.post('/resolve', async (req, res) => {
             });
         }
 
-        // 2. Draft structured scientific context payload (Awaiting Semantic Mapping from Sakshi/Kaushlendra)
+        // 2. Dynamic Retrieval from Group 1 Canonical Record Source
+        const GROUP1_API = process.env.GROUP1_SERVICE_URL || 'http://163.128.209.18:8013';
+        let canonicalRecord;
+        try {
+            // Request actual canonical record dynamically—no static registries or mock fixtures
+            const g1Response = await axios.get(`${GROUP1_API}/observations/${observationId}`);
+            canonicalRecord = g1Response.data.record || g1Response.data;
+
+            if (!canonicalRecord) {
+                throw new Error("Empty canonical record returned from Group 1");
+            }
+        } catch (fetchError) {
+            console.warn(`[GROUP2-CONTEXT] Failed to fetch Group 1 canonical record for ${observationId}:`, fetchError.message);
+            // FAIL-SAFE ABSTENTION: GAP -> ABSTAIN
+            return res.status(200).json({ // Return 200 as this is a successful governed abstention
+                ok: true,
+                status: "ABSTAIN",
+                reason: "GAP_IN_CANONICAL_RECORD",
+                message: "Verified context is unavailable. Failing closed to ABSTAIN per Group 2 mandate.",
+                provenance: {
+                    observationId,
+                    traceId: `ctx_${Date.now()}`,
+                    contextFound: false
+                }
+            });
+        }
+
+        // 3. Generate Authoritative Context 
         const contextPayload = {
             observationId,
-            location: location || "UNKNOWN",
-            timestamp: timestamp || new Date().toISOString(),
-            sourceContext: "GROUP_2_MOCK_SCIENCE_DATASET",
-            confidence: "NOT VERIFIED", // Marks unsupported items strictly per Ansh's rules
-            parameters: parameters || {}
+            canonicalRecordId: canonicalRecord.id || canonicalRecord.canonicalId || null,
+            location: location || canonicalRecord.location || "UNKNOWN",
+            // STRICT VANA RULE: No generated timestamp replacing source time
+            timestamp: timestamp || canonicalRecord.timestamp || null,
+            sourceContext: canonicalRecord.sourceData || "DYNAMIC_SCIENCE_CONTEXT",
+            confidence: canonicalRecord.verified ? "VERIFIED" : "NOT VERIFIED", // Marks unsupported items strictly per Ansh's rules
+            parameters: { ...(canonicalRecord.parameters || {}), ...(parameters || {}) }
         };
 
-        // 3. Forward to SANSKAR for contextualization
+        // If context isn't verified, missing critical linkage, or MISSING SOURCE TIMESTAMP, we must abstain. No fabricated ALLOW.
+        if (contextPayload.confidence === "NOT VERIFIED" || !contextPayload.canonicalRecordId || !contextPayload.timestamp) {
+            return res.status(200).json({
+                ok: true,
+                status: "ABSTAIN",
+                reason: !contextPayload.timestamp ? "MISSING_SOURCE_TIMESTAMP" : "CONTEXT_NOT_VERIFIED",
+                message: "Authoritative evidence threshold not met (Missing context or source timestamp). Failing closed to ABSTAIN.",
+                provenance: {
+                    observationId,
+                    canonicalRecordId: contextPayload.canonicalRecordId,
+                    traceId: `ctx_${Date.now()}`,
+                    contextFound: true,
+                    decisionMade: false
+                }
+            });
+        }
+
+        // 4. Forward to SANSKAR for contextualization
         try {
-            // Boilerplate hook ready for SANSKAR `/signal` contract 
-            // const sanskarResponse = await axios.post(`${SANSKAR_API}/signal`, contextPayload);
+            // SANSKAR call enabled for connected runtime
+            const sanskarResponse = await axios.post(`${SANSKAR_API}/signal`, contextPayload);
 
             return res.json({
                 ok: true,
-                status: "PARTIAL",
-                message: "Context mapped successfully. SANSKAR engine call mocked (Awaiting full payload definitions).",
+                status: "ALLOW",
+                message: "Dynamic context mapped successfully. SANSKAR engine completed decision.",
                 provenance: {
-                    traceId: `ctx_${Date.now()}`,
-                    sourceCitation: null,
+                    observationId,
+                    canonicalRecordId: contextPayload.canonicalRecordId,
+                    traceId: sanskarResponse.data.traceId || `ctx_${Date.now()}`,
                     group2_capability: "ACTIVE"
                 },
-                payloadSentToSanskar: contextPayload
+                sanskarResult: sanskarResponse.data
             });
 
         } catch (sanskarError) {
-            console.warn("SANSKAR forwarding failed, proceeding with GAP marker.", sanskarError.message);
+            console.error("[GROUP2-INTEGRATION] Downstream SANSKAR Failure:", sanskarError.message);
+            // STRICT VANA RULE: explicit handling of downstream service failure
             return res.status(502).json({
                 ok: false,
-                error: "SANSKAR_UNREACHABLE",
-                message: "SANSKAR engine is not reachable on the network. Is docker-compose active?"
+                status: "ABSTAIN",
+                error: "DOWNSTREAM_SERVICE_FAILURE",
+                reason: "SANSKAR_UNREACHABLE",
+                message: "Group 4 SANSKAR downstream service failed. Failing closed to ABSTAIN.",
+                details: sanskarError.message
             });
         }
 
