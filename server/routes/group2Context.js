@@ -71,19 +71,27 @@ router.post('/resolve', async (req, res) => {
             parameters: { ...(canonicalRecord.parameters || {}), ...(parameters || {}) }
         };
 
+        const generateContextId = () => `ctx_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
         // If context isn't verified, missing critical linkage, or MISSING SOURCE TIMESTAMP, we must abstain. No fabricated ALLOW.
         if (contextPayload.confidence === "NOT VERIFIED" || !contextPayload.canonicalRecordId || !contextPayload.timestamp) {
             return res.status(200).json({
-                ok: true,
-                status: "ABSTAIN",
-                reason: !contextPayload.timestamp ? "MISSING_SOURCE_TIMESTAMP" : "CONTEXT_NOT_VERIFIED",
-                message: "Authoritative evidence threshold not met (Missing context or source timestamp). Failing closed to ABSTAIN.",
+                observation_id: observationId,
+                canonical_record_id: contextPayload.canonicalRecordId || null,
+                context_id: generateContextId(),
+                ruling: "ABSTAIN",
+                action_eligibility: false,
+                abstention_required: true,
+                action_request: "NONE",
+                evidence: {
+                    source: "DYNAMIC_SCIENCE_CONTEXT",
+                    confidence: contextPayload.confidence,
+                    missing_critical_data: !contextPayload.timestamp ? "TIMESTAMP" : "CANONICAL_ID"
+                },
                 provenance: {
-                    observationId,
-                    canonicalRecordId: contextPayload.canonicalRecordId,
-                    traceId: `ctx_${Date.now()}`,
-                    contextFound: true,
-                    decisionMade: false
+                    group2_decision_time: new Date().toISOString(),
+                    reason: !contextPayload.timestamp ? "MISSING_SOURCE_TIMESTAMP" : "CONTEXT_NOT_VERIFIED",
+                    message: "Authoritative evidence threshold not met (Missing context or source timestamp). Failing closed to ABSTAIN."
                 }
             });
         }
@@ -93,29 +101,47 @@ router.post('/resolve', async (req, res) => {
             // SANSKAR call enabled for connected runtime
             const sanskarResponse = await axios.post(`${SANSKAR_API}/signal`, contextPayload);
 
-            return res.json({
-                ok: true,
-                status: "ALLOW",
-                message: "Dynamic context mapped successfully. SANSKAR engine completed decision.",
-                provenance: {
-                    observationId,
-                    canonicalRecordId: contextPayload.canonicalRecordId,
-                    traceId: sanskarResponse.data.traceId || `ctx_${Date.now()}`,
-                    group2_capability: "ACTIVE"
+            return res.status(200).json({
+                observation_id: observationId,
+                canonical_record_id: contextPayload.canonicalRecordId,
+                context_id: generateContextId(), // Using generic context ID for provenance
+                ruling: "ALLOW",
+                action_eligibility: true,
+                abstention_required: false,
+                action_request: "PROCEED_TO_SANSKAR",
+                evidence: {
+                    source: contextPayload.sourceContext,
+                    confidence: contextPayload.confidence,
+                    location: contextPayload.location,
+                    timestamp: contextPayload.timestamp
                 },
-                sanskarResult: sanskarResponse.data
+                provenance: {
+                    group2_decision_time: new Date().toISOString(),
+                    message: "Dynamic context mapped successfully. SANSKAR engine completed decision.",
+                    downstream_sanskar_trace: sanskarResponse.data.traceId || "untraced",
+                    group2_capability: "ACTIVE"
+                }
             });
 
         } catch (sanskarError) {
             console.error("[GROUP2-INTEGRATION] Downstream SANSKAR Failure:", sanskarError.message);
             // STRICT VANA RULE: explicit handling of downstream service failure
             return res.status(502).json({
-                ok: false,
-                status: "ABSTAIN",
-                error: "DOWNSTREAM_SERVICE_FAILURE",
-                reason: "SANSKAR_UNREACHABLE",
-                message: "Group 4 SANSKAR downstream service failed. Failing closed to ABSTAIN.",
-                details: sanskarError.message
+                observation_id: observationId,
+                canonical_record_id: contextPayload.canonicalRecordId,
+                context_id: generateContextId(),
+                ruling: "ABSTAIN",
+                action_eligibility: false,
+                abstention_required: true,
+                action_request: "NONE",
+                evidence: null,
+                provenance: {
+                    group2_decision_time: new Date().toISOString(),
+                    error: "DOWNSTREAM_SERVICE_FAILURE",
+                    reason: "SANSKAR_UNREACHABLE",
+                    message: "Group 4 SANSKAR downstream service failed. Failing closed to ABSTAIN.",
+                    details: sanskarError.message
+                }
             });
         }
 
