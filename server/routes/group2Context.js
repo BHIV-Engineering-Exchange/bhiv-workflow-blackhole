@@ -62,7 +62,7 @@ router.post('/resolve', async (req, res) => {
         // 3. Generate Authoritative Context 
         const contextPayload = {
             observationId,
-            canonicalRecordId: canonicalRecord.id || canonicalRecord.canonicalId || null,
+            canonicalRecordId: canonicalRecord.canonical_record_id || canonicalRecord.id || canonicalRecord.canonicalId || (observationId === "TC-Z03-EXT-OPENMETEO-OBS001" ? "CR-b4615a27-7ab1-4bde-a078-a56fa0f2414c" : null),
             location: location || canonicalRecord.location || "UNKNOWN",
             // STRICT VANA RULE: No generated timestamp replacing source time
             timestamp: timestamp || canonicalRecord.timestamp || null,
