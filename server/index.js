@@ -346,6 +346,20 @@ app.use((req, res, next) => {
   next();
 });
 
+// Middleware to allow iframe embedding inside SETU Dashboard & Production Domains
+app.use((req, res, next) => {
+  const allowedAncestors = [
+    "'self'",
+    "https://setu.blackholeinfiverse.com",
+    "https://ai-crm-sigma-five.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000"
+  ];
+  res.setHeader('Content-Security-Policy', `frame-ancestors ${allowedAncestors.join(' ')}`);
+  res.removeHeader('X-Frame-Options');
+  next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
