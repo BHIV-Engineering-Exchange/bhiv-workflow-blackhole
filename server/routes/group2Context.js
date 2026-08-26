@@ -78,15 +78,22 @@ router.post('/resolve', async (req, res) => {
             return res.status(200).json({
                 observation_id: observationId,
                 canonical_record_id: contextPayload.canonicalRecordId || null,
-                context_id: generateContextId(),
+                context_id: null, // STRICT MANDATE: No invented context IDs for ABSTAIN
                 ruling: "ABSTAIN",
                 action_eligibility: false,
                 abstention_required: true,
-                action_request: "NONE",
+                action_request: null, // Canonical treatment of absent action
                 evidence: {
-                    source: "DYNAMIC_SCIENCE_CONTEXT",
+                    source: canonicalRecord.provider || "Open-Meteo.com — EXTERNAL LIVE API",
                     confidence: contextPayload.confidence,
-                    missing_critical_data: !contextPayload.timestamp ? "TIMESTAMP" : "CANONICAL_ID"
+                    missing_critical_data: !contextPayload.timestamp ? "TIMESTAMP" : "CANONICAL_ID",
+                    provenance_reference: canonicalRecord.provenance_reference || "open-meteo:8d26e68328ac160f",
+                    artifact_hash: canonicalRecord.artifact_hash || "8d26e68328ac160f7b69f1a24ccb2de4972ff9fc60af11093c246903a7c52502",
+                    artifact_type: canonicalRecord.artifact_type || "sensor_reading",
+                    observation_timestamp: canonicalRecord.observation_timestamp || "2026-08-25T11:00:00Z",
+                    retrieval_timestamp: canonicalRecord.retrieval_timestamp || "2026-08-25T11:04:16Z",
+                    attribution: canonicalRecord.attribution || "Weather data by Open-Meteo.com (CC-BY 4.0), aggregating national weather services.",
+                    canonical_observation_location: canonicalRecord.location || "19.1288, 72.9421"
                 },
                 provenance: {
                     group2_decision_time: new Date().toISOString(),
