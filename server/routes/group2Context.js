@@ -75,6 +75,11 @@ router.post('/resolve', async (req, res) => {
 
         // If context isn't verified, missing critical linkage, or MISSING SOURCE TIMESTAMP, we must abstain. No fabricated ALLOW.
         if (contextPayload.confidence === "NOT VERIFIED" || !contextPayload.canonicalRecordId || !contextPayload.timestamp) {
+
+            let missingDataStr = !contextPayload.timestamp ? "TIMESTAMP" : (!contextPayload.canonicalRecordId ? "CANONICAL_ID" : "NONE_BUT_UNVERIFIED");
+            let reasonStr = !contextPayload.timestamp ? "MISSING_SOURCE_TIMESTAMP" : (!contextPayload.canonicalRecordId ? "MISSING_CANONICAL_ID" : "CONTEXT_NOT_VERIFIED");
+            let msgStr = "Authoritative evidence threshold not met (" + (!contextPayload.timestamp ? "Missing source timestamp" : (!contextPayload.canonicalRecordId ? "Missing canonical ID" : "Context not verified")) + "). Failing closed to ABSTAIN.";
+
             return res.status(200).json({
                 observation_id: observationId,
                 canonical_record_id: contextPayload.canonicalRecordId || null,
@@ -86,7 +91,7 @@ router.post('/resolve', async (req, res) => {
                 evidence: {
                     source: canonicalRecord.provider || "Open-Meteo.com — EXTERNAL LIVE API",
                     confidence: contextPayload.confidence,
-                    missing_critical_data: !contextPayload.timestamp ? "TIMESTAMP" : "CANONICAL_ID",
+                    missing_critical_data: missingDataStr,
                     provenance_reference: canonicalRecord.provenance_reference || "open-meteo:8d26e68328ac160f",
                     artifact_hash: canonicalRecord.artifact_hash || "8d26e68328ac160f7b69f1a24ccb2de4972ff9fc60af11093c246903a7c52502",
                     artifact_type: canonicalRecord.artifact_type || "sensor_reading",
@@ -97,8 +102,8 @@ router.post('/resolve', async (req, res) => {
                 },
                 provenance: {
                     group2_decision_time: new Date().toISOString(),
-                    reason: !contextPayload.timestamp ? "MISSING_SOURCE_TIMESTAMP" : "CONTEXT_NOT_VERIFIED",
-                    message: "Authoritative evidence threshold not met (Missing context or source timestamp). Failing closed to ABSTAIN."
+                    reason: reasonStr,
+                    message: msgStr
                 }
             });
         }
