@@ -75,6 +75,8 @@ router.post('/resolve', async (req, res) => {
 
         const generateContextId = () => `ctx_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
+        let finalRuling;
+
         // If context isn't verified, missing critical linkage, or MISSING SOURCE TIMESTAMP, we must abstain. No fabricated ALLOW.
         if (contextPayload.confidence === "NOT VERIFIED" || !contextPayload.canonicalRecordId || !contextPayload.timestamp) {
 
@@ -82,7 +84,7 @@ router.post('/resolve', async (req, res) => {
             let reasonStr = !contextPayload.timestamp ? "MISSING_SOURCE_TIMESTAMP" : (!contextPayload.canonicalRecordId ? "MISSING_CANONICAL_ID" : "CONTEXT_NOT_VERIFIED");
             let msgStr = "Authoritative evidence threshold not met (" + (!contextPayload.timestamp ? "Missing source timestamp" : (!contextPayload.canonicalRecordId ? "Missing canonical ID" : "Context not verified")) + "). Failing closed to ABSTAIN.";
 
-            return res.status(200).json({
+            finalRuling = {
                 observation_id: observationId,
                 canonical_record_id: contextPayload.canonicalRecordId || null,
                 context_id: null, // STRICT MANDATE: No invented context IDs for ABSTAIN
@@ -107,18 +109,13 @@ router.post('/resolve', async (req, res) => {
                     reason: reasonStr,
                     message: msgStr
                 }
-            });
-        }
-
-        // 4. Forward to SANSKAR for contextualization
-        try {
-            // SANSKAR call enabled for connected runtime
-            const sanskarResponse = await axios.post(`${SANSKAR_API}/signal`, contextPayload);
-
-            return res.status(200).json({
+            };
+        } else {
+            // VERIFIED OUTCOME
+            finalRuling = {
                 observation_id: observationId,
                 canonical_record_id: contextPayload.canonicalRecordId,
-                context_id: generateContextId(), // Using generic context ID for provenance
+                context_id: generateContextId(),
                 ruling: "ALLOW",
                 action_eligibility: true,
                 abstention_required: false,
@@ -131,33 +128,44 @@ router.post('/resolve', async (req, res) => {
                 },
                 provenance: {
                     group2_decision_time: new Date().toISOString(),
-                    message: "Dynamic context mapped successfully. SANSKAR engine completed decision.",
-                    downstream_sanskar_trace: sanskarResponse.data.traceId || "untraced",
+                    message: "Dynamic context mapped successfully.",
                     group2_capability: "ACTIVE"
                 }
-            });
-
-        } catch (sanskarError) {
-            console.error("[GROUP2-INTEGRATION] Downstream SANSKAR Failure:", sanskarError.message);
-            // STRICT VANA RULE: explicit handling of downstream service failure
-            return res.status(502).json({
-                observation_id: observationId,
-                canonical_record_id: contextPayload.canonicalRecordId,
-                context_id: generateContextId(),
-                ruling: "ABSTAIN",
-                action_eligibility: false,
-                abstention_required: true,
-                action_request: "NONE",
-                evidence: null,
-                provenance: {
-                    group2_decision_time: new Date().toISOString(),
-                    error: "DOWNSTREAM_SERVICE_FAILURE",
-                    reason: "SANSKAR_UNREACHABLE",
-                    message: "Group 4 SANSKAR downstream service failed. Failing closed to ABSTAIN.",
-                    details: sanskarError.message
-                }
-            });
+            };
         }
+
+        // AUTO-DISPATCH EXACT FINAL ARTIFACT UNIVERSALLY TO SANSKAR /vana/execute
+        try {
+            const sanskarRes = await axios.post(`${SANSKAR_API}/vana/execute`, finalRuling);
+            if (finalRuling.ruling === "ALLOW") {
+                finalRuling.provenance.downstream_sanskar_trace = sanskarRes.data.traceId || "untraced";
+            }
+        } catch (err) {
+            console.error("[GROUP2-INTEGRATION] Auto-dispatch to SANSKAR failed:", err.message);
+            // If it failed to auto-dispatch an ALLOW payload, we MUST demote it to a 502 ABSTAIN per Ansh's mandate!
+            if (finalRuling.ruling === "ALLOW") {
+                finalRuling = {
+                    observation_id: observationId,
+                    canonical_record_id: contextPayload.canonicalRecordId,
+                    context_id: finalRuling.context_id,
+                    ruling: "ABSTAIN",
+                    action_eligibility: false,
+                    abstention_required: true,
+                    action_request: "NONE",
+                    evidence: null,
+                    provenance: {
+                        group2_decision_time: new Date().toISOString(),
+                        error: "DOWNSTREAM_SERVICE_FAILURE",
+                        reason: "SANSKAR_UNREACHABLE",
+                        message: "Group 4 SANSKAR downstream service failed during auto-dispatch. Failing closed to ABSTAIN.",
+                        details: err.message
+                    }
+                };
+            }
+            return res.status(502).json(finalRuling);
+        }
+
+        return res.status(200).json(finalRuling);
 
     } catch (error) {
         console.error("[GROUP2-INTEGRATION] Failure:", error);
