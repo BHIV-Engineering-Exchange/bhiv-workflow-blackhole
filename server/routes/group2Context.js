@@ -11,7 +11,7 @@ const router = express.Router();
 const axios = require('axios'); // Requires axios for SANSKAR forwarding
 
 // SANSKAR Endpoint configuration
-const SANSKAR_API = process.env.SANSKAR_SERVICE_URL || 'http://localhost:8001';
+const SANSKAR_API = process.env.SANSKAR_SERVICE_URL || 'http://163.128.209.18:8010';
 
 /**
  * POST /api/group2/context/resolve
@@ -21,7 +21,9 @@ const SANSKAR_API = process.env.SANSKAR_SERVICE_URL || 'http://localhost:8001';
  */
 router.post('/resolve', async (req, res) => {
     try {
-        const { observationId, location, timestamp, parameters } = req.body;
+        // STRICT VANA RULE: We must explicitly pull the exact canonical field required.
+        const observationId = req.body.observationId || req.body.observation_id;
+        const { location, timestamp, parameters } = req.body;
 
         // 1. Validation check (Dependencies on Group 1 Format)
         if (!observationId) {

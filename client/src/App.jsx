@@ -35,6 +35,7 @@ import AttendanceDataManagement from "./components/admin/AttendanceDataManagemen
 import AdminAimsView from "./components/admin/AdminAimsView";
 import UserManagement from "./pages/UserManagement";
 import LeaveRequest from "./pages/LeaveRequest";
+import KnowledgeAdmin from "./pages/admin/KnowledgeAdmin";
 import axios from "axios";
 import { API_URL } from "./lib/api";
 import { ToastContainer } from "react-toastify";
@@ -158,313 +159,321 @@ function AppContent() {
             markReviewsAsSeen={markReviewsAsSeen}
           >
             <Routes>
-                    {/* Public Routes */}
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/register" element={<Register />} />
-                    <Route path="/forgot-password" element={<ForgotPassword />} />
-                    <Route path="/reset-password/:token" element={<ResetPassword />} />
-                    <Route path="/auth/callback" element={<AuthCallback />} />
+              {/* Public Routes */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password/:token" element={<ResetPassword />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
 
-                    {/* Protected Routes */}
-                    <Route
-                      path="/"
-                      element={
-                        isAdmin ? (
-                          <Navigate to="/dashboard" replace />
-                        ) : isProcurementAgent ? (
-                          <Navigate to="/procurement-dashboard" replace />
-                        ) : isTester ? (
-                          <Navigate to="/tester-dashboard" replace />
-                        ) : (
-                          <ProtectedRoute>
-                            <Navigate to="/userdashboard" replace />
-                          </ProtectedRoute>
-                        )
-                      }
-                    />
+              {/* Protected Routes */}
+              <Route
+                path="/"
+                element={
+                  isAdmin ? (
+                    <Navigate to="/dashboard" replace />
+                  ) : isProcurementAgent ? (
+                    <Navigate to="/procurement-dashboard" replace />
+                  ) : isTester ? (
+                    <Navigate to="/tester-dashboard" replace />
+                  ) : (
+                    <ProtectedRoute>
+                      <Navigate to="/userdashboard" replace />
+                    </ProtectedRoute>
+                  )
+                }
+              />
 
-                    <Route
-                      path="/"
-                      element={
-                        <ProtectedRoute>
-                          <DashboardLayout />
-                        </ProtectedRoute>
-                      }
-                    >
-                      <Route
-                        path="/all-aims"
-                        element={
-                          <ProtectedRoute>
-                            <AllAims />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/aims"
-                        element={
-                          <ProtectedRoute>
-                            <TodaysAim />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/progress"
-                        element={
-                          <ProtectedRoute>
-                            <Progress />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/dashboard"
-                        element={
-                          <ProtectedRoute>
-                            <Dashboard />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/admindashboard"
-                        element={
-                          <ProtectedRoute>
-                            <AdminDashboard />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/userdashboard"
-                        element={
-                          <ProtectedRoute>
-                            <UserDashboard />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/my-tasks"
-                        element={
-                          <ProtectedRoute>
-                            <MyTasks />
-                          </ProtectedRoute>
-                        }
-                      />
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <DashboardLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route
+                  path="/all-aims"
+                  element={
+                    <ProtectedRoute>
+                      <AllAims />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/aims"
+                  element={
+                    <ProtectedRoute>
+                      <TodaysAim />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/progress"
+                  element={
+                    <ProtectedRoute>
+                      <Progress />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admindashboard"
+                  element={
+                    <ProtectedRoute>
+                      <AdminDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/userdashboard"
+                  element={
+                    <ProtectedRoute>
+                      <UserDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/my-tasks"
+                  element={
+                    <ProtectedRoute>
+                      <MyTasks />
+                    </ProtectedRoute>
+                  }
+                />
 
-                      <Route
-                        path="/tester-dashboard"
-                        element={
-                          <ProtectedRoute>
-                            <TesterDashboard />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/tester-tasks"
-                        element={
-                          <ProtectedRoute>
-                            <TesterTasks />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/tester-evaluation"
-                        element={
-                          <ProtectedRoute>
-                            <TesterEvaluation />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/tester-alerts"
-                        element={
-                          <ProtectedRoute>
-                            <TesterAlerts />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/tested-tasks"
-                        element={
-                          <ProtectedRoute>
-                            <TestedTasks />
-                          </ProtectedRoute>
-                        }
-                      />
+                <Route
+                  path="/tester-dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <TesterDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/tester-tasks"
+                  element={
+                    <ProtectedRoute>
+                      <TesterTasks />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/tester-evaluation"
+                  element={
+                    <ProtectedRoute>
+                      <TesterEvaluation />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/tester-alerts"
+                  element={
+                    <ProtectedRoute>
+                      <TesterAlerts />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/tested-tasks"
+                  element={
+                    <ProtectedRoute>
+                      <TestedTasks />
+                    </ProtectedRoute>
+                  }
+                />
 
-                      <Route
-                        path="/tasks"
-                        element={
-                          <ProtectedRoute>
-                            <Tasks />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/tasks/:id"
-                        element={
-                          <ProtectedRoute>
-                            <TaskDetails />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/dependencies"
-                        element={
-                          <ProtectedRoute>
-                            <Dependencies />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/departments"
-                        element={
-                          <ProtectedRoute>
-                            <Departments />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/optimization"
-                        element={
-                          <ProtectedRoute>
-                            <Optimization />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/settings"
-                        element={<Settings />}
-                      />
-                      <Route
-                        path="/completedtask"
-                        element={
-                          <ProtectedRoute>
-                            <CompletedTasks />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/leaderboard"
-                        element={
-                          <ProtectedRoute>
-                            <Leaderboard />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/monitoring"
-                        element={
-                          <ProtectedRoute>
-                            <EmployeeMonitoring />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/admin-aims"
-                        element={
-                          <ProtectedRoute>
-                            <AdminAimsView />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/user-management"
-                        element={
-                          <ProtectedRoute>
-                            <UserManagement />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/ems-dashboard"
-                        element={
-                          <ProtectedRoute>
-                            <EMSDashboard />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/procurement-dashboard"
-                        element={
-                          <ProtectedRoute>
-                            <ProcurementDashboard />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/attendance-dashboard"
-                        element={
-                          <ProtectedRoute>
-                            <AttendanceDashboard />
-                          </ProtectedRoute>
-                        }
-                      />
+                <Route
+                  path="/tasks"
+                  element={
+                    <ProtectedRoute>
+                      <Tasks />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/tasks/:id"
+                  element={
+                    <ProtectedRoute>
+                      <TaskDetails />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/dependencies"
+                  element={
+                    <ProtectedRoute>
+                      <Dependencies />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/departments"
+                  element={
+                    <ProtectedRoute>
+                      <Departments />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/optimization"
+                  element={
+                    <ProtectedRoute>
+                      <Optimization />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={<Settings />}
+                />
+                <Route
+                  path="/completedtask"
+                  element={
+                    <ProtectedRoute>
+                      <CompletedTasks />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/leaderboard"
+                  element={
+                    <ProtectedRoute>
+                      <Leaderboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/monitoring"
+                  element={
+                    <ProtectedRoute>
+                      <EmployeeMonitoring />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin-aims"
+                  element={
+                    <ProtectedRoute>
+                      <AdminAimsView />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/user-management"
+                  element={
+                    <ProtectedRoute>
+                      <UserManagement />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/knowledge-admin"
+                  element={
+                    <ProtectedRoute>
+                      <KnowledgeAdmin />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/ems-dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <EMSDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/procurement-dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <ProcurementDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/attendance-dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <AttendanceDashboard />
+                    </ProtectedRoute>
+                  }
+                />
 
-                      <Route
-                        path="/leave-request"
-                        element={
-                          <ProtectedRoute>
-                            <LeaveRequest />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/biometric-salary-management"
-                        element={
-                          <ProtectedRoute>
-                            <BiometricAttendanceDashboard />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/enhanced-salary-dashboard"
-                        element={
-                          <ProtectedRoute>
-                            <EnhancedSalaryDashboard />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/biometric-attendance-dashboard"
-                        element={
-                          <ProtectedRoute>
-                            <BiometricAttendanceDashboard />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/new-salary-management/:userId?"
-                        element={
-                          <ProtectedRoute>
-                            <NewSalaryManagement />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/branch-management"
-                        element={
-                          <ProtectedRoute>
-                            <BranchManagement />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/projects"
-                        element={
-                          <ProtectedRoute>
-                            <ProjectManagement />
-                          </ProtectedRoute>
-                        }
-                      />
-                      <Route
-                        path="/projects/:id"
-                        element={
-                          <ProtectedRoute>
-                            <ProjectDetails />
-                          </ProtectedRoute>
-                        }
-                      />
-                    </Route>
-                  </Routes>
-                  <Toaster />
+                <Route
+                  path="/leave-request"
+                  element={
+                    <ProtectedRoute>
+                      <LeaveRequest />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/biometric-salary-management"
+                  element={
+                    <ProtectedRoute>
+                      <BiometricAttendanceDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/enhanced-salary-dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <EnhancedSalaryDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/biometric-attendance-dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <BiometricAttendanceDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/new-salary-management/:userId?"
+                  element={
+                    <ProtectedRoute>
+                      <NewSalaryManagement />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/branch-management"
+                  element={
+                    <ProtectedRoute>
+                      <BranchManagement />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/projects"
+                  element={
+                    <ProtectedRoute>
+                      <ProjectManagement />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/projects/:id"
+                  element={
+                    <ProtectedRoute>
+                      <ProjectDetails />
+                    </ProtectedRoute>
+                  }
+                />
+              </Route>
+            </Routes>
+            <Toaster />
           </DashboardProvider>
         </SidebarProvider>
       </SocketProvider>

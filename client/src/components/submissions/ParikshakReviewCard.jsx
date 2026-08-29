@@ -25,12 +25,12 @@ const ParikshakReviewCard = ({ submission }) => {
 
   if (!details || (!details.doneWell && details.score === undefined && !details.result)) return null;
 
-  const resultColor = 
-    details.result === 'PASS' 
-      ? 'bg-emerald-500/15 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800' 
-      : details.result === 'PARTIAL' 
-      ? 'bg-amber-500/15 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800' 
-      : 'bg-rose-500/15 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800';
+  const resultColor =
+    details.result === 'PASS'
+      ? 'bg-emerald-500/15 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+      : details.result === 'PARTIAL'
+        ? 'bg-amber-500/15 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+        : 'bg-rose-500/15 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800';
 
   return (
     <div className="mt-3 rounded-xl border border-indigo-200/80 dark:border-indigo-900/50 bg-gradient-to-b from-indigo-50/70 to-slate-50/70 dark:from-indigo-950/30 dark:to-slate-900/40 shadow-sm overflow-hidden transition-all">
@@ -60,18 +60,9 @@ const ParikshakReviewCard = ({ submission }) => {
               {formatDateTime(submission.updatedAt)}
             </span>
           )}
-          <button
-            onClick={() => setShowDebug(!showDebug)}
-            className="flex items-center gap-0.5 text-[10px] font-semibold text-indigo-700 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-100 bg-indigo-100/70 dark:bg-indigo-900/60 px-1.5 py-0.5 rounded transition-all"
-            title="Toggle Debug Info"
-          >
-            <Code className="h-3 w-3" />
-            <span>{showDebug ? 'Hide Logs' : 'Debug'}</span>
-            {showDebug ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
-          </button>
         </div>
       </div>
-      
+
       {/* Content - Single column for full card width readability */}
       <div className="p-2.5 space-y-2">
         {/* What was done well */}
@@ -126,25 +117,7 @@ const ParikshakReviewCard = ({ submission }) => {
           </div>
         )}
 
-        {/* Debug Console Panel */}
-        {showDebug && (
-          <div className="mt-2 rounded-lg bg-slate-950 p-2.5 text-slate-200 text-[11px] font-mono border border-slate-800 overflow-x-auto space-y-1">
-            <div className="flex justify-between items-center text-slate-400 text-[10px] border-b border-slate-800 pb-1 mb-1 font-sans">
-              <span className="font-bold text-indigo-400">Frontend Debug Console</span>
-              <span>Submission: {submission?._id}</span>
-            </div>
-            <div><span className="text-slate-400">Status:</span> <span className="text-amber-400">{submission?.status}</span></div>
-            <div><span className="text-slate-400">Score:</span> <span className="text-emerald-400">{details?.score ?? 'N/A'}/100</span></div>
-            <div><span className="text-slate-400">Verdict Result:</span> <span className="text-sky-400">{details?.result ?? 'N/A'}</span></div>
-            <div><span className="text-slate-400">GitHub Link:</span> <span className="text-violet-400">{submission?.githubLink || 'None'}</span></div>
-            <div className="pt-1">
-              <span className="text-slate-400 block mb-0.5">Raw AI Review Payload:</span>
-              <pre className="text-[10px] text-emerald-300 bg-slate-900 p-1.5 rounded border border-slate-800 overflow-x-auto whitespace-pre-wrap leading-snug">
-                {JSON.stringify(submission?.aiReviewDetails || submission?.parikshakReview || {}, null, 2)}
-              </pre>
-            </div>
-          </div>
-        )}
+
       </div>
     </div>
   );

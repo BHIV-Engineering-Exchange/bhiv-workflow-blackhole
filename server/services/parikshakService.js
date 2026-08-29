@@ -13,7 +13,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const invokeParikshak = async (submissionId, traceId, io) => {
     try {
         console.log(`[PARIKSHAK] Starting review for submission ${submissionId}, trace_id: ${traceId}`);
-        
+
         // 1. Fetch data
         const submission = await TaskSubmission.findById(submissionId).populate('task').populate('user');
         if (!submission || !submission.task || !submission.user) {
@@ -37,7 +37,16 @@ const invokeParikshak = async (submissionId, traceId, io) => {
             task_description: combinedDescription,
             submitted_by: user.name || user._id.toString(),
             submission: submission.notes || '',
+
+            task_id: task._id ? task._id.toString() : '',
+            user_id: user._id ? user._id.toString() : '',
+            product_id: task.branch || 'default_tenant',
             repo_url: submission.githubLink || '',
+            commit_reference: submission.githubLink || '',
+            submission_evidence: submission.documentLink || '',
+            review_packet_ref: submission.notes && submission.notes.includes('REVIEW_PACKET') ? 'attached' : 'none',
+            code_packet_ref: submission.notes && submission.notes.includes('CODE_PACKET') ? 'attached' : 'none',
+
             github_repo_link: submission.githubLink || '',
             current_task_id: (task.task_id && task.task_id.startsWith("T-")) ? task.task_id : "T-GOV-001",
             previous_task_id: (task.task_id && task.task_id.startsWith("T-")) ? task.task_id : "T-GOV-001",
@@ -52,7 +61,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
         let response = null;
         let attempt = 0;
         const delays = [5000, 15000, 30000]; // 5s, 15s, 30s
-        
+
         while (attempt <= 3) {
             try {
                 const config = {
@@ -63,12 +72,12 @@ const invokeParikshak = async (submissionId, traceId, io) => {
                 if (PARIKSHAK_TOKEN) {
                     config.headers['Authorization'] = `Bearer ${PARIKSHAK_TOKEN}`;
                 }
-                
+
                 const startTime = Date.now();
                 const res = await axios.post(targetUrl, payload, config);
                 const runtimeMs = Date.now() - startTime;
                 console.log(`[PARIKSHAK] API Call completed with status ${res.status} in ${runtimeMs}ms`);
-                
+
                 response = res.data;
                 break; // Success, exit retry loop
             } catch (err) {
@@ -97,7 +106,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
 
         // 5. Process Review Response
         console.log(`[PARIKSHAK_PROD_LOG] 📊 Processing evaluation response: Status=${response.status || response.result}, Score=${response.score}`);
-        
+
         const responseStatus = String(response.status || response.result || "").toUpperCase();
         const scoreVal = (response.score !== undefined && response.score !== null)
             ? response.score
@@ -134,7 +143,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
         let missingWork = "Review the feedback for details.";
         let recommendations = "Please check the AI review guidelines.";
         let readiness = (responseStatus === "PASS" || responseStatus === "APPROVED") ? "Production Ready" : "Requires Revisions";
-        
+
         if (response.review_details) {
             doneWell = response.review_details.done_well || doneWell;
             missingWork = response.review_details.missing_work || missingWork;
@@ -188,7 +197,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
             if (finalStatus === "Approved") {
                 execContext = await emitTaskCompletedEvent(submission, traceId, task.branch);
                 console.log(`[TRACE_EMITTED] Task completed (Automated) - trace_id=${execContext?.traceId}`);
-                
+
                 // Phase 2: KARMA Runtime Integration
                 try {
                     const karmaClient = require('./karmaClient');
@@ -197,7 +206,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
                 } catch (karmaErr) {
                     console.warn(`[KARMA] Failed to emit signalTaskCompleted:`, karmaErr.message);
                 }
-                
+
                 if (task.status !== "Completed") {
                     task.status = "Completed";
                     task.progress = 100;
@@ -206,7 +215,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
 
                 // Phase 3: Next Task Runtime
                 console.log(`[PARIKSHAK] Phase 3: Creating next task for assignee ${task.assignee}`);
-                
+
                 let nextTaskTitle = "";
                 let nextTaskDescription = "";
 
@@ -229,46 +238,57 @@ const invokeParikshak = async (submissionId, traceId, io) => {
                 if (!nextTaskDescription) {
                     nextTaskDescription = `Next production phase following successful evaluation of '${task.title}'.\n\nAutomated AI Review Summary:\n${doneWell}\n\nRecommended Guidelines:\n${recommendations}`;
                 }
-                
-                const newTask = new Task({
+
+                // Prevent duplicate assignment on retries
+                const existingTask = await Task.findOne({
                     title: nextTaskTitle,
-                    description: nextTaskDescription,
-                    status: "Pending",
-                    priority: task.priority || "Medium",
-                    department: task.department,
-                    assignee: task.assignee, // Assign same candidate
-                    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Default 7 days
-                    dependencies: task.dependencies, // Preserve dependencies
-                    branch: task.branch, // Preserve product/tenant
-                    progress: 0,
+                    assignee: task.assignee,
+                    status: "Pending" // Already in queue
                 });
-                
-                await newTask.save();
-                console.log(`[PHASE 3] Created new assigned task: ${newTask._id} with canonical task packet`);
 
-                // Emit task assigned event for the new task
-                const { emitTaskAssignedEvent } = require('./taskExecutionBridge');
-                await emitTaskAssignedEvent(newTask, traceId, newTask.branch);
+                if (existingTask) {
+                    console.log(`[PHASE 3] Next task "${nextTaskTitle}" already exists for assignee. Skipping duplicate creation.`);
+                } else {
+                    const newTask = new Task({
+                        title: nextTaskTitle,
+                        description: nextTaskDescription,
+                        status: "Pending",
+                        priority: task.priority || "Medium",
+                        department: task.department,
+                        assignee: task.assignee, // Assign same candidate
+                        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Default 7 days
+                        dependencies: task.dependencies, // Preserve dependencies
+                        branch: task.branch, // Preserve product/tenant
+                        progress: 0,
+                    });
 
-                // Notify candidate about new task
-                await Notification.create({
-                    recipient: newTask.assignee,
-                    type: "task_assigned",
-                    title: `New Automatically Assigned Task`,
-                    message: `A follow-up task "${newTask.title}" has been automatically assigned to you.`,
-                    task: newTask._id
-                });
+                    await newTask.save();
+                    console.log(`[PHASE 3] Created new assigned task: ${newTask._id} with canonical task packet`);
+
+                    // Emit task assigned event for the new task
+                    const { emitTaskAssignedEvent } = require('./taskExecutionBridge');
+                    await emitTaskAssignedEvent(newTask, traceId, newTask.branch);
+
+                    // Notify candidate about new task
+                    await Notification.create({
+                        recipient: newTask.assignee,
+                        type: "task_assigned",
+                        title: `New Automatically Assigned Task`,
+                        message: `A follow-up task "${newTask.title}" has been automatically assigned to you.`,
+                        task: newTask._id
+                    });
+                }
                 // End Phase 3
 
             } else {
                 execContext = await emitTaskFailedEvent(
-                    submission, 
-                    finalFeedback || "submission_rejected_by_ai", 
-                    traceId, 
+                    submission,
+                    finalFeedback || "submission_rejected_by_ai",
+                    traceId,
                     task.branch
                 );
                 console.log(`[TRACE_EMITTED] Task failed (Automated) - trace_id=${execContext?.traceId}`);
-                
+
                 // If the task was previously "Completed", we might want to move it back to "In Progress" since the automated review failed it.
                 if (task.status === "Completed") {
                     task.status = "In Progress";
@@ -299,7 +319,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
             message: `Your submission for task '${task.title}' ${statusMessage}`,
             task: task._id
         });
-        
+
         console.log(`[PARIKSHAK] Finished automated review workflow for submission ${submissionId}`);
 
     } catch (error) {
@@ -317,11 +337,11 @@ const triggerReview = async ({
 } = {}) => {
     try {
         if (!submission || !task) return;
-        
+
         const subId = typeof submission === 'string' ? submission : (submission._id || "sub-default");
         const taskId = typeof task === 'string' ? task : (task._id || "task-default");
         const userId = typeof submission === 'object' ? (submission.user || "user-001") : "user-001";
-        
+
         const combinedDescription = [
             task.description ? `Task Overview:\n${task.description}` : '',
             submission.notes ? `Candidate Deliverables & Implementation Notes:\n${submission.notes}` : ''
@@ -349,7 +369,7 @@ const triggerReview = async ({
         if (PARIKSHAK_TOKEN) {
             config.headers['Authorization'] = `Bearer ${PARIKSHAK_TOKEN}`;
         }
-        
+
         const targetUrl = PARIKSHAK_URL.endsWith("/parikshak/review")
             ? PARIKSHAK_URL
             : `${PARIKSHAK_URL.replace(/\/$/, "")}/parikshak/review`;

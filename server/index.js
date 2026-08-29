@@ -197,6 +197,7 @@ const tantraExecutionRoutes = require('./routes/tantraExecution'); // Determinis
 const taskIngestionRoutes = require('./routes/taskIngestion'); // Automated engineering task ingestion pipeline
 const setuConvergenceRoutes = require('./routes/setuConvergence'); // SETU EOS Constitutional Convergence Core
 const group2ContextRoutes = require('./routes/group2Context'); // Group 2 Science Context & SANSKAR layer
+const knowledgeAdminRoutes = require('./routes/knowledgeAdmin'); // Knowledge Administration routes
 const { startAttendancePersistenceCron, syncExistingAttendance } = require('./services/attendanceCronJobs'); // Attendance persistence cron
 // Middleware imports
 const auth = require('./middleware/auth');
@@ -222,12 +223,13 @@ const buildOriginAllowlist = () => {
     "blackhole-workflow.vercel.app",
     "niyantrankendra.blackholeinfiverse.com",
   ]);
-  const httpHostsWithPort = new Set(["localhost:5173", "localhost"]);
+  const httpHostsWithPort = new Set(["localhost:5173", "localhost", "localhost:8000"]);
   const socketOrigins = [
     "https://niyantran.blackholeinfiverse.com",
     "https://blackhole-workflow.vercel.app",
-    "https://niyantrankendra.blackholeinfiverse.com",
+    "niyantrankendra.blackholeinfiverse.com",
     "http://localhost:5173",
+    "http://localhost:8000",
   ];
 
   const envOrigins = [process.env.CORS_ORIGIN, process.env.FRONTEND_URL]
@@ -602,6 +604,7 @@ app.use('/api/integration', require('./routes/integrationHealth')); // TANTRA ec
 app.use('/api/tasks/ingest', taskIngestionRoutes); // Automated engineering task ingestion pipeline
 app.use('/api/setu/convergence', setuConvergenceRoutes); // SETU EOS Constitutional Convergence Core
 app.use('/api/group2/context', group2ContextRoutes); // Group 2 Science Context & SANSKAR layer
+app.use('/api/knowledge', knowledgeAdminRoutes); // Knowledge Administration
 
 // app.use('/api/new/ai',aiRoutePy)
 
