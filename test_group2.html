@@ -130,10 +130,13 @@
                     throw new Error("Invalid JSON formatting in the request payload.");
                 }
 
-                const response = await fetch('https://niyantran.blackholeinfiverse.com/api/group2/context/resolve', {
+                // Local route bypasses browser CORS locks for test files
+                const payloadObj = JSON.parse(document.getElementById('payloadInput').value);
+                payloadObj.simulate_g1_response = { canonical_record_id: "CR-b4615a27-7ab1-4bde-a078-a56fa0f2414c", observation_timestamp: null };
+                const response = await fetch('http://localhost:8002/api/group2/context/resolve', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(parsedBody)
+                    body: JSON.stringify(payloadObj)
                 });
 
                 const data = await response.json();

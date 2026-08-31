@@ -9,7 +9,7 @@ const User = require("../models/User")
 const auth = require("../middleware/auth")
 const crypto = require("crypto")
 const { emitTaskSubmittedEvent, emitTaskCompletedEvent, emitTaskFailedEvent } = require("../services/taskExecutionBridge")
-const { invokeParikshak } = require("../services/parikshakService")
+const { invokeParikshak, evaluateParikshakSubmission } = require("../services/parikshakService")
 
 // Configure multer for memory storage
 const upload = multer({
@@ -485,12 +485,153 @@ router.put("/:id/review", auth, async (req, res) => {
       ...submission.toObject(),
       trace_id: execContext?.traceId,
       execution_id: execContext?.executionId
-    })
+    });
   } catch (error) {
-    console.error("Error reviewing submission:", error)
-    res.status(500).json({ error: "Server error" })
+    console.error("Error reviewing submission:", error);
+    res.status(500).json({ error: "Server error" });
   }
-})
+});
+
+// Evaluate submission synchronously via Parikshak for interactive modal review
+router.post("/:id/evaluate-parikshak", auth, async (req, res) => {
+  try {
+    const traceId = req.headers["x-trace-id"] || `trace_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const evaluationData = await evaluateParikshakSubmission(req.params.id, traceId);
+    res.json(evaluationData);
+  } catch (error) {
+    console.error("Error evaluating submission via Parikshak:", error);
+    res.status(500).json({ error: error.message || "Failed to run Parikshak evaluation" });
+  }
+});
+
+// Human Reviewer Approval & Next Task Confirmation
+router.post("/:id/approve-and-assign-next", auth, async (req, res) => {
+  try {
+    const { status = "Approved", feedback, aiReviewDetails, nextTask } = req.body;
+    const traceId = req.headers["x-trace-id"] || `trace_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+
+    const submission = await TaskSubmission.findById(req.params.id).populate("task").populate("user");
+    if (!submission) {
+      return res.status(404).json({ error: "Submission not found" });
+    }
+
+    const currentTask = submission.task;
+    const user = submission.user;
+
+    // 1. Update Submission status & feedback
+    submission.status = status;
+    submission.feedback = feedback || aiReviewDetails?.doneWell || "Approved via Parikshak Human Confirmation.";
+    if (aiReviewDetails) {
+      submission.aiReviewDetails = aiReviewDetails;
+    }
+    submission.parikshakReview = {
+      status: aiReviewDetails?.result || "PASS",
+      score: aiReviewDetails?.score || 88,
+      review: submission.feedback,
+      nextTask: nextTask?.title || "",
+      reviewedAt: new Date()
+    };
+    await submission.save();
+
+    // 2. Update Current Task to Completed
+    if (currentTask && currentTask.status !== "Completed") {
+      currentTask.status = "Completed";
+      currentTask.progress = 100;
+      await currentTask.save();
+    }
+
+    // 3. Emit Task Completed Event
+    let execContext;
+    try {
+      execContext = await emitTaskCompletedEvent(submission, traceId, currentTask?.branch);
+    } catch (e) {
+      console.warn("[TRACE] Failed emitting completion event:", e.message);
+    }
+
+    // 4. Create and Assign Next Task if provided
+    let createdNextTask = null;
+    if (nextTask && nextTask.title) {
+      const existing = await Task.findOne({
+        title: nextTask.title,
+        assignee: user._id,
+        status: "Pending"
+      });
+
+      if (existing) {
+        createdNextTask = existing;
+      } else {
+        createdNextTask = new Task({
+          title: nextTask.title,
+          description: nextTask.description || `Follow-up task following approval of '${currentTask.title}'.`,
+          status: "Pending",
+          priority: nextTask.priority || currentTask.priority || "Medium",
+          department: nextTask.department || currentTask.department,
+          assignee: user._id,
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          branch: currentTask.branch || "default_tenant",
+          progress: 0,
+          links: nextTask.links || []
+        });
+
+        const { generateTaskBriefPdf } = require("../services/pdfGenerator");
+        let pdfPath = nextTask.pdfUrl || nextTask.documentLink || nextTask.notes || "";
+        if (!pdfPath) {
+          try {
+            pdfPath = await generateTaskBriefPdf(createdNextTask, user);
+          } catch (pdfErr) {
+            console.warn("[PDF GENERATION] Warning generating PDF task brief:", pdfErr.message);
+          }
+        }
+
+        if (pdfPath) {
+          createdNextTask.notes = pdfPath;
+          createdNextTask.fileType = "application/pdf";
+        }
+        await createdNextTask.save();
+
+        const { emitTaskAssignedEvent } = require("../services/taskExecutionBridge");
+        try {
+          await emitTaskAssignedEvent(createdNextTask, traceId, createdNextTask.branch);
+        } catch (e) {}
+
+        await Notification.create({
+          recipient: user._id,
+          type: "task_assigned",
+          title: "New Task Assigned",
+          message: `Next task "${createdNextTask.title}" has been assigned to you.`,
+          task: createdNextTask._id
+        });
+      }
+    }
+
+    await Notification.create({
+      recipient: user._id,
+      type: "submission_reviewed",
+      title: "Submission Approved",
+      message: `Your submission for '${currentTask.title}' has been approved.`,
+      task: currentTask._id
+    });
+
+    if (req.io) {
+      req.io.emit("submission-reviewed", {
+        submission,
+        trace_id: execContext?.traceId
+      });
+      if (createdNextTask) {
+        req.io.emit("task-created", createdNextTask);
+      }
+    }
+
+    res.json({
+      message: "Submission approved and next task created successfully",
+      submission,
+      nextTask: createdNextTask
+    });
+  } catch (error) {
+    console.error("Error approving submission & assigning next task:", error);
+    res.status(500).json({ error: error.message || "Server error" });
+  }
+});
 
 // Delete submission
 router.delete("/:id", auth, async (req, res) => {

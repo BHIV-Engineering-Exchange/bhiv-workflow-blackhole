@@ -877,7 +877,7 @@ function UserDashboard() {
                 )}
 
                 {/* AI Score */}
-                {selectedSubmission.parikshakReview?.score != null && (
+                {selectedSubmission.parikshakReview?.score != null && selectedSubmission.status !== "Pending" && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <div className="h-7 w-7 rounded-lg bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center ring-1 ring-purple-300 dark:ring-purple-800">
@@ -908,7 +908,7 @@ function UserDashboard() {
                 )}
 
                 {/* AI Review Comments */}
-                {selectedSubmission.parikshakReview?.review && (
+                {selectedSubmission.parikshakReview?.review && selectedSubmission.status !== "Pending" && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <div className="h-7 w-7 rounded-lg bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center ring-1 ring-purple-300 dark:ring-purple-800">
@@ -924,36 +924,38 @@ function UserDashboard() {
                   </div>
                 )}
 
-
-
-                {/* Reviewer Feedback — manual reviews only (no parikshak) */}
-                {selectedSubmission.feedback && !selectedSubmission.parikshakReview?.review && (
+                {/* Reviewer Feedback / Pending Status (only if distinct from AI review) */}
+                {selectedSubmission.feedback && selectedSubmission.feedback !== selectedSubmission.parikshakReview?.review && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <div className={`h-7 w-7 rounded-lg flex items-center justify-center ring-1 ${
                         selectedSubmission.status === "Approved"
                           ? "bg-green-100 dark:bg-green-900/40 ring-green-300 dark:ring-green-800"
+                          : selectedSubmission.status === "Pending"
+                          ? "bg-amber-100 dark:bg-amber-900/40 ring-amber-300 dark:ring-amber-800"
                           : "bg-red-100 dark:bg-red-900/40 ring-red-300 dark:ring-red-800"
                       }`}>
                         {selectedSubmission.status === "Approved" ? (
                           <ThumbsUp className="h-4 w-4 text-green-700 dark:text-green-400" />
+                        ) : selectedSubmission.status === "Pending" ? (
+                          <Clock className="h-4 w-4 text-amber-700 dark:text-amber-400" />
                         ) : (
                           <ThumbsDown className="h-4 w-4 text-red-700 dark:text-red-400" />
                         )}
                       </div>
-                      <p className="font-semibold text-sm text-gray-900 dark:text-white">Reviewer Feedback</p>
+                      <p className="font-semibold text-sm text-gray-900 dark:text-white">
+                        {selectedSubmission.status === "Pending" ? "Review Status" : "Reviewer Feedback"}
+                      </p>
                     </div>
                     <div className={`rounded-lg border p-4 shadow-md ${
                       selectedSubmission.status === "Approved"
                         ? "bg-green-50 dark:bg-green-950/30 border-green-300 dark:border-green-800"
+                        : selectedSubmission.status === "Pending"
+                        ? "bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800"
                         : "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800"
                     }`}>
-                      <p className={`text-sm whitespace-pre-line leading-relaxed font-medium ${
-                        selectedSubmission.status === "Approved"
-                          ? "text-green-900 dark:text-green-100"
-                          : "text-red-900 dark:text-red-100"
-                      }`}>
-                        {selectedSubmission.feedback}
+                      <p className="text-sm whitespace-pre-line leading-relaxed text-gray-800 dark:text-gray-200">
+                        {selectedSubmission.feedback || (selectedSubmission.status === "Pending" ? "Awaiting review by an administrator." : "No feedback provided.")}
                       </p>
                     </div>
                   </div>
