@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, Link } from "react-router-dom";
-import { LayoutDashboard, CheckSquare, Network, Users, Sparkles, Settings, LogOut, CheckCircle, BarChart, Airplay, LayoutDashboardIcon, Target, Monitor, DollarSign, Calendar, Clock, UserCog, UserCheck, ShoppingCart, Mail, ChevronLeft, ChevronRight, Building2, FolderKanban, ClipboardCheck, AlertTriangle, FileText } from "lucide-react";
+import { LayoutDashboard, CheckSquare, Network, Users, Sparkles, Settings, LogOut, CheckCircle, BarChart, Airplay, LayoutDashboardIcon, Target, Monitor, DollarSign, Calendar, Clock, UserCog, UserCheck, ShoppingCart, Mail, ChevronLeft, ChevronRight, Building2, FolderKanban, ClipboardCheck, AlertTriangle, FileText, BookOpen } from "lucide-react";
 import { useAuth } from "../../context/auth-context";
 import { api } from "../../lib/api";
 
@@ -164,6 +164,7 @@ export function DashboardSidebar() {
         {
           title: "Operations",
           routes: [
+            { title: "Knowledge Admin", href: "/knowledge-admin", icon: BookOpen },
             { title: "Procurement", href: "/procurement-dashboard", icon: ShoppingCart },
             { title: "EMS Dashboard", href: "/ems-dashboard", icon: Mail },
             { title: "Branch Management", href: "/branch-management", icon: Building2 },
