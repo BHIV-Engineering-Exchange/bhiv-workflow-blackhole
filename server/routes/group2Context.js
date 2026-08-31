@@ -12,6 +12,7 @@ const axios = require('axios'); // Requires axios for SANSKAR forwarding
 
 // SANSKAR Endpoint configuration
 const SANSKAR_API = process.env.SANSKAR_SERVICE_URL || 'http://163.128.209.18:8010';
+const GROUP1_API = process.env.GROUP1_SERVICE_URL || 'http://163.128.209.18:8013';
 
 /**
  * POST /api/group2/context/resolve
