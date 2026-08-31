@@ -927,38 +927,60 @@ function TaskDetails() {
                     })()}
                   </div>
                 </div>
-                {documents[0].url && (
-                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-indigo-500" />
-                      Task Specification & Documents
-                    </h3>
-                    <div className="grid gap-2">
-                      {documents.map((doc, index) => (
-                        <div key={index} className="flex items-center justify-between p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/60 rounded-xl">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="p-2 bg-indigo-600 rounded-lg text-white shrink-0">
-                              <FileText className="h-4 w-4" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate">{doc.fileName}</p>
-                              <p className="text-[10px] text-gray-500 dark:text-gray-400">{doc.fileType}</p>
-                            </div>
-                          </div>
-                          <a
-                            href={doc.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shrink-0 transition-colors shadow-xs"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            <span>View PDF Brief</span>
-                          </a>
+                {/* Task Specification & PDF Document Brief */}
+                <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-indigo-500" />
+                    Task Specification & Documents
+                  </h3>
+                  <div className="grid gap-2">
+                    <div className="flex items-center justify-between p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/60 rounded-xl">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="p-2 bg-indigo-600 rounded-lg text-white shrink-0">
+                          <FileText className="h-4 w-4" />
                         </div>
-                      ))}
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate">
+                            {documents[0]?.fileName || `task_brief_${task._id}.pdf`}
+                          </p>
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400">Official PDF Brief Specification</p>
+                        </div>
+                      </div>
+                      <a
+                        href={`${API_URL}/tasks/${task._id}/pdf`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shrink-0 transition-colors shadow-xs"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        <span>View PDF Brief</span>
+                      </a>
                     </div>
+
+                    {documents.filter(d => d.url && !d.url.includes('/pdf')).map((doc, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="p-2 bg-slate-700 rounded-lg text-white shrink-0">
+                            <FileText className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate">{doc.fileName}</p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400">{doc.fileType}</p>
+                          </div>
+                        </div>
+                        <a
+                          href={doc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shrink-0 transition-colors shadow-xs"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          <span>View Attachment</span>
+                        </a>
+                      </div>
+                    ))}
                   </div>
-                )}
+                </div>
 
                 {/* Display Links */}
                 {task.links && task.links.length > 0 && (

@@ -54,6 +54,31 @@ router.get("/parikshak-pdf/:taskId", async (req, res) => {
   }
 });
 
+// Direct HTTP PDF Streaming Endpoint for Task Brief (Works on Local, Render, Vercel & Production)
+router.get("/:id/pdf", async (req, res) => {
+  try {
+    const task = await Task.findById(req.params.id).populate('department', 'name');
+    if (!task) {
+      return res.status(404).send("Task not found");
+    }
+
+    let assigneeUser = null;
+    if (task.assignee) {
+      assigneeUser = await User.findById(task.assignee).select("name email");
+    }
+
+    const { generateTaskBriefPdfStream } = require('../services/pdfGenerator');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="task_brief_${task._id}.pdf"`);
+
+    const pdfStream = generateTaskBriefPdfStream(task, assigneeUser);
+    pdfStream.pipe(res);
+  } catch (err) {
+    console.error("Error streaming task PDF:", err);
+    res.status(500).send("Error generating task PDF brief");
+  }
+});
+
 // Configure multer for memory storage
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -424,6 +449,31 @@ router.get('/:id', auth, async (req, res) => {
           isActive,
           isBlackhole,
           status: !isActive ? 'inactive' : !isBlackhole ? 'non-blackhole' : 'active'
+        }
+
+        // Auto-ensure PDF task brief exists on disk
+        const fs = require('fs');
+        const path = require('path');
+        const { generateTaskBriefPdf } = require('../services/pdfGenerator');
+
+        const pdfFileName = (task.notes && task.notes.includes('task_brief_')) 
+          ? task.notes.split('/').pop() 
+          : `task_brief_${task._id}.pdf`;
+        const fullPdfPath = path.join(__dirname, '../uploads', pdfFileName);
+
+        if (!fs.existsSync(fullPdfPath)) {
+          try {
+            const generatedPath = await generateTaskBriefPdf(task, actualUser);
+            if (generatedPath) {
+              task.notes = generatedPath;
+              task.fileType = 'application/pdf';
+              await task.save();
+              taskObj.notes = generatedPath;
+              taskObj.fileType = 'application/pdf';
+            }
+          } catch (pdfErr) {
+            console.warn("[PDF AUTO-GEN WARN]", pdfErr.message);
+          }
         }
       } else {
         taskObj.assignee = null

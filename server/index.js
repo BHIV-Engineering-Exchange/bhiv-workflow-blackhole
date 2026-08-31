@@ -548,7 +548,7 @@ const fs = require('fs');
 
 if (fs.existsSync(clientDistPath)) {
   app.use(express.static(clientDistPath));
-  app.get(/^\/(?!api).*/, (req, res) => {
+  app.get(/^\/(?!(api|uploads)).*/, (req, res) => {
     const indexPath = path.join(clientDistPath, 'index.html');
     if (fs.existsSync(indexPath)) {
       res.sendFile(indexPath);
