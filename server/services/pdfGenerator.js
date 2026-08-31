@@ -140,31 +140,51 @@ function generateTaskBriefPdfStream(task, assignee = null) {
 }
 
 /**
- * Generates a dynamic document-style PDF task brief file based on actual task parameters.
+ * Generates a dynamic document-style PDF task brief and uploads it directly to Cloudinary CDN.
+ * @param {Object} task Task object containing title, description, assignee, priority, department, etc.
+ * @param {Object} assignee Candidate user object (optional)
+ * @returns {Promise<string>} Cloudinary secure HTTPS URL or fallback local URL
  */
 async function generateTaskBriefPdf(task, assignee = null) {
   return new Promise((resolve, reject) => {
     try {
-      const timestamp = Date.now();
-      const fileName = `task_brief_${task._id || timestamp}.pdf`;
-      const uploadsDir = path.join(__dirname, '..', 'uploads');
-
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-
-      const filePath = path.join(uploadsDir, fileName);
-      const writeStream = fs.createWriteStream(filePath);
-
+      const { uploadToCloudinary } = require('../utils/cloudinary');
       const doc = generateTaskBriefPdfStream(task, assignee);
-      doc.pipe(writeStream);
+      const chunks = [];
 
-      writeStream.on('finish', () => {
-        resolve(`/uploads/${fileName}`);
+      doc.on('data', chunk => chunks.push(chunk));
+      doc.on('end', async () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        const fileName = `task_brief_${task._id || Date.now()}.pdf`;
+
+        // 1. Primary Cloudinary CDN Upload
+        try {
+          const cloudinaryUrl = await uploadToCloudinary(pdfBuffer, fileName);
+          if (cloudinaryUrl) {
+            console.log(`[PDF GENERATOR] Successfully uploaded PDF brief to Cloudinary CDN: ${cloudinaryUrl}`);
+            return resolve(cloudinaryUrl);
+          }
+        } catch (cloudErr) {
+          console.warn('[PDF GENERATOR] Cloudinary upload failed, using local fallback:', cloudErr.message);
+        }
+
+        // 2. Local File Storage Fallback
+        try {
+          const uploadsDir = path.join(__dirname, '..', 'uploads');
+          if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+          }
+          const filePath = path.join(uploadsDir, fileName);
+          fs.writeFileSync(filePath, pdfBuffer);
+          resolve(`/uploads/${fileName}`);
+        } catch (localErr) {
+          console.error('[PDF GENERATOR LOCAL FALLBACK ERROR]', localErr);
+          resolve(null);
+        }
       });
 
-      writeStream.on('error', (err) => {
-        console.error('[PDF GENERATOR ERROR]', err);
+      doc.on('error', (err) => {
+        console.error('[PDF GENERATOR STREAM ERROR]', err);
         resolve(null);
       });
     } catch (err) {

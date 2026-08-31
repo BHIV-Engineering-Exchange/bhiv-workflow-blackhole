@@ -947,7 +947,7 @@ function TaskDetails() {
                         </div>
                       </div>
                       <a
-                        href={`${API_URL}/tasks/${task._id}/pdf`}
+                        href={documents[0]?.url || `${API_URL}/tasks/${task._id}/pdf`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shrink-0 transition-colors shadow-xs"
