@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import axios from "axios"
 import { useNavigate } from "react-router-dom"
 import { useToast } from "../hooks/use-toast"
-import { Check, Clock, Filter, Github, Link2, Loader2, ThumbsDown, ThumbsUp, Search, AlertTriangle, ExternalLink, CheckCircle, XCircle, HelpCircle, FileText, RefreshCw } from 'lucide-react'
+import { Check, Clock, Filter, Github, Link2, Loader2, ThumbsDown, ThumbsUp, Search, AlertTriangle, ExternalLink, CheckCircle, XCircle, HelpCircle, FileText, RefreshCw, Sparkles } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card"
 import { Input } from "../components/ui/input"
 import { Button } from "../components/ui/button"
@@ -32,6 +32,7 @@ import { Textarea } from "../components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { CompletedTasksStats } from "../components/dashboard/CompletedTasksStats"
 import ParikshakReviewCard from "../components/submissions/ParikshakReviewCard"
+import ParikshakModal from "../components/submissions/ParikshakModal"
 import { API_URL } from "@/lib/api"
 import { formatDate, formatDateTime } from "@/lib/dateFormat"
 import { useAuth } from "../context/auth-context"
@@ -63,6 +64,73 @@ const CompletedTasks = () => {
   const LIMIT = 20
   const abortRef = useRef(null)
   const departmentsLoadedRef = useRef(false)
+
+  // Parikshak Modal & Evaluation States
+  const [parikshakModalOpen, setParikshakModalOpen] = useState(false)
+  const [isEvaluating, setIsEvaluating] = useState(false)
+  const [parikshakData, setParikshakData] = useState(null)
+  const [evaluatingSubmission, setEvaluatingSubmission] = useState(null)
+
+  const handleRunParikshak = async (submission) => {
+    if (!submission) return
+    setEvaluatingSubmission(submission)
+    setParikshakModalOpen(true)
+    setIsEvaluating(true)
+    setParikshakData(null)
+
+    try {
+      const token = localStorage.getItem("WorkflowToken")
+      const res = await axios.post(
+        `${API_URL}/submissions/${submission._id}/evaluate-parikshak`,
+        {},
+        { headers: { "x-auth-token": token } }
+      )
+      setParikshakData(res.data)
+    } catch (err) {
+      console.error("Error evaluating submission via Parikshak:", err)
+      toast({
+        title: "Parikshak Evaluation Error",
+        description: err.response?.data?.error || "Failed to run Parikshak evaluation engine.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsEvaluating(false)
+    }
+  }
+
+  const handleApproveAndAssignNext = async ({ evaluationData, customNextTask }) => {
+    try {
+      const token = localStorage.getItem("WorkflowToken")
+      const subId = evaluationData?.submissionId || evaluatingSubmission?._id
+      if (!subId) return
+
+      await axios.post(
+        `${API_URL}/submissions/${subId}/approve-and-assign-next`,
+        {
+          status: "Approved",
+          feedback: evaluationData?.doneWell || "Approved via Parikshak",
+          aiReviewDetails: evaluationData,
+          nextTask: customNextTask
+        },
+        { headers: { "x-auth-token": token } }
+      )
+
+      toast({
+        title: "Submission Approved & Task Assigned! 🎉",
+        description: `Submission approved and next task "${customNextTask?.title || 'Next Task'}" assigned successfully.`,
+      })
+
+      setParikshakModalOpen(false)
+      fetchData(page, debouncedSearch, selectedDepartment, submissionFilter)
+    } catch (err) {
+      console.error("Error confirming Parikshak approval:", err)
+      toast({
+        title: "Approval Error",
+        description: err.response?.data?.error || "Failed to confirm approval and assign next task.",
+        variant: "destructive",
+      })
+    }
+  }
 
   // Debounce search input — avoid filtering on every keystroke
   useEffect(() => {
@@ -389,10 +457,10 @@ const [isReviewing, setIsReviewing] = useState(false)
                 return (
                   <Card
                     key={task._id}
-                    className="overflow-hidden transition-all hover:shadow-lg hover:border-green-500/50 dark:hover:shadow-green-500/10 border-l-4 border-l-green-500 group"
+                    className="overflow-hidden transition-all hover:shadow-lg hover:border-green-500/50 dark:hover:shadow-green-500/10 border-l-4 border-l-green-500 group flex flex-col justify-between h-full"
                   >
                     {/* ========== CARD HEADER ========== */}
-                    <CardHeader className="pb-3 bg-gradient-to-r from-green-500/5 to-transparent">
+                    <CardHeader className="pb-3 bg-gradient-to-r from-green-500/5 to-transparent flex-shrink-0">
                       <div className="flex justify-between items-start gap-3 mb-2">
                         <div className="flex-1 min-w-0">
                           <CardTitle className="text-base font-semibold line-clamp-2 group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors">
@@ -433,77 +501,91 @@ const [isReviewing, setIsReviewing] = useState(false)
                     </CardHeader>
 
                     {/* ========== CARD CONTENT - SUBMISSION SECTION ========== */}
-                    <CardContent className="pb-3 pt-3">
+                    <CardContent className="pb-3 pt-3 flex-1 flex flex-col justify-between">
                       {submission ? (
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="h-6 w-6 rounded-md bg-green-500/10 flex items-center justify-center flex-shrink-0">
-                              <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                        <div className="space-y-3 flex-1 flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="h-6 w-6 rounded-md bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                                <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                              </div>
+                              <h4 className="text-sm font-medium text-green-600 dark:text-green-400">
+                                Submission Details
+                              </h4>
                             </div>
-                            <h4 className="text-sm font-medium text-green-600 dark:text-green-400">
-                              Submission Details
-                            </h4>
+                            
+                            <div className="bg-muted/30 rounded-lg p-3 space-y-2.5 border border-muted">
+                              {submission.githubLink && (
+                                <div className="flex items-start gap-2.5">
+                                  <div className="mt-0.5 flex-shrink-0">
+                                    <Github className="h-4 w-4 text-muted-foreground" />
+                                  </div>
+                                  <a
+                                    href={submission.githubLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate flex items-center gap-1 flex-1 min-w-0"
+                                  >
+                                    <span className="truncate">{submission.githubLink.replace(/^https?:\/\/(www\.)?github\.com\//, '')}</span>
+                                    <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                                  </a>
+                                </div>
+                              )}
+                              {submission.additionalLinks && (
+                                <div className="flex items-start gap-2.5">
+                                  <div className="mt-0.5 flex-shrink-0">
+                                    <Link2 className="h-4 w-4 text-muted-foreground" />
+                                  </div>
+                                  <a
+                                    href={submission.additionalLinks}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate flex items-center gap-1 flex-1 min-w-0"
+                                  >
+                                    <span className="truncate">{new URL(submission.additionalLinks).hostname}</span>
+                                    <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                                  </a>
+                                </div>
+                              )}
+                              {document?.url && (
+                                <div className="flex items-start gap-2.5">
+                                  <div className="mt-0.5 flex-shrink-0">
+                                    <FileText className="h-4 w-4 text-muted-foreground" />
+                                  </div>
+                                  <a
+                                    href={document.url}
+                                    target={document.isImage ? "_self" : "_blank"}
+                                    rel="noopener noreferrer"
+                                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate flex items-center gap-1 flex-1 min-w-0"
+                                  >
+                                    <span className="truncate">{document.fileName} ({document.fileType})</span>
+                                    <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                                  </a>
+                                </div>
+                              )}
+                              {submission.notes && (
+                                <div className="pt-1 border-t border-muted">
+                                  <p className="text-xs font-medium text-muted-foreground mb-1.5">Notes:</p>
+                                  <p className="text-sm line-clamp-3 text-foreground/80">{submission.notes}</p>
+                                </div>
+                              )}
+                            </div>
                           </div>
                           
-                          <div className="bg-muted/30 rounded-lg p-3 space-y-2.5 border border-muted">
-                            {submission.githubLink && (
-                              <div className="flex items-start gap-2.5">
-                                <div className="mt-0.5 flex-shrink-0">
-                                  <Github className="h-4 w-4 text-muted-foreground" />
-                                </div>
-                                <a
-                                  href={submission.githubLink}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate flex items-center gap-1 flex-1 min-w-0"
-                                >
-                                  <span className="truncate">{submission.githubLink.replace(/^https?:\/\/(www\.)?github\.com\//, '')}</span>
-                                  <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                                </a>
+                          {/* AI Review Card or Pending Badge */}
+                          {submission.aiReviewDetails ? (
+                            <ParikshakReviewCard submission={submission} />
+                          ) : (
+                            <div className="mt-3 p-3 bg-indigo-50/50 dark:bg-indigo-950/20 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-800/50 flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 text-xs text-indigo-700 dark:text-indigo-300 font-medium">
+                                <Sparkles className="h-4 w-4 text-indigo-500 animate-pulse shrink-0" />
+                                <span>Ready for Parikshak AI Review</span>
                               </div>
-                            )}
-                            {submission.additionalLinks && (
-                              <div className="flex items-start gap-2.5">
-                                <div className="mt-0.5 flex-shrink-0">
-                                  <Link2 className="h-4 w-4 text-muted-foreground" />
-                                </div>
-                                <a
-                                  href={submission.additionalLinks}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate flex items-center gap-1 flex-1 min-w-0"
-                                >
-                                  <span className="truncate">{new URL(submission.additionalLinks).hostname}</span>
-                                  <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                                </a>
-                              </div>
-                            )}
-                            {document?.url && (
-                              <div className="flex items-start gap-2.5">
-                                <div className="mt-0.5 flex-shrink-0">
-                                  <FileText className="h-4 w-4 text-muted-foreground" />
-                                </div>
-                                <a
-                                  href={document.url}
-                                  target={document.isImage ? "_self" : "_blank"}
-                                  rel="noopener noreferrer"
-                                  className="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate flex items-center gap-1 flex-1 min-w-0"
-                                >
-                                  <span className="truncate">{document.fileName} ({document.fileType})</span>
-                                  <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                                </a>
-                              </div>
-                            )}
-                            {submission.notes && (
-                              <div className="pt-1 border-t border-muted">
-                                <p className="text-xs font-medium text-muted-foreground mb-1.5">Notes:</p>
-                                <p className="text-sm line-clamp-3 text-foreground/80">{submission.notes}</p>
-                              </div>
-                            )}
-                          </div>
-                          
-                          {/* AI Review Card */}
-                          <ParikshakReviewCard submission={submission} />
+                              <Badge variant="outline" className="text-[10px] bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700">
+                                Pending AI Check
+                              </Badge>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center py-6 text-muted-foreground bg-muted/20 rounded-lg border border-dashed border-muted">
@@ -515,7 +597,7 @@ const [isReviewing, setIsReviewing] = useState(false)
                     </CardContent>
 
                     {/* ========== CARD FOOTER - ACTIONS ========== */}
-                    <CardFooter className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/20 p-3">
+                    <CardFooter className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/20 p-3 mt-auto">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         {task.assignee ? (
                           <div className="flex items-center gap-1.5 min-w-0">
@@ -535,6 +617,16 @@ const [isReviewing, setIsReviewing] = useState(false)
                         )}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
+                        {submission && (
+                          <Button
+                            size="sm"
+                            className="h-7 px-2.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white shrink-0 flex items-center gap-1 font-medium shadow-sm"
+                            onClick={() => handleRunParikshak(submission)}
+                          >
+                            <Sparkles className="h-3.5 w-3.5 text-indigo-200" />
+                            Parikshak
+                          </Button>
+                        )}
                         <Button 
                           variant="outline" 
                           size="sm" 
@@ -667,6 +759,16 @@ const [isReviewing, setIsReviewing] = useState(false)
                             </td>
                             <td className="p-4 text-right">
                               <div className="flex justify-end gap-2">
+                                {submission && (
+                                  <Button
+                                    size="sm"
+                                    className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1 text-xs"
+                                    onClick={() => handleRunParikshak(submission)}
+                                  >
+                                    <Sparkles className="h-3.5 w-3.5 text-indigo-200" />
+                                    Parikshak
+                                  </Button>
+                                )}
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1074,6 +1176,23 @@ const [isReviewing, setIsReviewing] = useState(false)
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Parikshak Evaluation & Next Task Confirmation Modal */}
+      <ParikshakModal
+        isOpen={parikshakModalOpen}
+        onClose={() => setParikshakModalOpen(false)}
+        loading={isEvaluating}
+        evaluationData={parikshakData}
+        onApproveAndAssign={handleApproveAndAssignNext}
+        onReject={() => {
+          setParikshakModalOpen(false);
+          if (evaluatingSubmission) {
+            setSelectedSubmission(evaluatingSubmission);
+            setReviewData({ status: "Rejected", feedback: parikshakData?.missingWork || "Submission requires revisions." });
+            setReviewDialogOpen(true);
+          }
+        }}
+      />
     </div>
   )
 }

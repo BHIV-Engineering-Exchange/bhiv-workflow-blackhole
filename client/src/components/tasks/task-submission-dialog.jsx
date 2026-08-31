@@ -12,7 +12,8 @@ import { Button } from "../ui/button"
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
 import { Textarea } from "../ui/textarea"
-import { Github, Link2, FileText, RefreshCw } from "lucide-react"
+import { Badge } from "../ui/badge"
+import { Github, Link2, FileText, RefreshCw, Sparkles, AlertTriangle, CheckCircle } from "lucide-react"
 import { SimpleModeToggle } from "../simple-mode-toggle"
 import { ToastContainer } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
@@ -69,10 +70,15 @@ export function TaskSubmissionDialog({ open, onOpenChange, onSubmit, existingSub
     }
   }
 
+  const wordCount = formData.notes.trim() ? formData.notes.trim().split(/\s+/).filter(Boolean).length : 0
+
   const validateForm = () => {
     const newErrors = {}
     if (formData.githubLink && !isValidGithubUrl(formData.githubLink)) {
-      newErrors.githubLink = "Please enter a valid GitHub repository URL"
+      newErrors.githubLink = "Please enter a valid GitHub repository URL (e.g. https://github.com/org/repo)"
+    }
+    if (!formData.githubLink && !documentFile && wordCount < 50) {
+      newErrors.notes = `Please enter a valid GitHub repository URL or write at least 50 words of implementation notes (current: ${wordCount} / 50 words).`
     }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -191,16 +197,26 @@ export function TaskSubmissionDialog({ open, onOpenChange, onSubmit, existingSub
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="notes" className="text-gray-900 dark:text-white">Notes</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="notes" className="text-gray-900 dark:text-white">Notes</Label>
+              <span className={`text-xs font-mono font-semibold px-2 py-0.5 rounded transition-colors ${
+                wordCount >= 50 
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800' 
+                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+              }`}>
+                {wordCount} / 50 words
+              </span>
+            </div>
             <Textarea
               id="notes"
               name="notes"
-              placeholder="Any additional information about your submission..."
+              placeholder="Describe your technical implementation, architecture, and completed features..."
               value={formData.notes}
               onChange={handleChange}
               rows={4}
-              className="min-h-[110px] px-4 py-3 bg-gray-50 dark:bg-gray-900 border-2 border-gray-300 dark:border-gray-700 hover:border-secondary/40 focus:border-secondary focus-visible:ring-4 focus-visible:ring-secondary/10 rounded-xl resize-none transition-all duration-300 text-base placeholder:text-gray-400 dark:placeholder:text-gray-500 text-gray-900 dark:text-gray-100"
+              className={`min-h-[110px] px-4 py-3 bg-gray-50 dark:bg-gray-900 border-2 border-gray-300 dark:border-gray-700 hover:border-secondary/40 focus:border-secondary focus-visible:ring-4 focus-visible:ring-secondary/10 rounded-xl resize-none transition-all duration-300 text-base placeholder:text-gray-400 dark:placeholder:text-gray-500 text-gray-900 dark:text-gray-100 ${errors.notes ? "border-destructive" : ""}`}
             />
+            {errors.notes && <p className="text-xs text-red-500 mt-1 font-medium">{errors.notes}</p>}
           </div>
 
           </form>

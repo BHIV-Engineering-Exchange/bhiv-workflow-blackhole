@@ -693,10 +693,6 @@ function TaskDetails() {
   const getDocumentDetails = (documentLink, fileType) => {
     if (!documentLink) return [{ url: null, fileName: null, fileType: null, isImage: false }]
 
-    // Handle concatenated URLs or multiple document links
-    const links = documentLink.split(/\s+/).filter(link => link && link.match(/^https?:\/\//))
-    const documents = []
-
     const fileTypeMap = {
       "application/pdf": "PDF Document",
       "application/msword": "Word Document",
@@ -707,29 +703,22 @@ function TaskDetails() {
       "text/html": "HTML Document",
     }
 
-    // Handle Document: <url> (<filename>) format from older version
-    const docMatch = documentLink.match(/^Document: (.+?) \((.+)\)$/)
-    if (docMatch) {
-      const url = docMatch[1]
-      const fileName = docMatch[2] || url.split("/").pop() || "Document"
-      const mimeType = fileType || ""
-      const displayFileType = fileTypeMap[mimeType] || "Document"
-      const isPDF = mimeType === "application/pdf"
-      const isImage = mimeType.startsWith("image/") || false
-      const displayUrl = isPDF ? `${url}?_a=BAE6pY0` : url
-      return [{ url: displayUrl, fileName, fileType: displayFileType, isImage }]
-    }
+    const rawLinks = documentLink.split(/\s+/).filter(link => link && (link.match(/^https?:\/\//) || link.startsWith("/uploads") || link.startsWith("uploads") || link.startsWith("/api")))
+    const targetLinks = rawLinks.length > 0 ? rawLinks : [documentLink]
+    const documents = []
 
-    // Handle single or multiple raw URLs
-    for (const link of links) {
-      const fileName = link.split("/").pop() || "Document"
-      const url = link
-      const mimeType = fileType || ""
-      const displayFileType = fileTypeMap[mimeType] || "Document"
-      const isPDF = mimeType === "application/pdf"
+    for (const rawLink of targetLinks) {
+      if (!rawLink || rawLink.trim() === "") continue;
+      const isRelative = rawLink.startsWith("/") || rawLink.startsWith("uploads")
+      const fullUrl = isRelative 
+        ? `${API_URL.replace(/\/api$/, '')}${rawLink.startsWith('/') ? '' : '/'}${rawLink}`
+        : rawLink
+
+      const fileName = rawLink.split("/").pop() || "Task Brief Document.pdf"
+      const mimeType = fileType || (rawLink.endsWith(".pdf") ? "application/pdf" : "")
+      const displayFileType = fileTypeMap[mimeType] || (rawLink.endsWith(".pdf") ? "PDF Document" : "Document")
       const isImage = mimeType.startsWith("image/") || false
-      const displayUrl = isPDF ? `${url}?_a=BAE6pY0` : url
-      documents.push({ url: displayUrl, fileName, fileType: displayFileType, isImage })
+      documents.push({ url: fullUrl, fileName, fileType: displayFileType, isImage })
     }
 
     return documents.length > 0 ? documents : [{ url: null, fileName: null, fileType: null, isImage: false }]
@@ -939,20 +928,35 @@ function TaskDetails() {
                   </div>
                 </div>
                 {documents[0].url && (
-                  <div className="space-y-2">
-                    {documents.map((doc, index) => (
-                      <div key={index} className="flex items-center gap-2 text-sm">
-                        <FileText className="h-4 w-4 text-muted-foreground" />
-                        <a
-                          href={doc.url}
-                          target={doc.isImage ? "_self" : "_blank"}
-                          rel="noopener noreferrer"
-                          className="text-blue-500 hover:underline"
-                        >
-                          {doc.fileName} ({doc.fileType})
-                        </a>
-                      </div>
-                    ))}
+                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-indigo-500" />
+                      Task Specification & Documents
+                    </h3>
+                    <div className="grid gap-2">
+                      {documents.map((doc, index) => (
+                        <div key={index} className="flex items-center justify-between p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/60 rounded-xl">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="p-2 bg-indigo-600 rounded-lg text-white shrink-0">
+                              <FileText className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate">{doc.fileName}</p>
+                              <p className="text-[10px] text-gray-500 dark:text-gray-400">{doc.fileType}</p>
+                            </div>
+                          </div>
+                          <a
+                            href={doc.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shrink-0 transition-colors shadow-xs"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            <span>View PDF Brief</span>
+                          </a>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
