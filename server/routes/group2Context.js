@@ -80,7 +80,7 @@ router.post('/resolve', async (req, res) => {
             canonicalRecordId: canonicalRecord.canonical_record_id || canonicalRecord.id || canonicalRecord.canonicalId || (observationId === "TC-Z03-EXT-OPENMETEO-OBS001" ? "CR-b4615a27-7ab1-4bde-a078-a56fa0f2414c" : null),
             location: location || canonicalRecord.location || "UNKNOWN",
             // STRICT VANA RULE: No generated timestamp replacing source time
-            timestamp: timestamp || canonicalRecord.timestamp || null,
+            timestamp: timestamp || canonicalRecord.observed_at || canonicalRecord.observation_timestamp || canonicalRecord.timestamp || null,
             sourceContext: canonicalRecord.sourceData || "DYNAMIC_SCIENCE_CONTEXT",
             confidence: canonicalRecord.verified ? "VERIFIED" : "NOT VERIFIED", // Marks unsupported items strictly per Ansh's rules
             parameters: { ...(canonicalRecord.parameters || {}), ...(parameters || {}) }
