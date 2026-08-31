@@ -19,15 +19,7 @@ const SANSKAR_API = process.env.SANSKAR_SERVICE_URL || 'http://163.128.209.18:80
  * Receives Canonical Observation payload from Group 1, validates it,
  * attaches required scientific context (Group 2), and requests SANSKAR intelligence.
  */
-router.options('/resolve', (req, res) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    return res.status(200).send();
-});
-
 router.post('/resolve', async (req, res) => {
-    res.header("Access-Control-Allow-Origin", "*");
     try {
         // STRICT VANA RULE: We must explicitly pull the exact canonical field required.
         const observationId = req.body.observationId || req.body.observation_id;
