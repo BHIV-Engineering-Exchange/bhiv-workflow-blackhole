@@ -112,8 +112,8 @@ router.post('/resolve', async (req, res) => {
                     provenance_reference: canonicalRecord.provenance_reference || "open-meteo:8d26e68328ac160f",
                     artifact_hash: canonicalRecord.artifact_hash || "8d26e68328ac160f7b69f1a24ccb2de4972ff9fc60af11093c246903a7c52502",
                     artifact_type: canonicalRecord.artifact_type || "sensor_reading",
-                    observation_timestamp: canonicalRecord.observation_timestamp || "2026-08-25T11:00:00Z",
-                    retrieval_timestamp: canonicalRecord.retrieval_timestamp || "2026-08-25T11:04:16Z",
+                    observation_timestamp: contextPayload.timestamp,
+                    retrieval_timestamp: canonicalRecord.retrieval_timestamp || new Date().toISOString(),
                     attribution: canonicalRecord.attribution || "Weather data by Open-Meteo.com (CC-BY 4.0), aggregating national weather services.",
                     canonical_observation_location: canonicalRecord.location || "19.1288, 72.9421"
                 },
