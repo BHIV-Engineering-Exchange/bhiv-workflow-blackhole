@@ -12,6 +12,7 @@ const axios = require('axios'); // Requires axios for SANSKAR forwarding
 
 // SANSKAR Endpoint configuration
 const SANSKAR_API = process.env.SANSKAR_SERVICE_URL || 'http://163.128.209.18:8010';
+const GROUP1_API = process.env.GROUP1_SERVICE_URL || 'http://163.128.209.18:8013';
 
 /**
  * POST /api/group2/context/resolve
@@ -47,7 +48,7 @@ router.post('/resolve', async (req, res) => {
         try {
             // Request actual canonical record dynamically—no static registries or mock fixtures
             const g1Response = await axios.get(`${GROUP1_API}/observations/${observationId}`);
-            canonicalRecord = g1Response.data.record || g1Response.data;
+            canonicalRecord = g1Response.data.observation || g1Response.data.record || g1Response.data;
 
             if (!canonicalRecord) {
                 throw new Error("Empty canonical record returned from Group 1");
