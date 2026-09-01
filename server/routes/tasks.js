@@ -62,6 +62,18 @@ router.get("/:id/pdf", async (req, res) => {
       return res.status(404).send("Task not found");
     }
 
+    // 1. If user uploaded an original PDF file (saved in Cloudinary links or notes), use original uploaded PDF!
+    const notesCloudinaryMatch = task.notes?.match(/^Document:\s*(https?:\/\/[^\s\)]+)/i);
+    const originalPdfUrl = notesCloudinaryMatch 
+      ? notesCloudinaryMatch[1] 
+      : (task.links && task.links.length > 0 && task.links[0]?.includes('cloudinary.com') ? task.links[0] : null);
+
+    if (originalPdfUrl) {
+      console.log(`[PDF ROUTE] Using original user-uploaded Cloudinary document for task ${task._id}: ${originalPdfUrl}`);
+      return res.redirect(originalPdfUrl);
+    }
+
+    // 2. Otherwise generate structured PDF brief for system/Parikshak tasks without uploaded document
     let assigneeUser = null;
     if (task.assignee) {
       assigneeUser = await User.findById(task.assignee).select("name email");
@@ -451,28 +463,33 @@ router.get('/:id', auth, async (req, res) => {
           status: !isActive ? 'inactive' : !isBlackhole ? 'non-blackhole' : 'active'
         }
 
-        // Auto-ensure PDF task brief exists on disk
-        const fs = require('fs');
-        const path = require('path');
-        const { generateTaskBriefPdf } = require('../services/pdfGenerator');
+        // Only generate local PDF task brief if the task does NOT have an original uploaded Cloudinary document
+        const hasOriginalCloudinaryDoc = (task.links && task.links.length > 0 && task.links[0]?.includes('cloudinary.com')) ||
+                                         (task.notes && task.notes.includes('https://res.cloudinary.com'));
 
-        const pdfFileName = (task.notes && task.notes.includes('task_brief_')) 
-          ? task.notes.split('/').pop() 
-          : `task_brief_${task._id}.pdf`;
-        const fullPdfPath = path.join(__dirname, '../uploads', pdfFileName);
+        if (!hasOriginalCloudinaryDoc) {
+          const fs = require('fs');
+          const path = require('path');
+          const { generateTaskBriefPdf } = require('../services/pdfGenerator');
 
-        if (!fs.existsSync(fullPdfPath)) {
-          try {
-            const generatedPath = await generateTaskBriefPdf(task, actualUser);
-            if (generatedPath) {
-              task.notes = generatedPath;
-              task.fileType = 'application/pdf';
-              await task.save();
-              taskObj.notes = generatedPath;
-              taskObj.fileType = 'application/pdf';
+          const pdfFileName = (task.notes && task.notes.includes('task_brief_')) 
+            ? task.notes.split('/').pop() 
+            : `task_brief_${task._id}.pdf`;
+          const fullPdfPath = path.join(__dirname, '../uploads', pdfFileName);
+
+          if (!fs.existsSync(fullPdfPath)) {
+            try {
+              const generatedPath = await generateTaskBriefPdf(task, actualUser);
+              if (generatedPath) {
+                task.notes = generatedPath;
+                task.fileType = 'application/pdf';
+                await task.save();
+                taskObj.notes = generatedPath;
+                taskObj.fileType = 'application/pdf';
+              }
+            } catch (pdfErr) {
+              console.warn("[PDF AUTO-GEN WARN]", pdfErr.message);
             }
-          } catch (pdfErr) {
-            console.warn("[PDF AUTO-GEN WARN]", pdfErr.message);
           }
         }
       } else {

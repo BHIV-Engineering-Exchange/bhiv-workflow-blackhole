@@ -13,7 +13,8 @@ import {
   X, 
   ShieldCheck,
   RefreshCw,
-  Edit3
+  Edit3,
+  Loader2
 } from "lucide-react";
 
 const ParikshakModal = ({ 
@@ -96,9 +97,9 @@ const ParikshakModal = ({
           {/* Loading State */}
           {loading ? (
             <div className="py-14 text-center space-y-4">
-              <div className="inline-block relative">
-                <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-500/20 border-t-indigo-500"></div>
-                <Sparkles className="absolute inset-0 m-auto text-indigo-400 animate-pulse" size={24} />
+              <div className="inline-flex items-center justify-center relative p-3 bg-indigo-950/40 rounded-full border border-indigo-500/30 shadow-inner">
+                <Loader2 className="h-12 w-12 text-indigo-400 animate-spin animate-[spin_1s_linear_infinite]" />
+                <Sparkles className="absolute inset-0 m-auto text-purple-300 animate-pulse" size={20} />
               </div>
               <div className="space-y-1">
                 <h3 className="text-base font-extrabold text-white">Running Parikshak Evaluation Engine...</h3>

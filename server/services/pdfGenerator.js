@@ -12,13 +12,31 @@ function generateTaskBriefPdfStream(task, assignee = null) {
   const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
   const candidateName = assignee?.name || (task.assignee?.name ? task.assignee.name : 'Assigned Candidate');
-  const departmentName = task.department?.name || 'General';
+  
+  let departmentName = task.department?.name;
+  if (!departmentName || departmentName === 'General') {
+    if (assignee?.department?.name) {
+      departmentName = assignee.department.name;
+    }
+  }
+  if (!departmentName || departmentName === 'General') {
+    departmentName = 'Web Development';
+  }
+
   const priorityStr = task.priority || 'Medium';
   const targetDate = task.dueDate 
     ? new Date(task.dueDate).toISOString().split('T')[0] 
     : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-  const taskTitle = task.title || 'Task Specification Brief';
+  let taskTitle = task.title || 'Task Specification Brief';
+  if (/^T-[A-Z]{3}-\d+$/i.test(taskTitle) || /^task-next/i.test(taskTitle)) {
+    const objMatch = task.description?.match(/Objective:\s*([^\n\.]+)/i);
+    if (objMatch && objMatch[1]) {
+      taskTitle = objMatch[1].trim();
+    } else {
+      taskTitle = `Phase 2: Execution & Convergence Certification (${taskTitle})`;
+    }
+  }
   const taskDescription = task.description || `Complete the objectives for task '${taskTitle}' according to project standards.`;
 
   let y = 50;
@@ -46,6 +64,10 @@ function generateTaskBriefPdfStream(task, assignee = null) {
   y = doc.y + 20;
 
   const drawDivider = () => {
+    if (doc.y + 30 > 730) {
+      doc.addPage();
+      doc.y = 50;
+    }
     const lineY = doc.y + 12;
     doc.lineWidth(1)
        .strokeColor('#000000')
@@ -53,6 +75,13 @@ function generateTaskBriefPdfStream(task, assignee = null) {
        .lineTo(200, lineY)
        .stroke();
     doc.y = lineY + 16;
+  };
+
+  const ensurePageSpace = (needed = 40) => {
+    if (doc.y + needed > 730) {
+      doc.addPage();
+      doc.y = 50;
+    }
   };
 
   doc.font('Helvetica-Bold').fontSize(12).fillColor('#000000').text('Overview & Description', 50, y);
@@ -72,51 +101,86 @@ function generateTaskBriefPdfStream(task, assignee = null) {
 
   drawDivider();
 
-  doc.font('Helvetica-Bold').fontSize(11).fillColor('#000000').text('Phase 1 – Core Implementation & Verification');
-  doc.font('Helvetica').fontSize(10).fillColor('#000000').moveDown(0.5);
+  // Parse all explicit "Phase 1", "Phase 2", "Phase 3", "Phase 4", "Phase 5", "Phase 6", etc. blocks from task text
+  const fullContent = `${taskDescription}\n\n${task.notes || ''}`;
+  const phaseBlockRegex = /(Phase\s*\d+[\s\S]*?)(?=\n[ \t]*Phase\s*\d+|$)/gi;
+  const parsedPhaseBlocks = fullContent.match(phaseBlockRegex);
 
-  doc.text('Validate implementation between:', { width: 500 });
-  doc.moveDown(0.5);
+  if (parsedPhaseBlocks && parsedPhaseBlocks.length > 0) {
+    // Dynamically render ALL phases found in the task text
+    parsedPhaseBlocks.forEach((block) => {
+      ensurePageSpace(60);
+      const lines = block.trim().split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length === 0) return;
 
-  const phase1Items = [
-    'Source Code & Deliverables',
-    'API Integration & Contracts',
-    'Database & Storage Layer',
-    'Observability & Error Handling'
-  ];
+      const titleLine = lines[0].replace(/^#+\s*/, '');
+      doc.font('Helvetica-Bold').fontSize(11).fillColor('#000000').text(titleLine);
+      doc.font('Helvetica').fontSize(10).fillColor('#000000').moveDown(0.4);
 
-  phase1Items.forEach(item => {
-    doc.text(`* ${item}`, { indent: 10 });
-  });
+      lines.slice(1).forEach(line => {
+        ensurePageSpace(20);
+        if (line.startsWith('*') || line.startsWith('-') || line.startsWith('•')) {
+          doc.text(`* ${line.replace(/^[\*\-•\s]+/, '')}`, { indent: 10, lineGap: 2 });
+        } else if (line.length > 0) {
+          doc.text(line, { width: 500, align: 'left', lineGap: 2 });
+        }
+      });
 
-  doc.moveDown(0.8);
-  doc.text('Ensure every component operates through approved contracts and quality checks.', { width: 500 });
+      drawDivider();
+    });
+  } else {
+    // Fallback: Extract action items and render dynamic Phase 1 and Phase 2
+    let customDeliverables = [];
+    if (taskDescription) {
+      const rawLines = taskDescription
+        .split(/\r?\n|;|\./)
+        .map(line => line.replace(/^[\*\-•\d\.\s]+/, '').trim())
+        .filter(line => line.length >= 10 && !line.toLowerCase().startsWith('http'));
+      if (rawLines.length >= 2) {
+        customDeliverables = Array.from(new Set(rawLines));
+      }
+    }
 
-  drawDivider();
+    ensurePageSpace(60);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#000000').text('Phase 1 – Core Implementation & Verification');
+    doc.font('Helvetica').fontSize(10).fillColor('#000000').moveDown(0.5);
 
-  doc.font('Helvetica-Bold').fontSize(11).fillColor('#000000').text('Phase 2 – Quality & Execution Certification');
-  doc.font('Helvetica').fontSize(10).fillColor('#000000').moveDown(0.5);
+    const phase1Items = customDeliverables.length >= 3
+      ? customDeliverables.slice(0, Math.ceil(customDeliverables.length / 2))
+      : [
+          `${taskTitle} - Core Implementation & Deliverables`,
+          `${departmentName} API Integration & System Contracts`,
+          `Database & State Storage Layer for ${taskTitle}`,
+          `Observability, Logging & Error Handling (${priorityStr} Priority)`
+        ];
 
-  doc.text('Validate:', { width: 500 });
-  doc.moveDown(0.5);
+    phase1Items.forEach(item => {
+      ensurePageSpace(20);
+      doc.text(`* ${item}`, { indent: 10 });
+    });
 
-  const phase2Items = [
-    'Multi-Format Deliverables & Code Repository',
-    'Automated Metadata Extraction',
-    'API Compatibility',
-    'Authentication & Access Safety',
-    'Traceability & Error Handling',
-    'Deterministic Execution Verification'
-  ];
+    drawDivider();
 
-  phase2Items.forEach(item => {
-    doc.text(`* ${item}`, { indent: 10 });
-  });
+    ensurePageSpace(60);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#000000').text('Phase 2 – Quality & Execution Certification');
+    doc.font('Helvetica').fontSize(10).fillColor('#000000').moveDown(0.5);
 
-  doc.moveDown(0.8);
-  doc.text('No feature may bypass published system contracts.', { width: 500 });
+    const phase2Items = customDeliverables.length >= 3
+      ? customDeliverables.slice(Math.ceil(customDeliverables.length / 2))
+      : [
+          `${taskTitle} - Multi-Format Code Deliverables`,
+          `Automated Metadata Extraction & Verification (${departmentName})`,
+          `API Compatibility & Authentication Safety for ${taskTitle}`,
+          'Traceability, Logging & Deterministic Execution Certification'
+        ];
 
-  drawDivider();
+    phase2Items.forEach(item => {
+      ensurePageSpace(20);
+      doc.text(`* ${item}`, { indent: 10 });
+    });
+
+    drawDivider();
+  }
 
   doc.font('Helvetica-Bold').fontSize(11).fillColor('#000000').text('Final Deliverable');
   doc.font('Helvetica').fontSize(10).fillColor('#000000').moveDown(0.5);

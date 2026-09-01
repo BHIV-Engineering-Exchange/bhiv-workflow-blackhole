@@ -824,6 +824,17 @@ function TaskDetails() {
   const storedUser = JSON.parse(localStorage.getItem("WorkflowUser"))
   const isAssignedToCurrentUser = storedUser?.id === task.assignee?._id
   const documents = getDocumentDetails(task.notes, task.fileType)
+  const displayTitle = (() => {
+    if (!task.title) return "Task Details";
+    if (/^T-[A-Z]{3}-\d+$/i.test(task.title.trim()) || /^task-next/i.test(task.title.trim())) {
+      const objMatch = task.description?.match(/Objective:\s*([^\n\.]+)/i);
+      if (objMatch && objMatch[1]) {
+        return objMatch[1].trim();
+      }
+      return `Phase 2: Execution & Convergence Certification (${task.title})`;
+    }
+    return task.title;
+  })();
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -832,7 +843,7 @@ function TaskDetails() {
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="h-9 w-9">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-2xl font-bold tracking-tight">{task.title}</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{displayTitle}</h1>
         </div>
         <div className="flex items-center gap-2">
           <Badge className={getStatusColor(task.status)}>{task.status}</Badge>
@@ -895,7 +906,23 @@ function TaskDetails() {
                 <div className="prose max-w-none dark:prose-invert">
                   <div className="whitespace-pre-line text-sm leading-relaxed text-gray-800 dark:text-gray-200">
                     {(() => {
-                      const desc = task.description || "";
+                      const rawDesc = task.description || "";
+                      const desc = (() => {
+                        let lines = rawDesc.split("\n");
+                        while (lines.length > 0) {
+                          const line = lines[0].trim();
+                          const isMetaHeader = /^(?:Task\s*Title|Title|Department|Dept|Assignee(?:\s*Candidate)?|Assign\s*to|Owner|Candidate|Priority|Target\s*Date|Due\s*Date?|Deadline|Overview\s*&\s*Description)\s*[:\n\-]?$/i.test(line) ||
+                                               /^(?:Task\s*Title|Title|Department|Dept|Assignee(?:\s*Candidate)?|Assign\s*to|Owner|Candidate|Priority|Target\s*Date|Due\s*Date?|Deadline)\s*:/i.test(line);
+                          if (isMetaHeader || line.length === 0) {
+                            lines.shift();
+                          } else {
+                            break;
+                          }
+                        }
+                        let cleanedDesc = lines.join("\n").trim() || rawDesc;
+                        cleanedDesc = cleanedDesc.split(/\n[ \t]*(?:Mission|Phase\s*\d+|Final Deliverable)/i)[0].trim();
+                        return cleanedDesc;
+                      })();
                       const parts = [];
                       const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g;
                       let lastIdx = 0;

@@ -224,20 +224,24 @@ const invokeParikshak = async (submissionId, traceId, io) => {
                     nextTaskDescription = response.next_task.description || response.next_task.objective || "";
                 } else if (typeof response.next_task === 'string' && response.next_task.trim()) {
                     const rawNext = response.next_task.trim();
-                    if (rawNext.toLowerCase().includes("test task") || rawNext.toLowerCase().startsWith("task-next")) {
-                        nextTaskTitle = `Phase 2: ${task.title}`;
+                    if (/^T-[A-Z]{3}-\d+$/i.test(rawNext) || rawNext.toLowerCase().includes("test task") || rawNext.toLowerCase().startsWith("task-next")) {
+                        const cleanPrevTitle = (task.title || "").replace(/^Phase\s*\d+\s*[:\-]\s*/i, "");
+                        nextTaskTitle = `Phase 2: ${cleanPrevTitle || "Execution & Convergence Certification"}`;
                     } else {
                         nextTaskTitle = rawNext;
                     }
                 }
 
-                if (!nextTaskTitle || nextTaskTitle.toLowerCase().includes("test task")) {
-                    nextTaskTitle = `Advanced Integration: ${task.title}`;
+                if (!nextTaskTitle || /^T-[A-Z]{3}-\d+$/i.test(nextTaskTitle) || nextTaskTitle.toLowerCase().includes("test task")) {
+                    const cleanPrevTitle = (task.title || "").replace(/^Phase\s*\d+\s*[:\-]\s*/i, "");
+                    nextTaskTitle = `Phase 2: ${cleanPrevTitle || "Execution & Convergence Certification"}`;
                 }
 
                 if (!nextTaskDescription) {
                     nextTaskDescription = `Next production phase following successful evaluation of '${task.title}'.\n\nAutomated AI Review Summary:\n${doneWell}\n\nRecommended Guidelines:\n${recommendations}`;
                 }
+
+                const deptId = task.department?._id || task.department;
 
                 // Prevent duplicate assignment on retries
                 const existingTask = await Task.findOne({
@@ -254,7 +258,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
                         description: nextTaskDescription,
                         status: "Pending",
                         priority: task.priority || "Medium",
-                        department: task.department,
+                        department: deptId,
                         assignee: task.assignee, // Assign same candidate
                         dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Default 7 days
                         dependencies: task.dependencies, // Preserve dependencies
@@ -524,11 +528,18 @@ const evaluateParikshakSubmission = async (submissionId, traceId) => {
         nextTaskTitle = response.next_task.title || response.next_task.name || response.next_task.objective || "";
         nextTaskDesc = response.next_task.description || response.next_task.objective || "";
     } else if (typeof response?.next_task === 'string' && response.next_task.trim()) {
-        nextTaskTitle = response.next_task.trim();
+        const rawNext = response.next_task.trim();
+        if (/^T-[A-Z]{3}-\d+$/i.test(rawNext) || rawNext.toLowerCase().includes("test task") || rawNext.toLowerCase().startsWith("task-next")) {
+            const cleanPrevTitle = (task.title || "").replace(/^Phase\s*\d+\s*[:\-]\s*/i, "");
+            nextTaskTitle = `Phase 2: ${cleanPrevTitle || "Execution & Convergence Certification"}`;
+        } else {
+            nextTaskTitle = rawNext;
+        }
     }
 
-    if (!nextTaskTitle || nextTaskTitle.toLowerCase().includes("test task")) {
-        nextTaskTitle = `Phase 2: Advanced Integration & Security Hardening - ${task.title}`;
+    if (!nextTaskTitle || /^T-[A-Z]{3}-\d+$/i.test(nextTaskTitle) || nextTaskTitle.toLowerCase().includes("test task")) {
+        const cleanPrevTitle = (task.title || "").replace(/^Phase\s*\d+\s*[:\-]\s*/i, "");
+        nextTaskTitle = `Phase 2: ${cleanPrevTitle || "Execution & Convergence Certification"}`;
     }
     if (!nextTaskDesc) {
         nextTaskDesc = `Follow-up task for ${user.name}.\n\nObjective:\nBuild upon '${task.title}' by adding production monitoring, error boundary safety, and E2E integration verification.\n\nEvaluation Feedback:\n- ${doneWell}\n\nRecommendations:\n- ${recommendations}`;

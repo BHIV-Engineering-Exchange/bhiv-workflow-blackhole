@@ -362,24 +362,14 @@ function cleanAndFormatTaskText(rawText) {
 
   // ── Extract only the actual Description/Overview section ────────────────
   // Strategy:
-  //   1. Look for an explicit "Description:", "Overview:", "Summary:", "Task Description:",
-  //      "Objective:", or "Background:" label and capture everything until the next section header.
-  //   2. If not found, fall back to the first meaningful paragraph of prose that is NOT
-  //      a metadata key-value line (Title:, Assignee:, Priority:, etc.).
-  //   3. As a last resort, use "No description provided."
-  //   Never fall back to the entire document text.
-
+  // ── Extract ONLY the actual Overview/Description paragraph (2-3 lines) ──────────
   let description = "";
 
-  // Pattern: a "Description" (or synonym) label at the start of a line, followed by content.
-  // Section ends at the next blank line followed by a heading-like line, OR at a known
-  // metadata key (Title, Priority, Assignee, Department, Deadline, Due, Status, Project, Phase).
-  const DESC_SECTION_PATTERN = /(?:^|\n)[ \t]*(?:task\s*)?(?:description|overview|summary|objective|background|scope|context|details?|problem\s*statement|goal)[ \t]*:[ \t]*([\s\S]*?)(?=\n[ \t]*(?:title|task\s*title|priority|assignee|assign\s*to|department|dept|due\s*date?|deadline|status|project|phase|sprint|repository|repo|owner|duration|acceptance\s*criteria|deliverables?|success\s*condition|authority|responsibility|non.?goals?|out.?of.?scope|learning|test|demo|reference|note|update|change|result|section|step|phase|\d+\.|##|—|---|===)[ \t]*:|$)/i;
+  const DESC_SECTION_PATTERN = /(?:^|\n)[ \t]*(?:task\s*)?(?:description|overview|summary|objective|background|scope|context|details?|problem\s*statement|goal)[ \t]*:[ \t]*([\s\S]*?)(?=\n[ \t]*(?:mission|phase|deliverables?|acceptance\s*criteria|section|step|title|task\s*title|priority|assignee|department|\d+\.|##|—|---|===)[ \t]*:?|$)/i;
 
   const descSectionMatch = cleaned.match(DESC_SECTION_PATTERN);
   if (descSectionMatch && descSectionMatch[1]) {
     const raw = descSectionMatch[1].trim();
-    // Filter out any stray gibberish lines within the captured section
     const pdfOpLinePatternDesc = /^([\d.\s\-]+)?(Tm|TJ|cm|BT|ET|Tf|Td|TD|Tj|Do|gs|q|Q|re|Tw|Tc|TL|Ts|T\*|RG|rg|K|k|w|J|j|M|d|ri)(\s|$)/i;
     const sectionLines = raw
       .split("\n")
@@ -389,33 +379,43 @@ function cleanAndFormatTaskText(rawText) {
     }
   }
 
-  // Fallback: find the first block of prose that is not a metadata key:value line
+  // Fallback: capture ONLY the first 2-3 lines / paragraph of prose (max 350 chars)
   if (!description) {
     const metaKeyPattern = /^(?:task\s*title|title|task|priority|assignee|assign\s*to|department|dept|due\s*date?|deadline|status|project|phase|sprint|repository|repo|owner|duration|candidate|branch|label|tag|type|version|date|time|created|issued|id)\s*:/i;
     const pdfOpLinePatternDesc = /^([\d.\s\-]+)?(Tm|TJ|cm|BT|ET|Tf|Td|TD|Tj|Do|gs|q|Q|re|Tw|Tc|TL|Ts|T\*|RG|rg|K|k|w|J|j|M|d|ri)(\s|$)/i;
     const allLines = cleaned.split("\n").map((l) => l.trim());
     const proseLines = [];
-    let inProseBlock = false;
 
     for (let i = 0; i < allLines.length; i++) {
       const line = allLines[i];
       if (!line || isGibberish(line) || pdfOpLinePatternDesc.test(line)) continue;
-      if (metaKeyPattern.test(line)) {
-        // If we've already collected some prose, stop here
-        if (inProseBlock && proseLines.length > 0) break;
-        continue;
-      }
-      // Skip very short lines that look like headings/labels (e.g. "Scope", "Overview")
-      if (line.length < 20 && /^[A-Z][a-zA-Z\s\/&-]+$/.test(line) && !line.includes(" ")) continue;
+      if (metaKeyPattern.test(line)) continue;
+      if (/^(?:mission|phase\s*\d+|deliverables?|acceptance)/i.test(line)) break;
       proseLines.push(line);
-      inProseBlock = true;
-      // Cap at a reasonable paragraph length (~500 chars total)
-      if (proseLines.join(" ").length > 500) break;
+      if (proseLines.join(" ").length > 350) break;
     }
 
     if (proseLines.length > 0) {
       description = proseLines.join("\n").trim();
     }
+  }
+
+  // Strip top metadata header lines and cut off before Mission or Phase sections
+  if (description) {
+    let descLines = description.split("\n");
+    while (descLines.length > 0) {
+      const line = descLines[0].trim();
+      const isMetaHeader = /^(?:Task\s*Title|Title|Department|Dept|Assignee(?:\s*Candidate)?|Assign\s*to|Owner|Candidate|Priority|Target\s*Date|Due\s*Date?|Deadline|Overview\s*&\s*Description)\s*[:\n\-]?$/i.test(line) ||
+                           /^(?:Task\s*Title|Title|Department|Dept|Assignee(?:\s*Candidate)?|Assign\s*to|Owner|Candidate|Priority|Target\s*Date|Due\s*Date?|Deadline)\s*:/i.test(line);
+      if (isMetaHeader || line.length === 0) {
+        descLines.shift();
+      } else {
+        break;
+      }
+    }
+    description = descLines.join("\n").trim();
+    // Stop before Mission or Phase 1
+    description = description.split(/\n[ \t]*(?:Mission|Phase\s*\d+|Final Deliverable)/i)[0].trim();
   }
 
   if (!description) {
