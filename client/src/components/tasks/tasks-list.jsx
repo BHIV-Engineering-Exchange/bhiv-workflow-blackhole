@@ -24,6 +24,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "../ui/dialog"
 import { Label } from "../ui/label"
@@ -84,82 +85,96 @@ function EditTaskDialog({ task, open, onOpenChange }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} className="dialog-overlay">
-      <DialogContent className="dialog-content sm:max-w-[525px]">
-        <DialogHeader>
-          <DialogTitle>Edit Task</DialogTitle>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[525px] bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl p-6">
+        <DialogHeader className="space-y-1">
+          <DialogTitle className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <Edit className="h-5 w-5 text-blue-500" />
+            Edit Task
+          </DialogTitle>
+          <DialogDescription className="text-sm text-slate-500 dark:text-slate-400">
+            Update task details, status, priority, and due date.
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="title">Title</Label>
+        <form onSubmit={handleSubmit} className="space-y-4 pt-3">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="title" className="text-sm font-semibold text-slate-900 dark:text-slate-100">Title</Label>
               <Input
                 id="title"
                 name="title"
                 value={formData.title}
                 onChange={handleChange}
                 required
+                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 rounded-xl"
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="description">Description</Label>
+            <div className="space-y-2">
+              <Label htmlFor="description" className="text-sm font-semibold text-slate-900 dark:text-slate-100">Description</Label>
               <Textarea
                 id="description"
                 name="description"
                 value={formData.description}
                 onChange={handleChange}
+                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 min-h-[90px] rounded-xl"
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="status">Status</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(value) => handleSelectChange("status", value)}
-              >
-                <SelectTrigger className="bg-white border border-gray-300 rounded-md shadow-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="z-[70]">
-                  <SelectItem value="Pending">Pending</SelectItem>
-                  <SelectItem value="In Progress">In Progress</SelectItem>
-                  <SelectItem value="Completed">Completed</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="status" className="text-sm font-semibold text-slate-900 dark:text-slate-100">Status</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value) => handleSelectChange("status", value)}
+                >
+                  <SelectTrigger className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl shadow-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="z-[70] bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-xl">
+                    <SelectItem value="Pending">Pending</SelectItem>
+                    <SelectItem value="In Progress">In Progress</SelectItem>
+                    <SelectItem value="Completed">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="priority" className="text-sm font-semibold text-slate-900 dark:text-slate-100">Priority</Label>
+                <Select
+                  value={formData.priority}
+                  onValueChange={(value) => handleSelectChange("priority", value)}
+                >
+                  <SelectTrigger className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl shadow-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="z-[70] bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-xl">
+                    <SelectItem value="Low">Low</SelectItem>
+                    <SelectItem value="Medium">Medium</SelectItem>
+                    <SelectItem value="High">High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="priority">Priority</Label>
-              <Select
-                value={formData.priority}
-                onValueChange={(value) => handleSelectChange("priority", value)}
-              >
-                <SelectTrigger className="bg-white border border-gray-300 rounded-md shadow-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="z-[70]">
-                  <SelectItem value="Low">Low</SelectItem>
-                  <SelectItem value="Medium">Medium</SelectItem>
-                  <SelectItem value="High">High</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="dueDate">Due Date</Label>
+            <div className="space-y-2">
+              <Label htmlFor="dueDate" className="text-sm font-semibold text-slate-900 dark:text-slate-100">Due Date</Label>
               <Input
                 id="dueDate"
                 name="dueDate"
                 type="date"
                 value={formData.dueDate}
                 onChange={handleChange}
+                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 rounded-xl"
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <DialogFooter className="pt-4 gap-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="rounded-xl border border-slate-200 dark:border-slate-700 font-semibold">
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold">
               {isSubmitting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
               ) : (
                 "Save Changes"
               )}
@@ -466,26 +481,26 @@ export function TasksList({ filters, newTask }) {
                         <TableCell className="text-right py-4">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="h-8 w-8 p-0">
+                              <Button variant="ghost" className="h-8 w-8 p-0 rounded-lg hover:bg-muted/80 transition-colors">
                                 <span className="sr-only">Open menu</span>
-                                <MoreHorizontal className="h-4 w-4" />
+                                <MoreHorizontal className="h-4 w-4 text-muted-foreground hover:text-foreground" />
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-white border border-gray-200 shadow-lg rounded-md">
-                              <DropdownMenuLabel className="font-medium text-gray-900">Actions</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => handleViewTask(task)} className="text-gray-700 hover:bg-gray-100">
-                                <Eye className="mr-2 h-4 w-4" />View details
+                            <DropdownMenuContent align="end" className="w-48 p-1.5 rounded-xl border border-gray-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xl z-50">
+                              <DropdownMenuLabel className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400">Actions</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => handleViewTask(task)} className="cursor-pointer rounded-lg px-2.5 py-2 text-sm font-medium text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800/80 focus:bg-gray-100 dark:focus:bg-slate-800/80 transition-colors flex items-center">
+                                <Eye className="mr-2.5 h-4 w-4 text-emerald-500 dark:text-emerald-400" />View details
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleEditTask(task)} className="text-gray-700 hover:bg-gray-100">
-                                <Edit className="mr-2 h-4 w-4" />Edit task
+                              <DropdownMenuItem onClick={() => handleEditTask(task)} className="cursor-pointer rounded-lg px-2.5 py-2 text-sm font-medium text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800/80 focus:bg-gray-100 dark:focus:bg-slate-800/80 transition-colors flex items-center">
+                                <Edit className="mr-2.5 h-4 w-4 text-blue-500 dark:text-blue-400" />Edit task
                               </DropdownMenuItem>
-                              <DropdownMenuSeparator className="bg-gray-200" />
+                              <DropdownMenuSeparator className="my-1 bg-gray-200 dark:bg-slate-800" />
                               <DropdownMenuItem
-                                className="text-red-600 hover:bg-red-50"
+                                className="cursor-pointer rounded-lg px-2.5 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 focus:bg-red-50 dark:focus:bg-red-950/40 transition-colors flex items-center"
                                 onClick={() => handleDeleteTask(task._id)}
                                 disabled={isDeleting}
                               >
-                                <Trash className="mr-2 h-4 w-4" />Delete task
+                                <Trash className="mr-2.5 h-4 w-4 text-red-500 dark:text-red-400" />Delete task
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -576,6 +591,10 @@ export function TasksList({ filters, newTask }) {
             task={selectedTask}
             open={isDetailsOpen}
             onOpenChange={setIsDetailsOpen}
+            onEditTask={() => {
+              setIsDetailsOpen(false);
+              setIsEditOpen(true);
+            }}
           />
           <EditTaskDialog
             task={selectedTask}

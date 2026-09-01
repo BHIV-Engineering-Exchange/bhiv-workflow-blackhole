@@ -54,6 +54,43 @@ router.get("/parikshak-pdf/:taskId", async (req, res) => {
   }
 });
 
+// Direct HTTP PDF Streaming Endpoint for Task Brief (Works on Local, Render, Vercel & Production)
+router.get("/:id/pdf", async (req, res) => {
+  try {
+    const task = await Task.findById(req.params.id).populate('department', 'name');
+    if (!task) {
+      return res.status(404).send("Task not found");
+    }
+
+    // 1. If user uploaded an original PDF file (saved in Cloudinary links or notes), use original uploaded PDF!
+    const notesCloudinaryMatch = task.notes?.match(/^Document:\s*(https?:\/\/[^\s\)]+)/i);
+    const originalPdfUrl = notesCloudinaryMatch 
+      ? notesCloudinaryMatch[1] 
+      : (task.links && task.links.length > 0 && task.links[0]?.includes('cloudinary.com') ? task.links[0] : null);
+
+    if (originalPdfUrl) {
+      console.log(`[PDF ROUTE] Using original user-uploaded Cloudinary document for task ${task._id}: ${originalPdfUrl}`);
+      return res.redirect(originalPdfUrl);
+    }
+
+    // 2. Otherwise generate structured PDF brief for system/Parikshak tasks without uploaded document
+    let assigneeUser = null;
+    if (task.assignee) {
+      assigneeUser = await User.findById(task.assignee).select("name email");
+    }
+
+    const { generateTaskBriefPdfStream } = require('../services/pdfGenerator');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="task_brief_${task._id}.pdf"`);
+
+    const pdfStream = generateTaskBriefPdfStream(task, assigneeUser);
+    pdfStream.pipe(res);
+  } catch (err) {
+    console.error("Error streaming task PDF:", err);
+    res.status(500).send("Error generating task PDF brief");
+  }
+});
+
 // Configure multer for memory storage
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -424,6 +461,36 @@ router.get('/:id', auth, async (req, res) => {
           isActive,
           isBlackhole,
           status: !isActive ? 'inactive' : !isBlackhole ? 'non-blackhole' : 'active'
+        }
+
+        // Only generate local PDF task brief if the task does NOT have an original uploaded Cloudinary document
+        const hasOriginalCloudinaryDoc = (task.links && task.links.length > 0 && task.links[0]?.includes('cloudinary.com')) ||
+                                         (task.notes && task.notes.includes('https://res.cloudinary.com'));
+
+        if (!hasOriginalCloudinaryDoc) {
+          const fs = require('fs');
+          const path = require('path');
+          const { generateTaskBriefPdf } = require('../services/pdfGenerator');
+
+          const pdfFileName = (task.notes && task.notes.includes('task_brief_')) 
+            ? task.notes.split('/').pop() 
+            : `task_brief_${task._id}.pdf`;
+          const fullPdfPath = path.join(__dirname, '../uploads', pdfFileName);
+
+          if (!fs.existsSync(fullPdfPath)) {
+            try {
+              const generatedPath = await generateTaskBriefPdf(task, actualUser);
+              if (generatedPath) {
+                task.notes = generatedPath;
+                task.fileType = 'application/pdf';
+                await task.save();
+                taskObj.notes = generatedPath;
+                taskObj.fileType = 'application/pdf';
+              }
+            } catch (pdfErr) {
+              console.warn("[PDF AUTO-GEN WARN]", pdfErr.message);
+            }
+          }
         }
       } else {
         taskObj.assignee = null

@@ -12,6 +12,7 @@ const axios = require('axios'); // Requires axios for SANSKAR forwarding
 
 // SANSKAR Endpoint configuration
 const SANSKAR_API = process.env.SANSKAR_SERVICE_URL || 'http://163.128.209.18:8010';
+const GROUP1_API = process.env.GROUP1_SERVICE_URL || 'http://163.128.209.18:8013';
 
 /**
  * POST /api/group2/context/resolve
@@ -46,14 +47,8 @@ router.post('/resolve', async (req, res) => {
         let canonicalRecord;
         try {
             // Request actual canonical record dynamically—no static registries or mock fixtures
-            let g1Response;
-            if (req.body.simulate_g1_response) {
-                // REVIEW_PACKET Simulation interceptor for testing E2E bounds without hitting the live VM
-                g1Response = { data: req.body.simulate_g1_response };
-            } else {
-                g1Response = await axios.get(`${GROUP1_API}/observations/${observationId}`);
-            }
-            canonicalRecord = g1Response.data.record || g1Response.data;
+            const g1Response = await axios.get(`${GROUP1_API}/observations/${observationId}`);
+            canonicalRecord = g1Response.data.observation || g1Response.data.record || g1Response.data;
 
             if (!canonicalRecord) {
                 throw new Error("Empty canonical record returned from Group 1");
@@ -75,12 +70,13 @@ router.post('/resolve', async (req, res) => {
         }
 
         // 3. Generate Authoritative Context 
+        console.log(`[GROUP2] Context resolution initiated for observation: ${observationId}`);
         const contextPayload = {
             observationId,
-            canonicalRecordId: canonicalRecord.canonical_record_id || canonicalRecord.id || canonicalRecord.canonicalId || (observationId === "TC-Z03-EXT-OPENMETEO-OBS001" ? "CR-b4615a27-7ab1-4bde-a078-a56fa0f2414c" : null),
-            location: location || canonicalRecord.location || "UNKNOWN",
+            canonicalRecordId: canonicalRecord.canonical_record_id || canonicalRecord.id || canonicalRecord.canonicalId || null,
+            location: location || canonicalRecord.location || null,
             // STRICT VANA RULE: No generated timestamp replacing source time
-            timestamp: timestamp || canonicalRecord.timestamp || null,
+            timestamp: timestamp || canonicalRecord.observed_at || canonicalRecord.observation_timestamp || canonicalRecord.timestamp || null,
             sourceContext: canonicalRecord.sourceData || "DYNAMIC_SCIENCE_CONTEXT",
             confidence: canonicalRecord.verified ? "VERIFIED" : "NOT VERIFIED", // Marks unsupported items strictly per Ansh's rules
             parameters: { ...(canonicalRecord.parameters || {}), ...(parameters || {}) }
@@ -106,16 +102,16 @@ router.post('/resolve', async (req, res) => {
                 abstention_required: true,
                 action_request: null, // Canonical treatment of absent action
                 evidence: {
-                    source: canonicalRecord.provider || "Open-Meteo.com — EXTERNAL LIVE API",
+                    source: canonicalRecord.provider || null,
                     confidence: contextPayload.confidence,
                     missing_critical_data: missingDataStr,
-                    provenance_reference: canonicalRecord.provenance_reference || "open-meteo:8d26e68328ac160f",
-                    artifact_hash: canonicalRecord.artifact_hash || "8d26e68328ac160f7b69f1a24ccb2de4972ff9fc60af11093c246903a7c52502",
-                    artifact_type: canonicalRecord.artifact_type || "sensor_reading",
-                    observation_timestamp: canonicalRecord.observation_timestamp || "2026-08-25T11:00:00Z",
-                    retrieval_timestamp: canonicalRecord.retrieval_timestamp || "2026-08-25T11:04:16Z",
-                    attribution: canonicalRecord.attribution || "Weather data by Open-Meteo.com (CC-BY 4.0), aggregating national weather services.",
-                    canonical_observation_location: canonicalRecord.location || "19.1288, 72.9421"
+                    provenance_reference: canonicalRecord.provenance_reference || null,
+                    artifact_hash: canonicalRecord.artifact_hash || (canonicalRecord.raw_artifacts && canonicalRecord.raw_artifacts[0] ? canonicalRecord.raw_artifacts[0].content_hash : null),
+                    artifact_type: canonicalRecord.artifact_type || (canonicalRecord.raw_artifacts && canonicalRecord.raw_artifacts[0] ? canonicalRecord.raw_artifacts[0].artifact_type : null),
+                    observation_timestamp: contextPayload.timestamp || null,
+                    retrieval_timestamp: canonicalRecord.retrieval_timestamp || null,
+                    attribution: canonicalRecord.attribution || null,
+                    canonical_observation_location: canonicalRecord.location || null
                 },
                 provenance: {
                     group2_decision_time: new Date().toISOString(),
@@ -123,6 +119,7 @@ router.post('/resolve', async (req, res) => {
                     message: msgStr
                 }
             };
+            console.log(`[GROUP2] Governing output determined: ${finalRuling.ruling}`);
         } else {
             // VERIFIED OUTCOME
             finalRuling = {
@@ -150,37 +147,7 @@ router.post('/resolve', async (req, res) => {
             };
         }
 
-        // AUTO-DISPATCH EXACT FINAL ARTIFACT UNIVERSALLY TO SANSKAR /vana/execute
-        try {
-            const sanskarRes = await axios.post(`${SANSKAR_API}/vana/execute`, finalRuling);
-            if (finalRuling.ruling === "ALLOW") {
-                finalRuling.provenance.downstream_sanskar_trace = sanskarRes.data.traceId || "untraced";
-            }
-        } catch (err) {
-            console.error("[GROUP2-INTEGRATION] Auto-dispatch to SANSKAR failed:", err.message);
-            // If it failed to auto-dispatch an ALLOW payload, we MUST demote it to a 502 ABSTAIN per Ansh's mandate!
-            if (finalRuling.ruling === "ALLOW") {
-                finalRuling = {
-                    observation_id: observationId,
-                    canonical_record_id: contextPayload.canonicalRecordId,
-                    context_id: finalRuling.context_id,
-                    ruling: "ABSTAIN",
-                    action_eligibility: false,
-                    abstention_required: true,
-                    action_request: "NONE",
-                    evidence: null,
-                    provenance: {
-                        group2_decision_time: new Date().toISOString(),
-                        error: "DOWNSTREAM_SERVICE_FAILURE",
-                        reason: "SANSKAR_UNREACHABLE",
-                        message: "Group 4 SANSKAR downstream service failed during auto-dispatch. Failing closed to ABSTAIN.",
-                        details: err.message
-                    }
-                };
-            }
-            return res.status(502).json(finalRuling);
-        }
-
+        console.log(`[GROUP2] Successfully completed canonical resolution for payload.`);
         return res.status(200).json(finalRuling);
 
     } catch (error) {

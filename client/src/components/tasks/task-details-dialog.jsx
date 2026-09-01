@@ -1,349 +1,182 @@
-
-// import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog"
-// import { Badge } from "../ui/badge"
-// import { Button } from "../ui/button"
-// import { Separator } from "../ui/separator"
-// import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar"
-// import { Edit, MessageSquare, LinkIcon, FileText } from "lucide-react"
-
-// export function TaskDetailsDialog({ task, open, onOpenChange }) {
-//   const getStatusColor = (status) => {
-//     switch (status) {
-//       case "Completed":
-//         return "bg-green-500/10 text-green-500 hover:bg-green-500/20";
-//       case "In Progress":
-//         return "bg-blue-500/10 text-blue-500 hover:bg-blue-500/20";
-//       case "Pending":
-//         return "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20";
-//       default:
-//         return "bg-gray-500/10 text-gray-500 hover:bg-gray-500/20";
-//     }
-//   };
-
-//   const getPriorityColor = (priority) => {
-//     switch (priority) {
-//       case "High":
-//         return "bg-red-500/10 text-red-500 hover:bg-red-500/20";
-//       case "Medium":
-//         return "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20";
-//       case "Low":
-//         return "bg-green-500/10 text-green-500 hover:bg-green-500/20";
-//       default:
-//         return "bg-gray-500/10 text-gray-500 hover:bg-gray-500/20";
-//     }
-//   };
-
-//   // Extract file name, URL, and type from notes
-//   const getDocumentDetails = (notes, fileType) => {
-//     if (!notes) return { url: null, fileName: null, fileType: null };
-//     const match = notes.match(/^Document: (.+?) \((.+)\)$/);
-//     const fileName = match ? match[2] : "Document";
-//     const url = match ? match[1] : notes.replace("Document: ", "");
-//     const extension = fileName.match(/\.([a-zA-Z0-9]+)$/i)?.[1]?.toLowerCase();
-//     const mimeType = fileType || "";
-//     const fileTypeMap = {
-//       "application/pdf": "PDF Document",
-//       "application/msword": "Word Document",
-//       "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word Document",
-//       "text/plain": "Text Document",
-//       "text/html": "HTML Document",
-//     };
-//     const displayFileType = fileTypeMap[mimeType] || "Document";
-//     return { url, fileName, fileType: displayFileType, mimeType, extension };
-//   };
-
-//   const document = getDocumentDetails(task.notes, task.fileType);
-//   const isPDF = document.mimeType === "application/pdf";
-//   const isHTML = document.mimeType === "text/html";
-
-//   // Modify Cloudinary URL to ensure correct rendering
-//   const getDisplayUrl = (url, mimeType) => {
-//     if (!url) return url;
-//     // For PDFs and HTML, append ?_a=BAE6pY0 to ensure correct content type
-//     if (mimeType === "application/pdf" || mimeType === "text/html") {
-//       return `${url}?_a=BAE6pY0`;
-//     }
-//     return url;
-//   };
-
-//   return (
-//     <Dialog open={open} onOpenChange={onOpenChange} className="dialog-overlay">
-//       <DialogContent className="dialog-content sm:max-w-[525px]">
-//         <DialogHeader>
-//           <div className="flex items-center justify-between">
-//             <div>
-//               <DialogTitle className="text-xl">{task.title}</DialogTitle>
-//               <DialogDescription className="text-sm">
-//                 {task.id} • {task.department?.name || "Unknown"}
-//               </DialogDescription>
-//             </div>
-//             <Button size="sm" variant="outline">
-//               <Edit className="mr-2 h-4 w-4" />
-//               Edit
-//             </Button>
-//           </div>
-//         </DialogHeader>
-
-//         <div className="space-y-6">
-//           <div className="flex flex-wrap gap-3">
-//             <Badge className={getStatusColor(task.status)}>{task.status}</Badge>
-//             <Badge className={getPriorityColor(task.priority)}>{task.priority}</Badge>
-//             <Badge variant="outline">Due: {task.dueDate || "Not set"}</Badge>
-//           </div>
-
-//           <div>
-//             <h3 className="text-sm font-medium mb-2">Description</h3>
-//             <p className="text-sm text-muted-foreground">
-//               {task.description ||
-//                 "This is a detailed description of the task. It includes all the necessary information about what needs to be done, the expected outcomes, and any specific requirements or constraints."}
-//             </p>
-//           </div>
-
-//           <div>
-//             <h3 className="text-sm font-medium mb-2">Assignee</h3>
-//             <div className="flex items-center gap-2">
-//               <Avatar className="h-8 w-8">
-//                 <AvatarImage
-//                   src={task.assignee?.avatar || "/placeholder.svg?height=32&width=32"}
-//                   alt={task.assignee?.name || "Unassigned"}
-//                 />
-//                 <AvatarFallback>
-//                   {task.assignee?.name
-//                     ? task.assignee.name
-//                         .split(" ")
-//                         .map((n) => n[0])
-//                         .join("")
-//                     : "NA"}
-//                 </AvatarFallback>
-//               </Avatar>
-//               <span className="text-sm">{task.assignee?.name || "Unassigned"}</span>
-//             </div>
-//           </div>
-
-//           <div>
-//             <h3 className="text-sm font-medium mb-2">Dependencies</h3>
-//             <div className="space-y-2">
-//               {task.dependencies && task.dependencies.length > 0 ? (
-//                 task.dependencies.map((dep, index) => (
-//                   <div key={index} className="flex items-center gap-2 text-sm">
-//                     <LinkIcon className="h-4 w-4 text-muted-foreground" />
-//                     <span>{dep.title}</span>
-//                   </div>
-//                 ))
-//               ) : (
-//                 <div className="text-sm text-muted-foreground">No dependencies</div>
-//               )}
-//             </div>
-//           </div>
-
-//           <div>
-//             <h3 className="text-sm font-medium mb-2">Document</h3>
-//             <div className="space-y-2">
-//               {document.url ? (
-//                 <div className="flex items-center gap-2 text-sm">
-//                   <FileText className="h-4 w-4 text-muted-foreground" />
-//                   <a
-//                     href={getDisplayUrl(document.url, document.mimeType)}
-//                     target={isPDF || isHTML ? "_blank" : "_self"}
-//                     rel="noopener noreferrer"
-//                     download={!isPDF && !isHTML} // Download for non-PDF, non-HTML files
-//                     className="text-blue-500 hover:underline"
-//                   >
-//                     {document.fileName} ({document.fileType})
-//                   </a>
-//                 </div>
-//               ) : (
-//                 <div className="text-sm text-muted-foreground">No document attached</div>
-//               )}
-//             </div>
-//           </div>
-
-//           <Separator />
-
-// {/*           <div>
-//             <h3 className="text-sm font-medium mb-2">Comments</h3>
-//             <div className="space-y-4">
-//               <div className="flex gap-3">
-//                 <Avatar className="h-8 w-8">
-//                   <AvatarImage src="/placeholder.svg?height=32&width=32" alt="Jane Smith" />
-//                   <AvatarFallback>JS</AvatarFallback>
-//                 </Avatar>
-//                 <div className="space-y-1">
-//                   <div className="flex items-center gap-2">
-//                     <span className="text-sm font-medium">Jane Smith</span>
-//                     <span className="text-xs text-muted-foreground">2 days ago</span>
-//                   </div>
-//                   <p className="text-sm">
-//                     I've started working on this task. Will update progress tomorrow.
-//                   </p>
-//                 </div>
-//               </div>
-//             </div>
-
-//             <div className="mt-4 flex items-center gap-2">
-//               <Button variant="outline" className="w-full">
-//                 <MessageSquare className="mr-2 h-4 w-4" />
-//                 Add Comment
-//               </Button>
-//             </div>
-//           </div> */}
-//         </div>
-//       </DialogContent>
-//     </Dialog>
-//   );
-// }
-
-
-
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog"
 import { Badge } from "../ui/badge"
 import { Button } from "../ui/button"
 import { Separator } from "../ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar"
-import { Edit, MessageSquare, LinkIcon, FileText } from "lucide-react"
+import { Edit, LinkIcon, FileText, Calendar, Building2, User, AlignLeft, GitFork, ExternalLink, Download } from "lucide-react"
+import { formatDate } from "../../lib/dateFormat"
 
-export function TaskDetailsDialog({ task, open, onOpenChange }) {
+export function TaskDetailsDialog({ task, open, onOpenChange, onEditTask }) {
+  if (!task) return null;
+
   const getStatusColor = (status) => {
     switch (status) {
       case "Completed":
-        return "bg-green-500/10 text-green-500 hover:bg-green-500/20";
+        return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30";
       case "In Progress":
-        return "bg-blue-500/10 text-blue-500 hover:bg-blue-500/20";
+        return "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30";
       case "Pending":
-        return "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20";
+        return "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30";
       default:
-        return "bg-gray-500/10 text-gray-500 hover:bg-gray-500/20";
+        return "bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-500/30";
     }
   };
 
   const getPriorityColor = (priority) => {
     switch (priority) {
       case "High":
-        return "bg-red-500/10 text-red-500 hover:bg-red-500/20";
+        return "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30";
       case "Medium":
-        return "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20";
+        return "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30";
       case "Low":
-        return "bg-green-500/10 text-green-500 hover:bg-green-500/20";
+        return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30";
       default:
-        return "bg-gray-500/10 text-gray-500 hover:bg-gray-500/20";
+        return "bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-500/30";
     }
   };
-
-  // Extract file name, URL, and type from notes
-  const getDocumentDetails = (notes, fileType) => {
-    if (!notes) return { url: null, fileName: null, fileType: null };
-    const match = notes.match(/^Document: (.+?) \((.+)\)$/);
-    const fileName = match ? match[2] : "Document";
-    const url = match ? match[1] : notes.replace("Document: ", "");
-    const extension = fileName.match(/\.([a-zA-Z0-9]+)$/i)?.[1]?.toLowerCase();
-    const mimeType = fileType || "";
-    const fileTypeMap = {
-      "application/pdf": "PDF Document",
-      "application/msword": "Word Document",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word Document",
-      "text/plain": "Text Document",
-      "text/html": "HTML Document",
-    };
-    const displayFileType = fileTypeMap[mimeType] || "Document";
-    return { url, fileName, fileType: displayFileType, mimeType, extension };
-  };
-
-  const document = getDocumentDetails(task.notes, task.fileType);
-  const isPDF = document.mimeType === "application/pdf";
-  const isHTML = document.mimeType === "text/html";
-
-  // Modify Cloudinary URL to ensure correct rendering
-  const getDisplayUrl = (url, mimeType) => {
-    if (!url) return url;
-    // For PDFs and HTML, append ?_a=BAE6pY0 to ensure correct content type
-    if (mimeType === "application/pdf" || mimeType === "text/html") {
-      return `${url}?_a=BAE6pY0`;
-    }
-    return url;
-  };
-
-  console.log("task",task)
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} className="dialog-overlay">
-      <DialogContent className="dialog-content sm:max-w-[525px]">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-xl">{task.title}</DialogTitle>
-              <DialogDescription className="text-sm">
-                {task.id} • {task.department?.name || "Unknown"}
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl p-6 space-y-6 custom-scrollbar">
+        {/* Header Section */}
+        <DialogHeader className="space-y-3 pr-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1.5 flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                {task.department?.name && (
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <Building2 className="h-3 w-3" />
+                    {task.department.name}
+                  </Badge>
+                )}
+              </div>
+              <DialogTitle className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 leading-snug break-words">
+                {task.title}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+                ID: {task._id || task.id}
               </DialogDescription>
             </div>
-            <Button size="sm" variant="outline">
-              <Edit className="mr-2 h-4 w-4" />
-              Edit
-            </Button>
+
+            {onEditTask && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  if (onOpenChange) onOpenChange(false);
+                  onEditTask();
+                }}
+                className="rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 transition-all font-semibold flex-shrink-0"
+              >
+                <Edit className="mr-1.5 h-3.5 w-3.5 text-blue-500" />
+                Edit
+              </Button>
+            )}
+          </div>
+
+          {/* Badges Bar */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <Badge className={`${getStatusColor(task.status)} border font-semibold px-3 py-1 text-xs rounded-full`}>
+              {task.status}
+            </Badge>
+            <Badge className={`${getPriorityColor(task.priority)} border font-semibold px-3 py-1 text-xs rounded-full`}>
+              {task.priority} Priority
+            </Badge>
+            <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium px-3 py-1 text-xs rounded-full flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5 text-slate-400" />
+              Due: {task.dueDate ? formatDate(task.dueDate) : "No due date"}
+            </Badge>
           </div>
         </DialogHeader>
 
-        <div className="space-y-6">
-          <div className="flex flex-wrap gap-3">
-            <Badge className={getStatusColor(task.status)}>{task.status}</Badge>
-            <Badge className={getPriorityColor(task.priority)}>{task.priority}</Badge>
-            <Badge variant="outline">Due: {task.dueDate || "Not set"}</Badge>
-          </div>
+        <Separator className="bg-slate-200 dark:bg-slate-800" />
 
-          <div>
-            <h3 className="text-sm font-medium mb-2">Description</h3>
-            <p className="text-sm text-muted-foreground">
-              {task.description ||
-                "This is a detailed description of the task. It includes all the necessary information about what needs to be done, the expected outcomes, and any specific requirements or constraints."}
+        {/* Content Body */}
+        <div className="space-y-5">
+          {/* Description */}
+          <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <AlignLeft className="h-3.5 w-3.5 text-emerald-500" />
+              Description
+            </h3>
+            <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-normal whitespace-pre-wrap">
+              {task.description || "No description provided."}
             </p>
           </div>
 
-          <div>
-            <h3 className="text-sm font-medium mb-2">Assignee</h3>
-            <div className="flex items-center gap-2">
-              <Avatar className="h-8 w-8">
-                <AvatarImage
-                  src={task.assignee?.avatar || "/placeholder.svg?height=32&width=32"}
-                  alt={task.assignee?.name || "Unassigned"}
-                />
-                <AvatarFallback>
-                  {task.assignee?.name
-                    ? task.assignee.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
-                    : "NA"}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-sm">{task.assignee?.name || "Unassigned"}</span>
+          {/* Grid Layout for Assignee & Dependencies */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Assignee Card */}
+            <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-blue-500" />
+                Assignee
+              </h3>
+              <div className="flex items-center gap-3 pt-1">
+                <Avatar className="h-9 w-9 border border-slate-200 dark:border-slate-700">
+                  <AvatarImage
+                    src={task.assignee?.avatar || "/placeholder.svg"}
+                    alt={task.assignee?.name || "Unassigned"}
+                  />
+                  <AvatarFallback className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
+                    {task.assignee?.name
+                      ? task.assignee.name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .substring(0, 2)
+                          .toUpperCase()
+                      : "NA"}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {task.assignee?.name || "Unassigned"}
+                  </p>
+                  {task.assignee?.email && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[180px]">
+                      {task.assignee.email}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
 
-          <div>
-            <h3 className="text-sm font-medium mb-2">Dependencies</h3>
-            <div className="space-y-2">
-              {task.dependencies && task.dependencies.length > 0 ? (
-                task.dependencies.map((dep, index) => (
-                  <div key={index} className="flex items-center gap-2 text-sm">
-                    <LinkIcon className="h-4 w-4 text-muted-foreground" />
-                    <span>{dep.title}</span>
+            {/* Dependencies Card */}
+            <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <GitFork className="h-3.5 w-3.5 text-amber-500" />
+                Dependencies
+              </h3>
+              <div className="pt-1">
+                {task.dependencies && task.dependencies.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {task.dependencies.map((dep, index) => (
+                      <div key={index} className="flex items-center gap-2 text-xs font-medium text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <LinkIcon className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                        <span className="truncate">{dep.title || dep}</span>
+                      </div>
+                    ))}
                   </div>
-                ))
-              ) : (
-                <div className="text-sm text-muted-foreground">No dependencies</div>
-              )}
+                ) : (
+                  <p className="text-xs text-slate-400 dark:text-slate-500 italic pt-1">No dependencies linked</p>
+                )}
+              </div>
             </div>
           </div>
 
-          <div>
-            <h3 className="text-sm font-medium mb-2">Source Document</h3>
+          {/* Source Document Section */}
+          <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5 text-emerald-500" />
+              Source Document & Attachments
+            </h3>
             <div className="space-y-2">
               {(() => {
-                // Primary source: parse from notes field ("Document: <url> (<filename>)")
                 const notesMatch = task.notes?.match(/^Document:\s*(.+?)\s*\((.+)\)$/);
                 const notesUrl = notesMatch ? notesMatch[1] : null;
                 const notesFilename = notesMatch ? notesMatch[2] : null;
 
-                // Fallback: first entry in task.links[] that looks like a URL
                 const linkUrl = !notesUrl && task.links && task.links.length > 0
                   ? task.links[0]
                   : null;
@@ -353,46 +186,50 @@ export function TaskDetailsDialog({ task, open, onOpenChange }) {
                 const mimeType = task.fileType || "";
 
                 const fileTypeMap = {
-                  "application/pdf": "PDF",
-                  "application/msword": "DOC",
-                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
-                  "text/plain": "TXT",
-                  "text/markdown": "MD",
+                  "application/pdf": "PDF Document",
+                  "application/msword": "Word Document",
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word Document",
+                  "text/plain": "Text Document",
+                  "text/markdown": "Markdown File",
                 };
-                const fileLabel = fileTypeMap[mimeType] || (docFilename?.split(".").pop()?.toUpperCase()) || "FILE";
+                const fileLabel = fileTypeMap[mimeType] || (docFilename?.split(".").pop()?.toUpperCase()) || "File";
                 const isPDF = mimeType === "application/pdf" || docFilename?.toLowerCase().endsWith(".pdf");
-                // Append Cloudinary flag for PDFs to force correct content type
                 const displayUrl = docUrl && isPDF ? `${docUrl}?_a=BAE6pY0` : docUrl;
 
                 if (!docUrl) {
-                  return <div className="text-sm text-muted-foreground">No source document attached</div>;
+                  return <p className="text-xs text-slate-400 dark:text-slate-500 italic">No source document attached</p>;
                 }
 
                 return (
-                  <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors">
-                    <FileText className="h-5 w-5 text-blue-500 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{docFilename || "Task Document"}</p>
-                      <p className="text-xs text-muted-foreground">{fileLabel} · Ingested source file</p>
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-9 w-9 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">{docFilename || "Task Document"}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">{fileLabel} · Ingested source file</p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       <a
                         href={displayUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 transition-colors"
-                        title="Open document in new tab"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                        title="Open document"
                       >
-                        <LinkIcon className="h-3 w-3" />
-                        Open
+                        <ExternalLink className="h-3 w-3" />
+                        View
                       </a>
                       {!isPDF && (
                         <a
                           href={docUrl}
                           download={docFilename || true}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                           title="Download document"
                         >
+                          <Download className="h-3 w-3" />
                           Download
                         </a>
                       )}
@@ -403,65 +240,35 @@ export function TaskDetailsDialog({ task, open, onOpenChange }) {
             </div>
           </div>
 
-          {/* Additional links (manual links added to task, excluding the source document URL) */}
+          {/* External Links section */}
           {task.links && task.links.length > 0 && (() => {
-            // Filter out the source document URL already shown above to avoid duplication
             const notesMatch = task.notes?.match(/^Document:\s*(.+?)\s*\((.+)\)$/);
             const sourceUrl = notesMatch ? notesMatch[1] : null;
             const extraLinks = task.links.filter((l) => l !== sourceUrl);
             if (extraLinks.length === 0) return null;
             return (
-              <div>
-                <h3 className="text-sm font-medium mb-2">Links</h3>
-                <div className="space-y-2">
+              <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <LinkIcon className="h-3.5 w-3.5 text-blue-500" />
+                  Additional Links
+                </h3>
+                <div className="space-y-1.5 pt-1">
                   {extraLinks.map((link, index) => (
-                    <div key={index} className="flex items-center gap-2 text-sm">
-                      <LinkIcon className="h-4 w-4 text-muted-foreground" />
-                      <a
-                        href={link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-500 hover:underline truncate"
-                      >
-                        {link}
-                      </a>
-                    </div>
+                    <a
+                      key={index}
+                      href={link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline truncate bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span className="truncate">{link}</span>
+                    </a>
                   ))}
                 </div>
               </div>
             );
           })()}
-
-
-          <Separator />
-
-{/*           <div>
-            <h3 className="text-sm font-medium mb-2">Comments</h3>
-            <div className="space-y-4">
-              <div className="flex gap-3">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src="/placeholder.svg?height=32&width=32" alt="Jane Smith" />
-                  <AvatarFallback>JS</AvatarFallback>
-                </Avatar>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">Jane Smith</span>
-                    <span className="text-xs text-muted-foreground">2 days ago</span>
-                  </div>
-                  <p className="text-sm">
-                    I've started working on this task. Will update progress tomorrow.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-center gap-2">
-              <Button variant="outline" className="w-full">
-                <MessageSquare className="mr-2 h-4 w-4" />
-                Add Comment
-              </Button>
-            </div>
-          </div> */}
         </div>
       </DialogContent>
     </Dialog>

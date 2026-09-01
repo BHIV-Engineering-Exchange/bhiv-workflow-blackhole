@@ -282,13 +282,13 @@
 }
 
 .dialog-content {
-  
-  background-color: white;
-  border-radius: 8px;
-  padding: 20px;
+  background-color: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 16px;
+  padding: 24px;
   width: 100%;
   max-width: 525px;
-/*   z-index: 1000; */
 }
 
 body.sidebar-open {
