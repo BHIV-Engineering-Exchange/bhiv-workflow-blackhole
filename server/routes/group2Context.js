@@ -48,7 +48,7 @@ router.post('/resolve', async (req, res) => {
         try {
             // Request actual canonical record dynamically—no static registries or mock fixtures
             const g1Response = await axios.get(`${GROUP1_API}/observations/${observationId}`);
-            canonicalRecord = g1Response.data.record || g1Response.data;
+            canonicalRecord = g1Response.data.observation || g1Response.data.record || g1Response.data;
 
             if (!canonicalRecord) {
                 throw new Error("Empty canonical record returned from Group 1");
