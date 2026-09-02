@@ -13,7 +13,7 @@
     "provenance_reference": "open-meteo:8bb80c24fe28b598",
     "artifact_hash": "8bb80c24fe28b598dd15db831dc815688404bb7e457439e3c5501d502d4658cd",
     "artifact_type": "sensor_reading",
-    "observation_timestamp": "2026-08-28 14:45:00+00:00",
+    "observation_timestamp": "2026-08-28T14:45:00.000Z",
     "retrieval_timestamp": null,
     "attribution": null,
     "canonical_observation_location": {
@@ -25,7 +25,7 @@
     }
   },
   "provenance": {
-    "group2_decision_time": "2026-09-02T06:08:56.242Z",
+    "group2_decision_time": "2026-09-02T07:14:08.696Z",
     "reason": "CONTEXT_NOT_VERIFIED",
     "message": "Authoritative evidence threshold not met (Context not verified). Failing closed to ABSTAIN."
   }

@@ -109,12 +109,12 @@ router.post('/resolve', async (req, res) => {
                     source: canonicalRecord.provider || null,
                     confidence: contextPayload.confidence,
                     missing_critical_data: missingDataStr,
-                    provenance_reference: canonicalRecord.provenance_reference || null,
+                    provenance_reference: canonicalRecord.provenance_reference || canonicalRecord.provenance || null,
                     artifact_hash: canonicalRecord.artifact_hash || (canonicalRecord.raw_artifacts && canonicalRecord.raw_artifacts[0] ? canonicalRecord.raw_artifacts[0].content_hash : null),
                     artifact_type: canonicalRecord.artifact_type || (canonicalRecord.raw_artifacts && canonicalRecord.raw_artifacts[0] ? canonicalRecord.raw_artifacts[0].artifact_type : null),
                     observation_timestamp: contextPayload.timestamp || null,
                     retrieval_timestamp: canonicalRecord.retrieval_timestamp || null,
-                    attribution: canonicalRecord.attribution || null,
+                    attribution: canonicalRecord.attribution || (canonicalRecord.raw_artifacts && canonicalRecord.raw_artifacts[0] ? canonicalRecord.raw_artifacts[0].attribution : null) || null,
                     canonical_observation_location: canonicalRecord.location || null
                 },
                 provenance: {
@@ -135,7 +135,7 @@ router.post('/resolve', async (req, res) => {
                 abstention_required: false,
                 action_request: "PROCEED_TO_SANSKAR",
                 evidence: {
-                    source: contextPayload.sourceContext,
+                    source: canonicalRecord.source || canonicalRecord.source_name || contextPayload.sourceContext || null,
                     confidence: contextPayload.confidence,
                     location: contextPayload.location,
                     timestamp: contextPayload.timestamp,
