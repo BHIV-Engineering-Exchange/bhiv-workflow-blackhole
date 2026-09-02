@@ -75,8 +75,12 @@ router.post('/resolve', async (req, res) => {
             observationId,
             canonicalRecordId: canonicalRecord.canonical_record_id || canonicalRecord.id || canonicalRecord.canonicalId || null,
             location: location || canonicalRecord.location || null,
-            // STRICT VANA RULE: No generated timestamp replacing source time
-            timestamp: timestamp || canonicalRecord.observed_at || canonicalRecord.observation_timestamp || canonicalRecord.timestamp || null,
+            // STRICT VANA RULE: Process dates intelligently and map all possible G1 formats without fabricating fresh fallback timestamps
+            timestamp: (() => {
+                const tsStr = timestamp || canonicalRecord.source_timestamp || canonicalRecord.observed_at || canonicalRecord.observation_timestamp || canonicalRecord.timestamp;
+                if (!tsStr) return null;
+                try { return new Date(tsStr).toISOString(); } catch (e) { return tsStr; } // Format intelligently
+            })(),
             sourceContext: canonicalRecord.sourceData || "DYNAMIC_SCIENCE_CONTEXT",
             confidence: canonicalRecord.verified ? "VERIFIED" : "NOT VERIFIED", // Marks unsupported items strictly per Ansh's rules
             parameters: { ...(canonicalRecord.parameters || {}), ...(parameters || {}) }
