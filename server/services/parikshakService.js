@@ -502,50 +502,50 @@ const evaluateParikshakSubmission = async (submissionId, traceId) => {
         console.warn(`[PARIKSHAK] Direct API call to ${targetUrl} failed/timed out: ${err.message}. Generating fallback evaluation result.`);
     }
 
-    const responseStatus = String(response?.status || response?.result || "PASS").toUpperCase();
-    const scoreVal = (response?.score !== undefined && response?.score !== null)
+    if (!response || typeof response === 'string' || (response.score === undefined && response.status === undefined && response.result === undefined)) {
+        return {
+            isOffline: true,
+            submissionId: submission._id,
+            taskId: task._id,
+            taskTitle: task.title,
+            assigneeId: user._id,
+            assigneeName: user.name,
+            score: null,
+            result: "OFFLINE",
+            status: "OFFLINE",
+            doneWell: null,
+            missingWork: "Parikshak AI review service is currently offline or unreachable. Manual review required.",
+            recommendations: "Please manually review the candidate submission deliverables.",
+            readiness: "Requires Manual Review",
+            nextTask: null
+        };
+    }
+
+    const responseStatus = String(response.status || response.result || "PASS").toUpperCase();
+    const scoreVal = (response.score !== undefined && response.score !== null)
         ? response.score
-        : ((submission.githubLink && submission.githubLink.length > 5) ? 88 : 75);
+        : ((response.readiness_percent !== undefined && response.readiness_percent !== null) ? response.readiness_percent : null);
 
-    const isPass = responseStatus === "PASS" || responseStatus === "APPROVED" || responseStatus === "SUCCESS" || scoreVal >= 70;
-    const result = isPass ? "PASS" : "PARTIAL";
+    const isPass = responseStatus === "PASS" || responseStatus === "APPROVED" || responseStatus === "SUCCESS" || (scoreVal !== null && scoreVal >= 70);
+    const result = isPass ? "PASS" : (responseStatus === "PARTIAL" ? "PARTIAL" : "FAIL");
 
-    const defaultDoneWell = submission.notes && submission.notes.length > 10
-        ? `Successfully implemented and verified '${task.title}'. Candidate deliverables & notes parsed: "${submission.notes.length > 120 ? submission.notes.slice(0, 120) + '...' : submission.notes}"`
-        : `Code repository '${submission.githubLink ? submission.githubLink.replace(/^https?:\/\/(www\.)?github\.com\//, '') : task.title}' and submission assets successfully verified.`;
-
-    const defaultRecommendations = `Proceed to next production phase for '${task.title}'. Add unit test coverage and complete runtime verification.`;
-
-    const doneWell = response?.review_details?.done_well || response?.review || defaultDoneWell;
-    const missingWork = response?.review_details?.missing_work || (isPass ? "None" : "Minor edge-case error handling and inline documentation updates needed.");
-    const recommendations = response?.review_details?.recommendations || defaultRecommendations;
-    const readiness = response?.review_details?.readiness || (isPass ? "Production Ready" : "Requires Minor Revisions");
+    const doneWell = response.review_details?.done_well || response.review || "Submission evaluated by Parikshak AI Engine.";
+    const missingWork = response.review_details?.missing_work || (isPass ? "None" : (Array.isArray(response.failure_reasons) ? response.failure_reasons.join('\n') : "Revisions required."));
+    const recommendations = response.review_details?.recommendations || (Array.isArray(response.improvement_hints) ? response.improvement_hints.join(' ') : "Follow standard development guidelines.");
+    const readiness = response.review_details?.readiness || (isPass ? "Production Ready" : "Requires Revisions");
 
     let nextTaskTitle = "";
     let nextTaskDesc = "";
 
-    if (typeof response?.next_task === 'object' && response.next_task !== null) {
+    if (typeof response.next_task === 'object' && response.next_task !== null) {
         nextTaskTitle = response.next_task.title || response.next_task.name || response.next_task.objective || "";
         nextTaskDesc = response.next_task.description || response.next_task.objective || "";
-    } else if (typeof response?.next_task === 'string' && response.next_task.trim()) {
-        const rawNext = response.next_task.trim();
-        if (/^T-[A-Z]{3}-\d+$/i.test(rawNext) || rawNext.toLowerCase().includes("test task") || rawNext.toLowerCase().startsWith("task-next")) {
-            const cleanPrevTitle = (task.title || "").replace(/^Phase\s*\d+\s*[:\-]\s*/i, "");
-            nextTaskTitle = `Phase 2: ${cleanPrevTitle || "Execution & Convergence Certification"}`;
-        } else {
-            nextTaskTitle = rawNext;
-        }
-    }
-
-    if (!nextTaskTitle || /^T-[A-Z]{3}-\d+$/i.test(nextTaskTitle) || nextTaskTitle.toLowerCase().includes("test task")) {
-        const cleanPrevTitle = (task.title || "").replace(/^Phase\s*\d+\s*[:\-]\s*/i, "");
-        nextTaskTitle = `Phase 2: ${cleanPrevTitle || "Execution & Convergence Certification"}`;
-    }
-    if (!nextTaskDesc) {
-        nextTaskDesc = `Follow-up task for ${user.name}.\n\nObjective:\nBuild upon '${task.title}' by adding production monitoring, error boundary safety, and E2E integration verification.\n\nEvaluation Feedback:\n- ${doneWell}\n\nRecommendations:\n- ${recommendations}`;
+    } else if (typeof response.next_task === 'string' && response.next_task.trim()) {
+        nextTaskTitle = response.next_task.trim();
     }
 
     return {
+        isOffline: false,
         submissionId: submission._id,
         taskId: task._id,
         taskTitle: task.title,
@@ -558,13 +558,13 @@ const evaluateParikshakSubmission = async (submissionId, traceId) => {
         missingWork,
         recommendations,
         readiness,
-        nextTask: {
+        nextTask: nextTaskTitle ? {
             title: nextTaskTitle,
-            description: nextTaskDesc,
+            description: nextTaskDesc || `Follow-up task for '${task.title}'.`,
             priority: task.priority || "Medium",
             department: task.department || null,
             branch: task.branch || null
-        }
+        } : null
     };
 };
 

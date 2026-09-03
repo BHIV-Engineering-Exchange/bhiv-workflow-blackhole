@@ -79,6 +79,40 @@ router.get("/", auth, async (req, res) => {
   }
 })
 
+// Get live Parikshak AI service status
+router.get("/parikshak-status", async (req, res) => {
+  try {
+    const axios = require('axios');
+    const parikshakUrl = process.env.PARIKSHAK_URL || 'http://localhost:8000/parikshak/review';
+    const baseUrl = parikshakUrl.replace(/\/parikshak\/review\/?$/, '').replace(/\/$/, '') || 'http://localhost:8000';
+    const healthUrl = `${baseUrl}/health`;
+
+    let isOnline = false;
+    try {
+      const pingRes = await axios.get(healthUrl, { timeout: 4000, validateStatus: (status) => status < 500 });
+      const contentType = String(pingRes.headers['content-type'] || '');
+      isOnline = pingRes.status < 500 && (contentType.includes('application/json') || pingRes.data?.status === 'healthy');
+    } catch (err) {
+      try {
+        const pingRes2 = await axios.get(baseUrl, { timeout: 3000, validateStatus: (status) => status < 500 });
+        const contentType2 = String(pingRes2.headers['content-type'] || '');
+        isOnline = pingRes2.status < 500 && (contentType2.includes('application/json') || pingRes2.data?.status === 'healthy');
+      } catch (e2) {
+        isOnline = false;
+      }
+    }
+
+    res.json({
+      service: "Parikshak AI Review Engine",
+      status: isOnline ? "ONLINE" : "OFFLINE",
+      url: healthUrl,
+      checkedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    res.json({ service: "Parikshak AI Review Engine", status: "OFFLINE", error: err.message });
+  }
+});
+
 // Get submission by ID
 router.get("/:id", auth, async (req, res) => {
   try {

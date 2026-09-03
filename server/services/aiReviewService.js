@@ -114,8 +114,12 @@ class AIReviewService {
     };
 
     try {
-      console.log(`[AIReviewService] Triggering Parikshak review at ${this.parikshakUrl}...`);
-      const response = await axios.post(this.parikshakUrl, payload, {
+      const targetUrl = this.parikshakUrl.endsWith("/parikshak/review")
+        ? this.parikshakUrl
+        : `${this.parikshakUrl.replace(/\/$/, "")}/parikshak/review`;
+
+      console.log(`[AIReviewService] Triggering Parikshak review at ${targetUrl}...`);
+      const response = await axios.post(targetUrl, payload, {
         headers: { 'Content-Type': 'application/json' },
         timeout: 15000
       });

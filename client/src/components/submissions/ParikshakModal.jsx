@@ -41,8 +41,9 @@ const ParikshakModal = ({
 
   if (!isOpen) return null;
 
-  const isPass = evaluationData?.result === "PASS" || evaluationData?.status === "PASS";
-  const score = evaluationData?.score ?? 85;
+  const isOffline = evaluationData?.isOffline || evaluationData?.result === "OFFLINE";
+  const isPass = !isOffline && (evaluationData?.result === "PASS" || evaluationData?.status === "PASS");
+  const score = evaluationData?.score !== undefined && evaluationData?.score !== null ? evaluationData.score : null;
 
   const handleConfirmApproval = async () => {
     setSubmitting(true);
@@ -73,12 +74,12 @@ const ParikshakModal = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold tracking-tight text-white">Parikshak Evaluation & Next Task</h2>
-                <Badge className="bg-indigo-500/20 text-indigo-300 border-indigo-500/40 text-[10px] uppercase font-bold">
-                  AI Review
+                <Badge className={`text-[10px] uppercase font-bold ${isOffline ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'}`}>
+                  {isOffline ? 'Service Offline' : 'AI Review'}
                 </Badge>
               </div>
               <p className="text-xs text-slate-400">
-                Evaluation results & proposed follow-up task assignment for candidate
+                {isOffline ? 'Parikshak AI service is offline. Please review candidate submission manually.' : 'Evaluation results & proposed follow-up task assignment for candidate'}
               </p>
             </div>
           </div>
@@ -108,7 +109,24 @@ const ParikshakModal = ({
                 </p>
               </div>
             </div>
+          ) : isOffline ? (
+            /* Clean Offline State - ONLY Show Alert Warning */
+            <div className="py-8 px-6 bg-slate-950/80 rounded-2xl border border-amber-500/30 text-center space-y-4 shadow-xl">
+              <div className="inline-flex items-center justify-center p-3 bg-amber-500/15 rounded-2xl border border-amber-500/30 text-amber-400">
+                <AlertTriangle size={32} />
+              </div>
+              <div className="space-y-2 max-w-md mx-auto">
+                <h3 className="text-lg font-bold text-white">Parikshak AI Review Engine is Offline</h3>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  The automated evaluation service is currently unreachable. AI scoring, failure reasons, recommendations, and next-task proposals are unavailable.
+                </p>
+                <div className="p-3 bg-amber-950/40 rounded-xl border border-amber-800/40 text-amber-200/90 text-xs font-medium">
+                  Candidate: <strong className="text-white">{evaluationData?.assigneeName || "Employee"}</strong> • Manual admin review is required.
+                </div>
+              </div>
+            </div>
           ) : evaluationData ? (
+            /* Online State - Show All AI Evaluation Details */
             <>
               {/* Evaluation Header Stats */}
               <div className="flex items-center justify-between p-4 bg-slate-950/80 rounded-xl border border-slate-800">
@@ -132,7 +150,7 @@ const ParikshakModal = ({
                 <div className="text-right">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Deterministic Score</span>
                   <span className={`text-xl font-black ${isPass ? 'text-emerald-400' : 'text-amber-400'}`}>
-                    {score}/100
+                    {score !== null ? `${score}/100` : "N/A"}
                   </span>
                 </div>
               </div>
@@ -255,40 +273,55 @@ const ParikshakModal = ({
 
         {/* Footer Actions */}
         <div className="px-6 py-4 border-t border-slate-800 bg-slate-950/90 flex items-center justify-between gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onReject}
-            disabled={loading || submitting || !evaluationData}
-            className="border-slate-700 text-slate-300 hover:bg-rose-950/50 hover:text-rose-400 hover:border-rose-800 text-xs font-bold rounded-xl"
-          >
-            Reject Submission
-          </Button>
+          {isOffline ? (
+            <div className="w-full flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                className="border-slate-700 text-slate-200 hover:bg-slate-800 text-xs font-semibold px-5 rounded-xl"
+              >
+                Close
+              </Button>
+            </div>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onReject}
+                disabled={loading || submitting || !evaluationData}
+                className="border-slate-700 text-slate-300 hover:bg-rose-950/50 hover:text-rose-400 hover:border-rose-800 text-xs font-bold rounded-xl"
+              >
+                Reject Submission
+              </Button>
 
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={loading || submitting}
-              className="border-slate-800 text-slate-400 hover:text-white text-xs font-medium rounded-xl"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleConfirmApproval}
-              disabled={loading || submitting || !evaluationData}
-              className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-1.5 px-5"
-            >
-              {submitting ? (
-                <RefreshCw size={14} className="animate-spin" />
-              ) : (
-                <ShieldCheck size={16} />
-              )}
-              Approve & Confirm Next Task
-            </Button>
-          </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={loading || submitting}
+                  className="border-slate-800 text-slate-400 hover:text-white text-xs font-medium rounded-xl"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleConfirmApproval}
+                  disabled={loading || submitting || !evaluationData}
+                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-1.5 px-5"
+                >
+                  {submitting ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <ShieldCheck size={16} />
+                  )}
+                  Approve & Confirm Next Task
+                </Button>
+              </div>
+            </>
+          )}
         </div>
 
       </div>
