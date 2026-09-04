@@ -704,17 +704,22 @@ function TaskDetails() {
     }
 
     const rawLinks = documentLink.split(/\s+/).filter(link => link && (link.match(/^https?:\/\//) || link.startsWith("/uploads") || link.startsWith("uploads") || link.startsWith("/api")))
-    const targetLinks = rawLinks.length > 0 ? rawLinks : [documentLink]
-    const documents = []
+    if (rawLinks.length === 0) {
+      return [{ url: null, fileName: null, fileType: null, isImage: false }]
+    }
 
-    for (const rawLink of targetLinks) {
+    const documents = []
+    for (const rawLink of rawLinks) {
       if (!rawLink || rawLink.trim() === "") continue;
       const isRelative = rawLink.startsWith("/") || rawLink.startsWith("uploads")
       const fullUrl = isRelative 
         ? `${API_URL.replace(/\/api$/, '')}${rawLink.startsWith('/') ? '' : '/'}${rawLink}`
         : rawLink
 
-      const fileName = rawLink.split("/").pop() || "Task Brief Document.pdf"
+      let fileName = rawLink.split("?")[0].split("/").pop() || "Task Brief Document.pdf"
+      if (!fileName.includes(".") || fileName.length > 50) {
+        fileName = "task_brief_specification.pdf"
+      }
       const mimeType = fileType || (rawLink.endsWith(".pdf") ? "application/pdf" : "")
       const displayFileType = fileTypeMap[mimeType] || (rawLink.endsWith(".pdf") ? "PDF Document" : "Document")
       const isImage = mimeType.startsWith("image/") || false
@@ -824,17 +829,7 @@ function TaskDetails() {
   const storedUser = JSON.parse(localStorage.getItem("WorkflowUser"))
   const isAssignedToCurrentUser = storedUser?.id === task.assignee?._id
   const documents = getDocumentDetails(task.notes, task.fileType)
-  const displayTitle = (() => {
-    if (!task.title) return "Task Details";
-    if (/^T-[A-Z]{3}-\d+$/i.test(task.title.trim()) || /^task-next/i.test(task.title.trim())) {
-      const objMatch = task.description?.match(/Objective:\s*([^\n\.]+)/i);
-      if (objMatch && objMatch[1]) {
-        return objMatch[1].trim();
-      }
-      return `Phase 2: Execution & Convergence Certification (${task.title})`;
-    }
-    return task.title;
-  })();
+  const displayTitle = task.title || "Task Details";
 
   return (
     <div className="space-y-6 p-4 md:p-6">

@@ -9,12 +9,16 @@ const ParikshakReviewCard = ({ submission }) => {
 
   if (!details || (!details.doneWell && details.score === undefined && !details.result)) return null;
 
+  const isOffline = details.result === 'OFFLINE' || details.isOffline || details.score === null;
+
   const resultColor =
-    details.result === 'PASS'
-      ? 'bg-emerald-500/15 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
-      : details.result === 'PARTIAL'
-        ? 'bg-amber-500/15 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
-        : 'bg-rose-500/15 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800';
+    isOffline
+      ? 'bg-amber-500/15 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+      : details.result === 'PASS'
+        ? 'bg-emerald-500/15 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+        : details.result === 'PARTIAL'
+          ? 'bg-amber-500/15 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+          : 'bg-rose-500/15 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800';
 
   return (
     <div className="mt-3 rounded-xl border border-indigo-200/80 dark:border-indigo-900/50 bg-gradient-to-b from-indigo-50/60 to-slate-50/60 dark:from-indigo-950/30 dark:to-slate-900/40 shadow-sm overflow-hidden transition-all duration-200">
@@ -29,15 +33,19 @@ const ParikshakReviewCard = ({ submission }) => {
           </span>
           {details.result && (
             <Badge variant="outline" className={`text-[10px] font-bold px-1.5 py-0 rounded ${resultColor}`}>
-              {details.result}
+              {isOffline ? "SERVICE OFFLINE" : details.result}
             </Badge>
           )}
         </div>
         
         <div className="flex items-center gap-2 shrink-0">
-          {details.score !== undefined && details.score !== null && (
+          {details.score !== undefined && details.score !== null ? (
             <Badge className="bg-indigo-600 text-white dark:bg-indigo-500 text-[11px] font-bold px-2 py-0.5 border-0">
               Score: {details.score}/100
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 border-amber-300">
+              Score: N/A
             </Badge>
           )}
           {submission?.updatedAt && (

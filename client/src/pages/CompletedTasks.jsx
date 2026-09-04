@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import axios from "axios"
 import { useNavigate } from "react-router-dom"
 import { useToast } from "../hooks/use-toast"
-import { Check, Clock, Filter, Github, Link2, Loader2, ThumbsDown, ThumbsUp, Search, AlertTriangle, ExternalLink, CheckCircle, XCircle, HelpCircle, FileText, RefreshCw, Sparkles } from 'lucide-react'
+import { Check, Clock, Filter, Github, Link2, Loader2, ThumbsDown, ThumbsUp, Search, AlertTriangle, ExternalLink, CheckCircle, XCircle, HelpCircle, FileText, RefreshCw, Sparkles, Cpu } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card"
 import { Input } from "../components/ui/input"
 import { Button } from "../components/ui/button"
@@ -36,11 +36,14 @@ import ParikshakModal from "../components/submissions/ParikshakModal"
 import { API_URL } from "@/lib/api"
 import { formatDate, formatDateTime } from "@/lib/dateFormat"
 import { useAuth } from "../context/auth-context"
+import { useTheme } from "../components/theme-provider"
 
 const CompletedTasks = () => {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { user: authUser } = useAuth()
+  const { theme } = useTheme()
+  const isDark = theme === "dark" || theme === "universe"
   const isAdmin = authUser?.role === "Admin" || authUser?.role === "Manager"
   const [tasks, setTasks] = useState([])
   const [departments, setDepartments] = useState([])
@@ -70,6 +73,27 @@ const CompletedTasks = () => {
   const [isEvaluating, setIsEvaluating] = useState(false)
   const [parikshakData, setParikshakData] = useState(null)
   const [evaluatingSubmission, setEvaluatingSubmission] = useState(null)
+  const [parikshakStatus, setParikshakStatus] = useState("checking") // 'checking' | 'online' | 'offline'
+
+  const checkParikshakStatus = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("WorkflowToken")
+      const res = await axios.get(`${API_URL}/submissions/parikshak-status`, {
+        headers: { "x-auth-token": token }
+      })
+      if (res.data?.status === "ONLINE") {
+        setParikshakStatus("online")
+      } else {
+        setParikshakStatus("offline")
+      }
+    } catch (err) {
+      setParikshakStatus("offline")
+    }
+  }, [])
+
+  useEffect(() => {
+    checkParikshakStatus()
+  }, [checkParikshakStatus])
 
   const handleRunParikshak = async (submission) => {
     if (!submission) return
@@ -310,18 +334,85 @@ const [isReviewing, setIsReviewing] = useState(false)
 
   return (
     <div className="min-h-screen bg-background p-6">
-      {/* ========== CLEAN HEADER ========== */}
-      <div className="space-y-2 mb-8">
+      {/* ========== CLEAN HEADER WITH PARIKSHAK STATUS INDICATOR ========== */}
+      <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center">
             <CheckCircle className="h-5 w-5 text-green-500" />
           </div>
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Completed Tasks</h1>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground text-xs sm:text-sm">
               Review and manage task submissions
             </p>
           </div>
+        </div>
+
+        {/* Parikshak AI Live Status Badge Indicator */}
+        <div className={`flex items-center gap-3 px-4 py-2.5 rounded-2xl border shrink-0 self-start sm:self-auto transition-colors ${
+          isDark 
+            ? 'bg-slate-900 text-slate-100 border-indigo-500/30 shadow-lg' 
+            : 'bg-white text-slate-900 border-slate-200 shadow-sm'
+        }`}>
+          <div className={`p-2 rounded-xl border ${
+            isDark
+              ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30'
+              : 'bg-indigo-50 text-indigo-600 border-indigo-200'
+          }`}>
+            <Cpu className="h-4 w-4 animate-pulse" />
+          </div>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[10px] font-extrabold uppercase tracking-wider ${
+                isDark ? 'text-slate-400' : 'text-slate-500'
+              }`}>
+                Parikshak AI Engine
+              </span>
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              {parikshakStatus === "online" ? (
+                <Badge className={`text-[11px] font-black tracking-wide flex items-center gap-1.5 px-2 py-0.5 ${
+                  isDark 
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
+                    : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                }`}>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
+                  ONLINE
+                </Badge>
+              ) : parikshakStatus === "offline" ? (
+                <Badge variant="outline" className={`text-[11px] font-black tracking-wide flex items-center gap-1.5 px-2 py-0.5 ${
+                  isDark 
+                    ? 'bg-rose-500/15 text-rose-300 border-rose-500/40' 
+                    : 'bg-rose-100 text-rose-800 border-rose-300'
+                }`}>
+                  <span className="h-2 w-2 rounded-full bg-rose-500"></span>
+                  OFFLINE (Manual Mode)
+                </Badge>
+              ) : (
+                <Badge variant="outline" className={`text-[11px] font-medium flex items-center gap-1 px-2 py-0.5 ${
+                  isDark 
+                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/40' 
+                    : 'bg-amber-100 text-amber-800 border-amber-300'
+                }`}>
+                  <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
+                  Checking...
+                </Badge>
+              )}
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={checkParikshakStatus}
+            className={`h-7 w-7 ml-1 rounded-lg transition-colors ${
+              isDark 
+                ? 'text-slate-400 hover:text-white hover:bg-slate-800' 
+                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+            title="Re-check Parikshak AI Engine status"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
 

@@ -491,7 +491,7 @@ const evaluateParikshakSubmission = async (submissionId, traceId) => {
     try {
         const config = {
             headers: { 'Content-Type': 'application/json' },
-            timeout: 10000
+            timeout: 30000
         };
         if (PARIKSHAK_TOKEN) {
             config.headers['Authorization'] = `Bearer ${PARIKSHAK_TOKEN}`;
@@ -502,50 +502,79 @@ const evaluateParikshakSubmission = async (submissionId, traceId) => {
         console.warn(`[PARIKSHAK] Direct API call to ${targetUrl} failed/timed out: ${err.message}. Generating fallback evaluation result.`);
     }
 
-    const responseStatus = String(response?.status || response?.result || "PASS").toUpperCase();
-    const scoreVal = (response?.score !== undefined && response?.score !== null)
+    if (!response || typeof response === 'string' || (response.score === undefined && response.status === undefined && response.result === undefined)) {
+        return {
+            isOffline: true,
+            submissionId: submission._id,
+            taskId: task._id,
+            taskTitle: task.title,
+            assigneeId: user._id,
+            assigneeName: user.name,
+            score: null,
+            result: "OFFLINE",
+            status: "OFFLINE",
+            doneWell: null,
+            missingWork: "Parikshak AI review service is currently offline or unreachable. Manual review required.",
+            recommendations: "Please manually review the candidate submission deliverables.",
+            readiness: "Requires Manual Review",
+            nextTask: null
+        };
+    }
+
+    const responseStatus = String(response.status || response.result || "PASS").toUpperCase();
+    const scoreVal = (response.score !== undefined && response.score !== null)
         ? response.score
-        : ((submission.githubLink && submission.githubLink.length > 5) ? 88 : 75);
+        : ((response.readiness_percent !== undefined && response.readiness_percent !== null) ? response.readiness_percent : null);
 
-    const isPass = responseStatus === "PASS" || responseStatus === "APPROVED" || responseStatus === "SUCCESS" || scoreVal >= 70;
-    const result = isPass ? "PASS" : "PARTIAL";
+    const isPass = responseStatus === "PASS" || responseStatus === "APPROVED" || responseStatus === "SUCCESS" || (scoreVal !== null && scoreVal >= 70);
+    const result = isPass ? "PASS" : (responseStatus === "PARTIAL" ? "PARTIAL" : "FAIL");
 
-    const defaultDoneWell = submission.notes && submission.notes.length > 10
-        ? `Successfully implemented and verified '${task.title}'. Candidate deliverables & notes parsed: "${submission.notes.length > 120 ? submission.notes.slice(0, 120) + '...' : submission.notes}"`
-        : `Code repository '${submission.githubLink ? submission.githubLink.replace(/^https?:\/\/(www\.)?github\.com\//, '') : task.title}' and submission assets successfully verified.`;
+    const doneWell = response.review_details?.done_well || response.review || "Submission evaluated by Parikshak AI Engine.";
+    const missingWork = response.review_details?.missing_work || (isPass ? "None" : (Array.isArray(response.failure_reasons) ? response.failure_reasons.join('\n') : "Revisions required."));
+    const recommendations = response.review_details?.recommendations || (Array.isArray(response.improvement_hints) ? response.improvement_hints.join(' ') : "Follow standard development guidelines.");
+    const readiness = response.review_details?.readiness || (isPass ? "Production Ready" : "Requires Revisions");
 
-    const defaultRecommendations = `Proceed to next production phase for '${task.title}'. Add unit test coverage and complete runtime verification.`;
-
-    const doneWell = response?.review_details?.done_well || response?.review || defaultDoneWell;
-    const missingWork = response?.review_details?.missing_work || (isPass ? "None" : "Minor edge-case error handling and inline documentation updates needed.");
-    const recommendations = response?.review_details?.recommendations || defaultRecommendations;
-    const readiness = response?.review_details?.readiness || (isPass ? "Production Ready" : "Requires Minor Revisions");
+    const nextTaskObj = (typeof response.next_task_details === 'object' && response.next_task_details)
+        || (typeof response.canonical_next_task_packet === 'object' && response.canonical_next_task_packet)
+        || (typeof response.next_task_proposal === 'object' && response.next_task_proposal)
+        || (typeof response.next_task === 'object' && response.next_task)
+        || null;
 
     let nextTaskTitle = "";
     let nextTaskDesc = "";
+    let masterPrompt = response.master_prompt || "";
+    let deliverables = [];
+    let acceptanceCriteria = [];
 
-    if (typeof response?.next_task === 'object' && response.next_task !== null) {
-        nextTaskTitle = response.next_task.title || response.next_task.name || response.next_task.objective || "";
-        nextTaskDesc = response.next_task.description || response.next_task.objective || "";
-    } else if (typeof response?.next_task === 'string' && response.next_task.trim()) {
-        const rawNext = response.next_task.trim();
-        if (/^T-[A-Z]{3}-\d+$/i.test(rawNext) || rawNext.toLowerCase().includes("test task") || rawNext.toLowerCase().startsWith("task-next")) {
-            const cleanPrevTitle = (task.title || "").replace(/^Phase\s*\d+\s*[:\-]\s*/i, "");
-            nextTaskTitle = `Phase 2: ${cleanPrevTitle || "Execution & Convergence Certification"}`;
-        } else {
-            nextTaskTitle = rawNext;
+    if (nextTaskObj) {
+        nextTaskTitle = nextTaskObj.title || nextTaskObj.name || (typeof response.next_task === 'string' ? response.next_task : "");
+        nextTaskDesc = nextTaskObj.objective || nextTaskObj.description || "";
+        if (!masterPrompt && nextTaskObj.master_prompt) {
+            masterPrompt = nextTaskObj.master_prompt;
         }
+        deliverables = Array.isArray(nextTaskObj.deliverables) ? nextTaskObj.deliverables : [];
+        acceptanceCriteria = Array.isArray(nextTaskObj.acceptance_criteria) ? nextTaskObj.acceptance_criteria : [];
+    } else if (typeof response.next_task === 'string' && response.next_task.trim()) {
+        nextTaskTitle = response.next_task.trim();
     }
 
-    if (!nextTaskTitle || /^T-[A-Z]{3}-\d+$/i.test(nextTaskTitle) || nextTaskTitle.toLowerCase().includes("test task")) {
-        const cleanPrevTitle = (task.title || "").replace(/^Phase\s*\d+\s*[:\-]\s*/i, "");
-        nextTaskTitle = `Phase 2: ${cleanPrevTitle || "Execution & Convergence Certification"}`;
-    }
-    if (!nextTaskDesc) {
-        nextTaskDesc = `Follow-up task for ${user.name}.\n\nObjective:\nBuild upon '${task.title}' by adding production monitoring, error boundary safety, and E2E integration verification.\n\nEvaluation Feedback:\n- ${doneWell}\n\nRecommendations:\n- ${recommendations}`;
+    let pdfPrompt = masterPrompt || "";
+    if (!pdfPrompt) {
+        const sections = [];
+        if (deliverables.length > 0) {
+            sections.push("## Required Technical Deliverables\n" + deliverables.map(d => `- ${d}`).join("\n"));
+        }
+        if (acceptanceCriteria.length > 0) {
+            sections.push("## Strict Acceptance Criteria & Quality Gates\n" + acceptanceCriteria.map(c => `- ${c}`).join("\n"));
+        }
+        if (sections.length === 0) {
+            sections.push(`## Mission Specifications & Protocol\n- Implement complete software deliverables and modules for '${nextTaskTitle}'.\n- Write unit and integration test suites covering all edge cases.\n- Document architectural proofs, self-audit scores, and verification logs in REVIEW_PACKET.md.`);
+        }
+        pdfPrompt = sections.join("\n\n");
     }
 
     return {
+        isOffline: false,
         submissionId: submission._id,
         taskId: task._id,
         taskTitle: task.title,
@@ -558,13 +587,17 @@ const evaluateParikshakSubmission = async (submissionId, traceId) => {
         missingWork,
         recommendations,
         readiness,
-        nextTask: {
+        nextTask: nextTaskTitle ? {
             title: nextTaskTitle,
-            description: nextTaskDesc,
+            description: nextTaskDesc || nextTaskTitle,
+            masterPrompt: pdfPrompt || nextTaskDesc || "",
+            notes: pdfPrompt || nextTaskDesc || "",
+            deliverables: deliverables,
+            acceptanceCriteria: acceptanceCriteria,
             priority: task.priority || "Medium",
             department: task.department || null,
             branch: task.branch || null
-        }
+        } : null
     };
 };
 
