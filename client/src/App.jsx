@@ -32,10 +32,10 @@ import Leaderboard from "./pages/Leaderboard";
 import { EmployeeMonitoring } from "./pages/EmployeeMonitoring";
 import AttendanceDashboard from "./pages/AttendanceDashboard";
 import AttendanceDataManagement from "./components/admin/AttendanceDataManagement";
-import AdminAimsView from "./components/admin/AdminAimsView";
 import UserManagement from "./pages/UserManagement";
 import LeaveRequest from "./pages/LeaveRequest";
 import KnowledgeAdmin from "./pages/admin/KnowledgeAdmin";
+import ErrorBoundary from "./components/ErrorBoundary";
 import axios from "axios";
 import { API_URL } from "./lib/api";
 import { ToastContainer } from "react-toastify";
@@ -487,7 +487,9 @@ function App() {
       <Router>
         <AuthProvider>
           <BranchProvider>
-            <AppContent />
+            <ErrorBoundary>
+              <AppContent />
+            </ErrorBoundary>
           </BranchProvider>
         </AuthProvider>
       </Router>
