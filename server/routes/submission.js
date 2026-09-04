@@ -596,7 +596,8 @@ router.post("/:id/approve-and-assign-next", auth, async (req, res) => {
       } else {
         createdNextTask = new Task({
           title: nextTask.title,
-          description: nextTask.description || `Follow-up task following approval of '${currentTask.title}'.`,
+          description: nextTask.description || nextTask.title,
+          notes: nextTask.notes || nextTask.masterPrompt || nextTask.description || "",
           status: "Pending",
           priority: nextTask.priority || currentTask.priority || "Medium",
           department: nextTask.department || currentTask.department,
@@ -604,11 +605,11 @@ router.post("/:id/approve-and-assign-next", auth, async (req, res) => {
           dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           branch: currentTask.branch || "default_tenant",
           progress: 0,
-          links: nextTask.links || []
+          links: Array.isArray(nextTask.links) ? nextTask.links : []
         });
 
         const { generateTaskBriefPdf } = require("../services/pdfGenerator");
-        let pdfPath = nextTask.pdfUrl || nextTask.documentLink || nextTask.notes || "";
+        let pdfPath = nextTask.pdfUrl || nextTask.documentLink || "";
         if (!pdfPath) {
           try {
             pdfPath = await generateTaskBriefPdf(createdNextTask, user);
@@ -618,7 +619,12 @@ router.post("/:id/approve-and-assign-next", auth, async (req, res) => {
         }
 
         if (pdfPath) {
-          createdNextTask.notes = pdfPath;
+          if (!createdNextTask.links.includes(pdfPath)) {
+            createdNextTask.links.push(pdfPath);
+          }
+          if (!createdNextTask.notes || createdNextTask.notes.startsWith("http") || createdNextTask.notes.startsWith("/uploads")) {
+            createdNextTask.notes = pdfPath;
+          }
           createdNextTask.fileType = "application/pdf";
         }
         await createdNextTask.save();

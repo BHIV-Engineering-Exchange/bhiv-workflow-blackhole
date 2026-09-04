@@ -18,8 +18,19 @@ function generateTaskBriefPdfStream(task, assignee = null) {
     ? new Date(task.dueDate).toISOString().split('T')[0] 
     : '';
 
-  const taskTitle = task.title || 'Task Specification Brief';
-  const taskDescription = task.description || '';
+  const sanitizeText = (str) => {
+    if (!str) return '';
+    return str
+      // Remove 4-byte UTF-8 emojis & non-WinAnsi multi-byte characters that cause garbled symbols in PDFKit
+      .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+      .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '')
+      .replace(/\*\*/g, '')
+      .replace(/`/g, '')
+      .trim();
+  };
+
+  const taskTitle = sanitizeText(task.title) || 'Task Specification Brief';
+  const taskDescription = sanitizeText(task.description) || '';
 
   let y = 50;
 
@@ -76,20 +87,30 @@ function generateTaskBriefPdfStream(task, assignee = null) {
   }
 
   // Render Notes / Deliverables if provided by Parikshak / Task
-  const additionalContent = task.notes || task.acceptanceCriteria || task.requirements || '';
-  if (additionalContent) {
+  let additionalContent = '';
+  if (typeof task.notes === 'string' && !task.notes.startsWith('http') && !task.notes.startsWith('/uploads')) {
+    additionalContent = task.notes;
+  } else if (task.masterPrompt) {
+    additionalContent = task.masterPrompt;
+  }
+
+  if (additionalContent && additionalContent.trim() !== taskDescription.trim()) {
     ensurePageSpace(40);
     const lines = String(additionalContent).split('\n').map(l => l.trim()).filter(Boolean);
     lines.forEach(line => {
       ensurePageSpace(20);
+      const cleaned = sanitizeText(line);
+      if (!cleaned) return;
+
       if (line.startsWith('#')) {
-        const cleanHeading = line.replace(/^#+\s*/, '');
+        const cleanHeading = cleaned.replace(/^#+\s*/, '');
         doc.font('Helvetica-Bold').fontSize(11).fillColor('#000000').text(cleanHeading);
         doc.font('Helvetica').fontSize(10).moveDown(0.3);
       } else if (line.startsWith('*') || line.startsWith('-') || line.startsWith('•')) {
-        doc.text(`* ${line.replace(/^[\*\-•\s]+/, '')}`, { indent: 10, lineGap: 2 });
+        const bulletText = cleaned.replace(/^[\*\-•\s]+/, '');
+        doc.font('Helvetica').fontSize(10).fillColor('#000000').text(`• ${bulletText}`, { indent: 10, lineGap: 2 });
       } else {
-        doc.text(line, { width: 500, align: 'left', lineGap: 2 });
+        doc.font('Helvetica').fontSize(10).fillColor('#000000').text(cleaned, { width: 500, align: 'left', lineGap: 2 });
       }
     });
   }

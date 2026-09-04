@@ -491,7 +491,7 @@ const evaluateParikshakSubmission = async (submissionId, traceId) => {
     try {
         const config = {
             headers: { 'Content-Type': 'application/json' },
-            timeout: 10000
+            timeout: 30000
         };
         if (PARIKSHAK_TOKEN) {
             config.headers['Authorization'] = `Bearer ${PARIKSHAK_TOKEN}`;
@@ -534,14 +534,43 @@ const evaluateParikshakSubmission = async (submissionId, traceId) => {
     const recommendations = response.review_details?.recommendations || (Array.isArray(response.improvement_hints) ? response.improvement_hints.join(' ') : "Follow standard development guidelines.");
     const readiness = response.review_details?.readiness || (isPass ? "Production Ready" : "Requires Revisions");
 
+    const nextTaskObj = (typeof response.next_task_details === 'object' && response.next_task_details)
+        || (typeof response.canonical_next_task_packet === 'object' && response.canonical_next_task_packet)
+        || (typeof response.next_task_proposal === 'object' && response.next_task_proposal)
+        || (typeof response.next_task === 'object' && response.next_task)
+        || null;
+
     let nextTaskTitle = "";
     let nextTaskDesc = "";
+    let masterPrompt = response.master_prompt || "";
+    let deliverables = [];
+    let acceptanceCriteria = [];
 
-    if (typeof response.next_task === 'object' && response.next_task !== null) {
-        nextTaskTitle = response.next_task.title || response.next_task.name || response.next_task.objective || "";
-        nextTaskDesc = response.next_task.description || response.next_task.objective || "";
+    if (nextTaskObj) {
+        nextTaskTitle = nextTaskObj.title || nextTaskObj.name || (typeof response.next_task === 'string' ? response.next_task : "");
+        nextTaskDesc = nextTaskObj.objective || nextTaskObj.description || "";
+        if (!masterPrompt && nextTaskObj.master_prompt) {
+            masterPrompt = nextTaskObj.master_prompt;
+        }
+        deliverables = Array.isArray(nextTaskObj.deliverables) ? nextTaskObj.deliverables : [];
+        acceptanceCriteria = Array.isArray(nextTaskObj.acceptance_criteria) ? nextTaskObj.acceptance_criteria : [];
     } else if (typeof response.next_task === 'string' && response.next_task.trim()) {
         nextTaskTitle = response.next_task.trim();
+    }
+
+    let pdfPrompt = masterPrompt || "";
+    if (!pdfPrompt) {
+        const sections = [];
+        if (deliverables.length > 0) {
+            sections.push("## Required Technical Deliverables\n" + deliverables.map(d => `- ${d}`).join("\n"));
+        }
+        if (acceptanceCriteria.length > 0) {
+            sections.push("## Strict Acceptance Criteria & Quality Gates\n" + acceptanceCriteria.map(c => `- ${c}`).join("\n"));
+        }
+        if (sections.length === 0) {
+            sections.push(`## Mission Specifications & Protocol\n- Implement complete software deliverables and modules for '${nextTaskTitle}'.\n- Write unit and integration test suites covering all edge cases.\n- Document architectural proofs, self-audit scores, and verification logs in REVIEW_PACKET.md.`);
+        }
+        pdfPrompt = sections.join("\n\n");
     }
 
     return {
@@ -560,7 +589,11 @@ const evaluateParikshakSubmission = async (submissionId, traceId) => {
         readiness,
         nextTask: nextTaskTitle ? {
             title: nextTaskTitle,
-            description: nextTaskDesc || `Follow-up task for '${task.title}'.`,
+            description: nextTaskDesc || nextTaskTitle,
+            masterPrompt: pdfPrompt || nextTaskDesc || "",
+            notes: pdfPrompt || nextTaskDesc || "",
+            deliverables: deliverables,
+            acceptanceCriteria: acceptanceCriteria,
             priority: task.priority || "Medium",
             department: task.department || null,
             branch: task.branch || null

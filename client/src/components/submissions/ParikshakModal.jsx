@@ -53,6 +53,10 @@ const ParikshakModal = ({
         customNextTask: {
           title: nextTitle,
           description: nextDesc,
+          masterPrompt: evaluationData?.nextTask?.masterPrompt || evaluationData?.nextTask?.notes || "",
+          notes: evaluationData?.nextTask?.notes || evaluationData?.nextTask?.masterPrompt || "",
+          deliverables: evaluationData?.nextTask?.deliverables || [],
+          acceptanceCriteria: evaluationData?.nextTask?.acceptanceCriteria || [],
           priority: priority
         }
       });
