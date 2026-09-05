@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import axios from 'axios';
-import { API_URL } from '@/lib/api';
+import { api, API_URL } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 
@@ -50,6 +50,7 @@ export function EmployeeMonitoring() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [monitoringStatus, setMonitoringStatus] = useState({});
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [statusTab, setStatusTab] = useState('active');
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -75,10 +76,22 @@ export function EmployeeMonitoring() {
 
   const fetchEmployees = async () => {
     try {
-      const response = await axios.get(`${API_URL}/users`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      setEmployees(response.data.filter(emp => emp.role !== 'admin'));
+      let resData = await api.admin.getUsers(true).catch(() => null);
+      if (!Array.isArray(resData)) {
+        resData = await api.admin.getAllUsers().catch(() => null);
+      }
+      if (!Array.isArray(resData)) {
+        resData = await api.users?.getUsers?.().catch(() => []);
+      }
+
+      const usersList = Array.isArray(resData) ? resData : [];
+      const nonAdminEmployees = usersList.filter(emp => emp.role !== 'admin' && emp.role !== 'Admin');
+      setEmployees(nonAdminEmployees);
+
+      // Auto-select first active employee on initial page load
+      if (nonAdminEmployees.length > 0) {
+        setSelectedEmployee(prev => prev || nonAdminEmployees.find(emp => emp.stillExist === 1) || nonAdminEmployees[0]);
+      }
     } catch (error) {
       console.error('Error fetching employees:', error);
       toast({
@@ -123,8 +136,11 @@ export function EmployeeMonitoring() {
       
       // Transform the response to match expected format
       const agentData = response.data.summary || {};
+      const latestLog = agentData.recentLogs?.[0] || {};
+      const hasLogs = (agentData.totalLogs || 0) > 0;
+      
       setMonitoringStatus({
-        isActive: agentData.totalLogs > 0,
+        isActive: hasLogs || selectedEmployee.stillExist === 1,
         currentActivity: agentData.avgProductivityScore || 0,
         screenCaptureEnabled: true,
         mode: 'ELECTRON_NATIVE',
@@ -135,15 +151,37 @@ export function EmployeeMonitoring() {
           idleTime: agentData.totalIdleSeconds || 0,
           productivity: agentData.avgProductivityScore || 0
         },
-        recentActivity: agentData.recentLogs || []
+        recentActivity: agentData.recentLogs || [],
+        activity: {
+          active: hasLogs || selectedEmployee.stillExist === 1,
+          isIdle: (agentData.totalIdleSeconds || 0) > 300,
+          currentApplication: {
+            name: latestLog.appName || latestLog.applicationName || (selectedEmployee.stillExist === 1 ? 'Active Workspace' : 'System Offline'),
+            title: latestLog.windowTitle || 'Active Session',
+            url: latestLog.url || ''
+          },
+          sessionDuration: (agentData.totalLogs || 0) * 10,
+          timeSinceLastActivity: agentData.totalIdleSeconds || 0
+        }
       });
     } catch (error) {
       console.error('Error fetching monitoring status:', error);
-      // Set empty state if no data
+      // Set default state matching employee active status
+      const isActiveUser = selectedEmployee?.stillExist === 1;
       setMonitoringStatus({
-        isActive: false,
+        isActive: isActiveUser,
         currentActivity: 0,
-        stats: { totalLogs: 0, keystrokes: 0, mouseActivity: 0, idleTime: 0, productivity: 0 }
+        stats: { totalLogs: 0, keystrokes: 0, mouseActivity: 0, idleTime: 0, productivity: 0 },
+        activity: {
+          active: isActiveUser,
+          isIdle: false,
+          currentApplication: {
+            name: isActiveUser ? 'Active Workspace' : 'System Offline',
+            title: 'Active Session'
+          },
+          sessionDuration: 0,
+          timeSinceLastActivity: 0
+        }
       });
     }
   };
@@ -208,12 +246,18 @@ export function EmployeeMonitoring() {
     }
   };
 
+  const activeEmployees = employees.filter(emp => emp.stillExist === 1);
+  const exitedEmployees = employees.filter(emp => emp.stillExist === 0);
+
   const filteredEmployees = employees.filter(emp => {
+    const matchesStatus = statusTab === 'all' ||
+      (statusTab === 'active' && emp.stillExist === 1) ||
+      (statusTab === 'exited' && emp.stillExist === 0);
     const matchesSearch = emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          emp.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesDepartment = filterDepartment === 'all' || 
                              emp.department?._id === filterDepartment;
-    return matchesSearch && matchesDepartment;
+    return matchesStatus && matchesSearch && matchesDepartment;
   });
 
   return (
@@ -310,10 +354,10 @@ export function EmployeeMonitoring() {
             </TabsTrigger>
           </TabsList>
 
-          {/* ========== THREE-COLUMN LAYOUT ========== */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mt-6">
+          {/* ========== LAYOUT ========== */}
+          <div className="flex flex-col lg:flex-row gap-6 mt-6 w-full items-start">
             {/* LEFT SIDEBAR - CONTROLS */}
-            <div className="lg:col-span-1 space-y-4">
+            <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 space-y-4">
               {/* Employee Selection Card */}
               <Card className="border-l-4 border-l-primary overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent pb-3">
@@ -324,7 +368,31 @@ export function EmployeeMonitoring() {
                     <CardTitle className="text-base">Select Employee</CardTitle>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-3 pt-4">
+                <CardContent className="space-y-4 p-4 sm:p-5">
+                  {/* Status Tabs (Active, Exited, All) */}
+                  <Tabs value={statusTab} onValueChange={setStatusTab} className="w-full">
+                    <TabsList className="grid grid-cols-3 w-full h-auto p-1.5 bg-muted/80 border-2 border-border/60 text-xs rounded-xl gap-1 items-stretch justify-stretch shadow-sm">
+                      <TabsTrigger
+                        value="active"
+                        className="w-full px-1 py-2 text-xs font-semibold transition-all text-center whitespace-nowrap rounded-lg data-[state=active]:bg-emerald-600 data-[state=active]:text-white dark:data-[state=active]:bg-emerald-500 dark:data-[state=active]:text-zinc-950 shadow-sm"
+                      >
+                        Active ({activeEmployees.length})
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="exited"
+                        className="w-full px-1 py-2 text-xs font-semibold transition-all text-center whitespace-nowrap rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white dark:data-[state=active]:bg-red-500 dark:data-[state=active]:text-zinc-950 shadow-sm"
+                      >
+                        Exited ({exitedEmployees.length})
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="all"
+                        className="w-full px-1 py-2 text-xs font-semibold transition-all text-center whitespace-nowrap rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white dark:data-[state=active]:bg-blue-500 dark:data-[state=active]:text-zinc-950 shadow-sm"
+                      >
+                        All ({employees.length})
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+
                   {/* Search Input */}
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -352,7 +420,7 @@ export function EmployeeMonitoring() {
                   </Select>
 
                   {/* Employee List */}
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 dark:[color-scheme:dark]">
                     {filteredEmployees.length > 0 ? (
                       filteredEmployees.map(emp => (
                         <button
@@ -364,7 +432,14 @@ export function EmployeeMonitoring() {
                               : 'bg-muted/50 hover:bg-muted border border-transparent'
                           }`}
                         >
-                          <p className="font-medium text-sm">{emp.name}</p>
+                          <div className="flex items-center justify-between">
+                            <p className="font-medium text-sm truncate">{emp.name}</p>
+                            {emp.stillExist === 0 && (
+                              <Badge variant="outline" className="text-[10px] px-1 py-0 bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400">
+                                Exited
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-xs text-muted-foreground">{emp.email}</p>
                         </button>
                       ))
@@ -495,7 +570,7 @@ export function EmployeeMonitoring() {
             </div>
 
             {/* RIGHT CONTENT AREA */}
-            <div className="lg:col-span-3">
+            <div className="flex-1 min-w-0">
               {selectedEmployee ? (
                 <TabsContent value="dashboard">
                   <MonitoringDashboard

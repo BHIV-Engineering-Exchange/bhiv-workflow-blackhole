@@ -26,8 +26,8 @@ router.get("/leaderboard", async (req, res) => {
     const branchQuery = getBranchQuery(req);
 
     const [users, taskAgg] = await Promise.all([
-      User.find({ stillExist: 1, ...branchQuery })
-        .select("name email role department avatar")
+      User.find(branchQuery)
+        .select("name email role department avatar stillExist")
         .populate("department", "name")
         .lean(),
       Task.aggregate([

@@ -131,10 +131,10 @@ router.get('/hours/all', auth, adminAuth, async (req, res) => {
     // Get branch filter
     const branchQuery = getBranchQuery(req);
 
-    // Get all active users - FILTERED BY BRANCH
-    const allUsers = await User.find({ stillExist: 1, ...branchQuery })
+    // Get all users (including exited) - FILTERED BY BRANCH
+    const allUsers = await User.find(branchQuery)
       .populate('department', 'name color')
-      .select('name email department employeeId role branch')
+      .select('name email department employeeId role branch stillExist')
       .lean();
     
     console.log(`Found ${allUsers.length} active users`);
@@ -369,6 +369,7 @@ router.get('/hours/all', auth, adminAuth, async (req, res) => {
         department: user.department?.name || 'No Department',
         departmentColor: user.department?.color || 'bg-gray-500',
         role: user.role,
+        stillExist: user.stillExist !== undefined ? user.stillExist : 1,
         cumulativeHours: 0,
         totalDays: 0
       });

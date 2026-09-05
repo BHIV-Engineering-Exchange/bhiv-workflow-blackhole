@@ -143,15 +143,19 @@ export function MonitoringDashboard({ employee, monitoringStatus }) {
   };
 
   const getActivityStatus = () => {
-    if (!monitoringStatus.activity) return { status: 'Unknown', color: 'text-gray-500' };
-    
-    if (monitoringStatus.activity.isIdle) {
-      return { status: 'Idle', color: 'text-yellow-500' };
-    } else if (monitoringStatus.activity.active) {
-      return { status: 'Active', color: 'text-green-500' };
-    } else {
-      return { status: 'Inactive', color: 'text-red-500' };
+    if (monitoringStatus?.activity) {
+      if (monitoringStatus.activity.isIdle) {
+        return { status: 'Idle', color: 'text-yellow-500' };
+      } else if (monitoringStatus.activity.active) {
+        return { status: 'Active', color: 'text-green-500' };
+      } else {
+        return { status: 'Inactive', color: 'text-red-500' };
+      }
     }
+    if (monitoringStatus?.isActive || employee?.stillExist === 1) {
+      return { status: 'Active', color: 'text-green-500' };
+    }
+    return { status: 'Inactive', color: 'text-red-500' };
   };
 
   if (loading) {
@@ -330,7 +334,7 @@ export function MonitoringDashboard({ employee, monitoringStatus }) {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Current Activity</p>
                 <p className="text-lg font-semibold text-foreground truncate">
-                  {monitoringStatus.activity?.currentApplication?.name || 'Unknown'}
+                  {monitoringStatus.activity?.currentApplication?.name || (employee?.stillExist === 1 ? 'Active Workspace' : 'System Offline')}
                 </p>
               </div>
               <Globe className="h-8 w-8 text-primary" />

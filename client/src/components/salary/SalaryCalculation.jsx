@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,6 +27,7 @@ const SalaryCalculation = ({ userId, onConfirmSalary, persistedState, onStateCha
   const [usersData, setUsersData] = useState(persistedState?.usersData || []);
   const [userRates, setUserRates] = useState(persistedState?.userRates || {}); // userId -> perHourRate
   const [holidayHours, setHolidayHours] = useState((persistedState?.holidays?.length || 0) * 8);
+  const [statusTab, setStatusTab] = useState('active');
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -91,6 +93,14 @@ const SalaryCalculation = ({ userId, onConfirmSalary, persistedState, onStateCha
     setUsersData(updatedUsers);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userRates, holidayHours]);
+
+  const activeUsersCount = usersData.filter(u => u.stillExist === undefined || u.stillExist === 1).length;
+  const exitedUsersCount = usersData.filter(u => u.stillExist === 0).length;
+  const filteredUsersData = usersData.filter(u => {
+    if (statusTab === 'active') return u.stillExist === undefined || u.stillExist === 1;
+    if (statusTab === 'exited') return u.stillExist === 0;
+    return true;
+  });
 
   const fetchAllUsersHours = async () => {
     if (!startDate || !endDate) return;
@@ -584,92 +594,131 @@ const SalaryCalculation = ({ userId, onConfirmSalary, persistedState, onStateCha
           </div>
         ) : (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Employees Salary Calculation</CardTitle>
-              <CardDescription>
-                Enter per hour rate for each employee to calculate their salary
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="min-w-[280px]">Employee Name & Per Hour Rate</TableHead>
-                      <TableHead className="min-w-[150px]">Department</TableHead>
-                      <TableHead className="text-right min-w-[120px]">Working Hours</TableHead>
-                      <TableHead className="text-right min-w-[120px]">Holiday Hours</TableHead>
-                      <TableHead className="text-right min-w-[120px]">Total Hours</TableHead>
-                      <TableHead className="text-right min-w-[150px]">Calculated Salary</TableHead>
-                      <TableHead className="text-center min-w-[130px]">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {usersData.map((userData) => {
-                      const totalHours = (userData.cumulativeHours || 0) + holidayHours;
-                      const salary = userData.calculatedSalary || 0;
-                      
-                      return (
-                        <TableRow key={userData.userId}>
-                          <TableCell className="align-middle">
-                            <div className="flex items-center gap-3">
-                              <span className="font-medium min-w-[140px]">{userData.name}</span>
-                              <div className="relative flex-1 max-w-[140px]">
-                                <span className="absolute left-2 top-2.5 text-muted-foreground font-medium">₹</span>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  placeholder="Rate"
-                                  value={userRates[userData.userId] || ''}
-                                  onChange={(e) => handleRateChange(userData.userId, e.target.value)}
-                                  className="pl-7 h-9"
-                                />
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground align-middle">
-                            {userData.department || '-'}
-                          </TableCell>
-                          <TableCell className="text-right align-middle">
-                            {userData.cumulativeHours.toFixed(2)} hrs
-                          </TableCell>
-                          <TableCell className="text-right align-middle">
-                            {holidayHours} hrs
-                          </TableCell>
-                          <TableCell className="text-right font-semibold align-middle">
-                            {totalHours.toFixed(2)} hrs
-                          </TableCell>
-                          <TableCell className="text-right align-middle">
-                            {salary > 0 ? (
-                              <span className="font-bold text-primary">
-                                ₹{salary.toFixed(2)}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground text-sm">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center align-middle">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleOpenConfirmDialog(userData)}
-                              disabled={!salary || salary <= 0 || calculating}
-                              className="bg-green-500/10 hover:bg-green-500/20 text-green-600 border-green-500/30"
-                            >
-                              <CheckCircle className="h-4 w-4 mr-1" />
-                              Confirm
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-lg">Employees Salary Calculation</CardTitle>
+                <CardDescription>
+                  Enter per hour rate for each employee to calculate their salary
+                </CardDescription>
               </div>
-            </CardContent>
-          </Card>
-        )}
+              <Tabs value={statusTab} onValueChange={setStatusTab}>
+                <TabsList className="p-1 border border-border/40 text-xs">
+                  <TabsTrigger
+                    value="active"
+                    className="px-2 py-1 text-xs data-[state=active]:bg-emerald-600 data-[state=active]:text-white dark:data-[state=active]:bg-emerald-500 dark:data-[state=active]:text-zinc-950 font-semibold transition-colors"
+                  >
+                    Active ({activeUsersCount})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="exited"
+                    className="px-2 py-1 text-xs data-[state=active]:bg-red-600 data-[state=active]:text-white dark:data-[state=active]:bg-red-500 dark:data-[state=active]:text-zinc-950 font-semibold transition-colors"
+                  >
+                    Exited ({exitedUsersCount})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="all"
+                    className="px-2 py-1 text-xs data-[state=active]:bg-blue-600 data-[state=active]:text-white dark:data-[state=active]:bg-blue-500 dark:data-[state=active]:text-zinc-950 font-semibold transition-colors"
+                  >
+                    All ({usersData.length})
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="min-w-[280px]">Employee Name & Per Hour Rate</TableHead>
+                          <TableHead className="min-w-[150px]">Department</TableHead>
+                          <TableHead className="text-right min-w-[120px]">Working Hours</TableHead>
+                          <TableHead className="text-right min-w-[120px]">Holiday Hours</TableHead>
+                          <TableHead className="text-right min-w-[120px]">Total Hours</TableHead>
+                          <TableHead className="text-right min-w-[150px]">Calculated Salary</TableHead>
+                          <TableHead className="text-center min-w-[130px]">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredUsersData.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+                              No employees found matching this status tab.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          filteredUsersData.map((userData) => {
+                            const totalHours = (userData.cumulativeHours || 0) + holidayHours;
+                            const salary = userData.calculatedSalary || 0;
+                            
+                            return (
+                              <TableRow key={userData.userId}>
+                                <TableCell className="align-middle">
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2 min-w-[140px]">
+                                      <span className="font-medium">{userData.name}</span>
+                                      {userData.stillExist === 0 && (
+                                        <Badge variant="outline" className="text-[10px] px-1 py-0 bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400">
+                                          Exited
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="relative flex-1 max-w-[140px]">
+                                      <span className="absolute left-2 top-2.5 text-muted-foreground font-medium">₹</span>
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        placeholder="Rate"
+                                        value={userRates[userData.userId] || ''}
+                                        onChange={(e) => handleRateChange(userData.userId, e.target.value)}
+                                        className="pl-7 h-9"
+                                      />
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-muted-foreground align-middle">
+                                  {userData.department || '-'}
+                                </TableCell>
+                                <TableCell className="text-right align-middle">
+                                  {userData.cumulativeHours.toFixed(2)} hrs
+                                </TableCell>
+                                <TableCell className="text-right align-middle">
+                                  {holidayHours} hrs
+                                </TableCell>
+                                <TableCell className="text-right font-semibold align-middle">
+                                  {totalHours.toFixed(2)} hrs
+                                </TableCell>
+                                <TableCell className="text-right align-middle">
+                                  {salary > 0 ? (
+                                    <span className="font-bold text-primary">
+                                      ₹{salary.toFixed(2)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground text-sm">-</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-center align-middle">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleOpenConfirmDialog(userData)}
+                                    disabled={!salary || salary <= 0 || calculating}
+                                    className="bg-green-500/10 hover:bg-green-500/20 text-green-600 border-green-500/30"
+                                  >
+                                    <CheckCircle className="h-4 w-4 mr-1" />
+                                    Confirm
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
         {/* Action Buttons */}
         {usersData.length > 0 && (

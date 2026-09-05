@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { api } from "../lib/api";
 import { formatDate } from "../lib/dateFormat";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -21,6 +22,7 @@ const Leaderboard = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [userDetails, setUserDetails] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("active");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -90,15 +92,50 @@ const Leaderboard = () => {
     }
   };
 
+  const activeUsers = leaderboard.filter((u) => u.stillExist === 1);
+  const exitedUsers = leaderboard.filter((u) => u.stillExist === 0);
+
+  const filteredLeaderboard = leaderboard.filter((u) => {
+    if (activeTab === "active") return u.stillExist === 1;
+    if (activeTab === "exited") return u.stillExist === 0;
+    return true;
+  });
+
   return (
     <div className="container mx-auto p-4">
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <CardTitle>Task Completion Leaderboard</CardTitle>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="p-1 border border-border/40">
+              <TabsTrigger
+                value="active"
+                className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white dark:data-[state=active]:bg-emerald-500 dark:data-[state=active]:text-zinc-950 font-semibold transition-colors"
+              >
+                Active Users ({activeUsers.length})
+              </TabsTrigger>
+              <TabsTrigger
+                value="exited"
+                className="data-[state=active]:bg-red-600 data-[state=active]:text-white dark:data-[state=active]:bg-red-500 dark:data-[state=active]:text-zinc-950 font-semibold transition-colors"
+              >
+                Exited Users ({exitedUsers.length})
+              </TabsTrigger>
+              <TabsTrigger
+                value="all"
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white dark:data-[state=active]:bg-blue-500 dark:data-[state=active]:text-zinc-950 font-semibold transition-colors"
+              >
+                All Users ({leaderboard.length})
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div>Loading...</div>
+          ) : filteredLeaderboard.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No users found matching this status tab.
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -106,6 +143,7 @@ const Leaderboard = () => {
                   <TableHead>Rank</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Department</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Completed Tasks</TableHead>
                   <TableHead>Workload</TableHead>
                   <TableHead>Dependencies</TableHead>
@@ -113,15 +151,26 @@ const Leaderboard = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {leaderboard.map((user, index) => (
+                {filteredLeaderboard.map((user, index) => (
                   <TableRow
                     key={user._id}
-                    className="cursor-pointer hover:bg-gray-100"
+                    className="cursor-pointer hover:bg-muted/50"
                     onClick={() => handleUserClick(user)}
                   >
                     <TableCell>{getRankBadge(index)}</TableCell>
                     <TableCell>{user.name}</TableCell>
                     <TableCell>{user.department?.name || "N/A"}</TableCell>
+                    <TableCell>
+                      {user.stillExist === 0 ? (
+                        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800">
+                          Exited
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800">
+                          Active
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell>{user.completedTasks}</TableCell>
                     <TableCell>
                       <Badge variant={user.workload > 5 ? "destructive" : "default"}>
