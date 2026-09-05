@@ -491,7 +491,7 @@ const evaluateParikshakSubmission = async (submissionId, traceId) => {
     try {
         const config = {
             headers: { 'Content-Type': 'application/json' },
-            timeout: 30000
+            timeout: 45000
         };
         if (PARIKSHAK_TOKEN) {
             config.headers['Authorization'] = `Bearer ${PARIKSHAK_TOKEN}`;
