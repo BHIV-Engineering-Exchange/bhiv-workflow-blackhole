@@ -69,7 +69,7 @@ describe("triggerReview — PASS", () => {
         repo_url: "https://github.com/test/repo",
         trace_id: "trace-bhiv-sub-abc123",
       }),
-      expect.objectContaining({ timeout: 30000 })
+      expect.objectContaining({ timeout: 120000 })
     );
   });
 

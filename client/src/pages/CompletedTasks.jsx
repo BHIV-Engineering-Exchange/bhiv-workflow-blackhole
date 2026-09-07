@@ -37,6 +37,7 @@ import { API_URL } from "@/lib/api"
 import { formatDate, formatDateTime } from "@/lib/dateFormat"
 import { useAuth } from "../context/auth-context"
 import { useTheme } from "../components/theme-provider"
+import { getDeptColor } from "@/lib/departmentUtils"
 
 const CompletedTasks = () => {
   const navigate = useNavigate()
@@ -67,6 +68,7 @@ const CompletedTasks = () => {
   const LIMIT = 20
   const abortRef = useRef(null)
   const departmentsLoadedRef = useRef(false)
+  const initialLoadDoneRef = useRef(false)
 
   // Parikshak Modal & Evaluation States
   const [parikshakModalOpen, setParikshakModalOpen] = useState(false)
@@ -186,8 +188,8 @@ const CompletedTasks = () => {
     const controller = new AbortController()
     abortRef.current = controller
 
-    const isFirstLoad = pageNum === 1
-    if (isFirstLoad) setIsLoading(true)
+    const isInitialLoad = !initialLoadDoneRef.current
+    if (isInitialLoad) setIsLoading(true)
     else setIsPageLoading(true)
 
     try {
@@ -221,6 +223,7 @@ const CompletedTasks = () => {
     } finally {
       setIsLoading(false)
       setIsPageLoading(false)
+      initialLoadDoneRef.current = true
     }
   }, [debouncedSearch, selectedDepartment, submissionFilter])
 
@@ -480,16 +483,19 @@ const [isReviewing, setIsReviewing] = useState(false)
               <SelectTrigger className="w-full md:w-[200px]">
                 <SelectValue placeholder="Filter by department" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[250px] overflow-y-auto">
                 <SelectItem value="all">All Departments</SelectItem>
-                {Array.isArray(departments) && departments.map((department) => (
-                  <SelectItem key={department._id} value={department._id}>
-                    <div className="flex items-center">
-                      <div className={`w-3 h-3 rounded-full mr-2 ${department.color}`}></div>
-                      {department.name}
-                    </div>
-                  </SelectItem>
-                ))}
+                {Array.isArray(departments) && departments.map((department) => {
+                  const deptColorInfo = getDeptColor(department.color)
+                  return (
+                    <SelectItem key={department._id} value={department._id}>
+                      <div className="flex items-center">
+                        <div className={`w-3 h-3 rounded-full mr-2 ${deptColorInfo.bgClass}`} style={deptColorInfo.style}></div>
+                        {department.name}
+                      </div>
+                    </SelectItem>
+                  )
+                })}
               </SelectContent>
             </Select>
             <Select value={submissionFilter} onValueChange={setSubmissionFilter}>
@@ -575,15 +581,18 @@ const [isReviewing, setIsReviewing] = useState(false)
                       
                       {/* Task Meta Info */}
                       <div className="flex items-center gap-3 pt-2 border-t border-green-500/10">
-                        {task.department && (
-                          <Badge
-                            variant="outline"
-                            className="border-none bg-background/50 hover:bg-background flex items-center gap-1.5 text-xs"
-                          >
-                            <div className={`w-2 h-2 rounded-full ${task.department.color}`}></div>
-                            <span>{task.department.name}</span>
-                          </Badge>
-                        )}
+                        {task.department && (() => {
+                          const deptColorInfo = getDeptColor(task.department.color)
+                          return (
+                            <Badge
+                              variant="outline"
+                              className="border-none bg-background/50 hover:bg-background flex items-center gap-1.5 text-xs"
+                            >
+                              <div className={`w-2 h-2 rounded-full ${deptColorInfo.bgClass}`} style={deptColorInfo.style}></div>
+                              <span>{task.department.name}</span>
+                            </Badge>
+                          )
+                        })()}
                         <div className="flex items-center gap-1 text-xs text-muted-foreground">
                           <Clock className="h-3 w-3" />
                           <span>{formatDate(task.dueDate)}</span>
@@ -791,12 +800,15 @@ const [isReviewing, setIsReviewing] = useState(false)
                               )}
                             </td>
                             <td className="p-4">
-                              {task.department ? (
-                                <div className="flex items-center gap-2">
-                                  <div className={`w-3 h-3 rounded-full ${task.department.color}`}></div>
-                                  <span>{task.department.name}</span>
-                                </div>
-                              ) : (
+                              {task.department ? (() => {
+                                const deptColorInfo = getDeptColor(task.department.color)
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-3 h-3 rounded-full ${deptColorInfo.bgClass}`} style={deptColorInfo.style}></div>
+                                    <span>{task.department.name}</span>
+                                  </div>
+                                )
+                              })() : (
                                 <span className="text-muted-foreground">None</span>
                               )}
                             </td>
