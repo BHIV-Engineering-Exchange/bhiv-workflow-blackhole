@@ -223,13 +223,21 @@ const buildOriginAllowlist = () => {
     "blackhole-workflow.vercel.app",
     "niyantrankendra.blackholeinfiverse.com",
   ]);
-  const httpHostsWithPort = new Set(["localhost:5173", "localhost", "localhost:8000"]);
+  const httpHostsWithPort = new Set([
+    "localhost:5173",
+    "localhost",
+    "localhost:8000",
+    "163.128.209.18:5176",
+    "163.128.209.18",
+  ]);
   const socketOrigins = [
     "https://niyantran.blackholeinfiverse.com",
     "https://blackhole-workflow.vercel.app",
     "niyantrankendra.blackholeinfiverse.com",
     "http://localhost:5173",
     "http://localhost:8000",
+    "http://163.128.209.18:5176",
+    "http://163.128.209.18",
   ];
 
   const envOrigins = [process.env.CORS_ORIGIN, process.env.FRONTEND_URL]
