@@ -7,6 +7,7 @@ import { Progress } from "../ui/progress"
 import { CheckCircle2, Clock, AlertTriangle } from "lucide-react"
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts"
 import { API_URL } from "@/lib/api"
+import { getDeptColor } from "@/lib/departmentUtils"
 
 export function CompletedTasksStats({ departments = [] }) {
   const [stats, setStats] = useState(null)
@@ -219,12 +220,15 @@ export function CompletedTasksStats({ departments = [] }) {
             </div>
             <CardDescription>Department-wise submission breakdown</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 pt-4">
+          <CardContent className="space-y-4 pt-4 max-h-[300px] overflow-y-auto pr-2">
             {filteredDeptStats.map((dept) => (
               <div key={dept._id} className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${dept.color}`} />
+                    {(() => {
+                      const deptColorInfo = getDeptColor(dept.color)
+                      return <div className={`w-3 h-3 rounded-full ${deptColorInfo.bgClass}`} style={deptColorInfo.style} />
+                    })()}
                     <span className="text-sm font-medium">{dept.name}</span>
                   </div>
                   <span className="text-sm text-muted-foreground">
