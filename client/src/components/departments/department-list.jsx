@@ -19,6 +19,7 @@ import {
 import { useToast } from "../../hooks/use-toast"
 import { api } from "../../lib/api"
 import { useSocketContext } from "../../context/socket-context"
+import { getDeptColor } from "@/lib/departmentUtils"
 
 export function DepartmentList({ onDepartmentSelect }) {
   const { toast } = useToast()
@@ -235,7 +236,7 @@ export function DepartmentList({ onDepartmentSelect }) {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 max-h-[75vh] overflow-y-auto pr-2 pb-4">
             {departments.map((department) => {
               const departmentId = department._id || department.id;
               const tasks = departmentTasks[departmentId] || { total: 0, completed: 0 }
@@ -245,18 +246,19 @@ export function DepartmentList({ onDepartmentSelect }) {
               
               // Count only active members (backend filters inactive users to null)
               const activeMemberCount = getActiveMemberCount(department.members);
+              const deptColorInfo = getDeptColor(department.color);
               
               return (
                 <Card 
                   key={departmentId} 
                   className="group cursor-pointer hover:shadow-xl transition-all duration-300 border-l-4 hover:scale-[1.02] overflow-hidden bg-gradient-to-br from-card to-card/50 backdrop-blur-sm"
-                  style={{ borderLeftColor: department.color }}
+                  style={deptColorInfo.borderLeftStyle}
                   onClick={() => onDepartmentSelect && onDepartmentSelect(department)}
                 >
                   {/* Color Accent Bar at Top */}
                   <div 
                     className="h-1 w-full" 
-                    style={{ backgroundColor: department.color }}
+                    style={deptColorInfo.style}
                   />
                   
                   <CardHeader className="pb-3 relative">
@@ -264,7 +266,8 @@ export function DepartmentList({ onDepartmentSelect }) {
                       <div className="space-y-2 flex-1">
                         <CardTitle className="flex items-center gap-2.5 text-lg group-hover:text-primary transition-colors">
                           <div 
-                            className="w-10 h-10 rounded-xl flex items-center justify-center font-bold shadow-lg group-hover:scale-110 transition-transform text-white bg-green-500"
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold shadow-lg group-hover:scale-110 transition-transform text-white ${deptColorInfo.bgClass}`}
+                            style={deptColorInfo.style}
                           >
                             {department.name.charAt(0)}
                           </div>
@@ -352,9 +355,9 @@ export function DepartmentList({ onDepartmentSelect }) {
                           variant="outline" 
                           className="font-bold"
                           style={{ 
-                            backgroundColor: `${department.color}15`,
-                            borderColor: department.color,
-                            color: department.color
+                            backgroundColor: `${deptColorInfo.hexColor}15`,
+                            borderColor: deptColorInfo.hexColor,
+                            color: deptColorInfo.hexColor
                           }}
                         >
                           {completionPercentage}%
@@ -364,7 +367,7 @@ export function DepartmentList({ onDepartmentSelect }) {
                         value={completionPercentage} 
                         className="h-2.5"
                         style={{
-                          backgroundColor: `${department.color}20`
+                          backgroundColor: `${deptColorInfo.hexColor}20`
                         }}
                       />
                     </div>

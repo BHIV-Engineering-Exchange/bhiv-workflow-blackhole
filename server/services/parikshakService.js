@@ -7,6 +7,7 @@ const { emitTaskCompletedEvent, emitTaskFailedEvent } = require('./taskExecution
 
 const PARIKSHAK_URL = process.env.PARIKSHAK_URL || 'https://parikshak.blackholeinfiverse.com/parikshak/review';
 const PARIKSHAK_TOKEN = process.env.PARIKSHAK_TOKEN || '';
+const PARIKSHAK_TIMEOUT_MS = parseInt(process.env.PARIKSHAK_TIMEOUT_MS || '120000', 10); // 2 minutes timeout
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -66,7 +67,7 @@ const invokeParikshak = async (submissionId, traceId, io) => {
             try {
                 const config = {
                     headers: { 'Content-Type': 'application/json' },
-                    timeout: 30000, // 30s timeout per request
+                    timeout: PARIKSHAK_TIMEOUT_MS, // 2 minutes (120s) timeout per request
                     validateStatus: (status) => status < 600
                 };
                 if (PARIKSHAK_TOKEN) {
@@ -368,7 +369,7 @@ const triggerReview = async ({
 
         const config = {
             headers: { 'Content-Type': 'application/json' },
-            timeout: 30000
+            timeout: PARIKSHAK_TIMEOUT_MS
         };
         if (PARIKSHAK_TOKEN) {
             config.headers['Authorization'] = `Bearer ${PARIKSHAK_TOKEN}`;
@@ -491,7 +492,7 @@ const evaluateParikshakSubmission = async (submissionId, traceId) => {
     try {
         const config = {
             headers: { 'Content-Type': 'application/json' },
-            timeout: 30000
+            timeout: PARIKSHAK_TIMEOUT_MS
         };
         if (PARIKSHAK_TOKEN) {
             config.headers['Authorization'] = `Bearer ${PARIKSHAK_TOKEN}`;

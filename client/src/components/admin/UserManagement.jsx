@@ -449,10 +449,25 @@ export function UserManagement() {
       <Card>
         <CardHeader>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList>
-              <TabsTrigger value="active">Active Users ({activeUsers.length})</TabsTrigger>
-              <TabsTrigger value="exited">Exited Users ({exitedUsers.length})</TabsTrigger>
-              <TabsTrigger value="all">All Users ({users.length})</TabsTrigger>
+            <TabsList className="p-1 border border-border/40">
+              <TabsTrigger 
+                value="active" 
+                className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white dark:data-[state=active]:bg-emerald-500 dark:data-[state=active]:text-zinc-950 font-semibold transition-colors"
+              >
+                Active Users ({activeUsers.length})
+              </TabsTrigger>
+              <TabsTrigger 
+                value="exited" 
+                className="data-[state=active]:bg-red-600 data-[state=active]:text-white dark:data-[state=active]:bg-red-500 dark:data-[state=active]:text-zinc-950 font-semibold transition-colors"
+              >
+                Exited Users ({exitedUsers.length})
+              </TabsTrigger>
+              <TabsTrigger 
+                value="all" 
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white dark:data-[state=active]:bg-blue-500 dark:data-[state=active]:text-zinc-950 font-semibold transition-colors"
+              >
+                All Users ({users.length})
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </CardHeader>

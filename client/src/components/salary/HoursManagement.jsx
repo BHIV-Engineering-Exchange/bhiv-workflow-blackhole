@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +20,7 @@ const HoursManagement = ({ userId }) => {
   const [cumulativeTotal, setCumulativeTotal] = useState(0);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [statusTab, setStatusTab] = useState('active');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -102,17 +104,50 @@ const HoursManagement = ({ userId }) => {
     }
   };
 
+  const activeCount = allUsersHours.filter(u => u.stillExist === undefined || u.stillExist === 1).length;
+  const exitedCount = allUsersHours.filter(u => u.stillExist === 0).length;
+  const filteredUsersHours = allUsersHours.filter(u => {
+    if (statusTab === 'active') return u.stillExist === undefined || u.stillExist === 1;
+    if (statusTab === 'exited') return u.stillExist === 0;
+    return true;
+  });
 
   return (
     <Card className="neo-card">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Clock className="h-5 w-5 text-primary" />
-          Hours Management
-        </CardTitle>
-        <CardDescription>
-          View date-wise working hours and cumulative total
-        </CardDescription>
+      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-primary" />
+            Hours Management
+          </CardTitle>
+          <CardDescription>
+            View date-wise working hours and cumulative total
+          </CardDescription>
+        </div>
+
+        {/* High-Contrast Status Tabs */}
+        <Tabs value={statusTab} onValueChange={setStatusTab}>
+          <TabsList className="p-1 border border-border/40 text-xs">
+            <TabsTrigger
+              value="active"
+              className="px-2 py-1 text-xs data-[state=active]:bg-emerald-600 data-[state=active]:text-white dark:data-[state=active]:bg-emerald-500 dark:data-[state=active]:text-zinc-950 font-semibold transition-colors"
+            >
+              Active ({activeCount})
+            </TabsTrigger>
+            <TabsTrigger
+              value="exited"
+              className="px-2 py-1 text-xs data-[state=active]:bg-red-600 data-[state=active]:text-white dark:data-[state=active]:bg-red-500 dark:data-[state=active]:text-zinc-950 font-semibold transition-colors"
+            >
+              Exited ({exitedCount})
+            </TabsTrigger>
+            <TabsTrigger
+              value="all"
+              className="px-2 py-1 text-xs data-[state=active]:bg-blue-600 data-[state=active]:text-white dark:data-[state=active]:bg-blue-500 dark:data-[state=active]:text-zinc-950 font-semibold transition-colors"
+            >
+              All ({allUsersHours.length})
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Date Range Filter */}
@@ -158,10 +193,10 @@ const HoursManagement = ({ userId }) => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">
-                  Total Cumulative Hours (All Users)
+                  Total Cumulative Hours ({statusTab === 'active' ? 'Active Users' : statusTab === 'exited' ? 'Exited Users' : 'All Users'})
                 </p>
                 <p className="text-3xl font-bold text-foreground mt-1">
-                  {cumulativeTotal.toFixed(2)} hrs
+                  {filteredUsersHours.reduce((sum, u) => sum + (u.cumulativeHours || 0), 0).toFixed(2)} hrs
                 </p>
               </div>
               <div className="text-right">
@@ -169,7 +204,7 @@ const HoursManagement = ({ userId }) => {
                   Total Users
                 </p>
                 <p className="text-2xl font-semibold text-foreground mt-1">
-                  {allUsersHours.length}
+                  {filteredUsersHours.length}
                 </p>
               </div>
             </div>
@@ -186,9 +221,9 @@ const HoursManagement = ({ userId }) => {
           <div className="text-center py-8 text-muted-foreground">
             Loading users hours data...
           </div>
-        ) : allUsersHours.length === 0 ? (
+        ) : filteredUsersHours.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
-            No AIMS data found for the selected date range
+            No users found matching this status tab for the selected date range
           </div>
         ) : (
           <div className="border rounded-lg overflow-hidden">
@@ -203,10 +238,15 @@ const HoursManagement = ({ userId }) => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {allUsersHours.map((user, index) => (
+                {filteredUsersHours.map((user, index) => (
                   <TableRow key={user.userId || index}>
-                    <TableCell className="font-medium">
-                      {user.name}
+                    <TableCell className="font-medium flex items-center gap-2">
+                      <span>{user.name}</span>
+                      {user.stillExist === 0 && (
+                        <Badge variant="outline" className="text-[10px] px-1 py-0 bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400">
+                          Exited
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">

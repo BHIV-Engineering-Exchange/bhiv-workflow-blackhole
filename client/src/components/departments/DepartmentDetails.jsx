@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Loader2
 } from "lucide-react";
+import { getDeptColor } from "@/lib/departmentUtils";
 import { useToast } from "../../hooks/use-toast";
 import { api } from "../../lib/api";
 import { format } from "date-fns";
@@ -203,10 +204,15 @@ export function DepartmentDetails({ department, onBack }) {
             </Button>
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <div 
-                  className="w-6 h-6 rounded-md shadow-lg" 
-                  style={{ backgroundColor: department.color }}
-                />
+                {(() => {
+                  const deptColorInfo = getDeptColor(department.color);
+                  return (
+                    <div 
+                      className={`w-6 h-6 rounded-md shadow-lg ${deptColorInfo.bgClass}`} 
+                      style={deptColorInfo.style}
+                    />
+                  );
+                })()}
               </div>
               <div>
                 <h1 className="text-3xl font-bold tracking-tight">{department.name}</h1>

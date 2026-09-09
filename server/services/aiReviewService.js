@@ -121,7 +121,7 @@ class AIReviewService {
       console.log(`[AIReviewService] Triggering Parikshak review at ${targetUrl}...`);
       const response = await axios.post(targetUrl, payload, {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 30000
+        timeout: parseInt(process.env.PARIKSHAK_TIMEOUT_MS || '120000', 10)
       });
 
       if (response.data) {
