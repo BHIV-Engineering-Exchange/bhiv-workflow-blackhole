@@ -32,6 +32,7 @@ import Leaderboard from "./pages/Leaderboard";
 import { EmployeeMonitoring } from "./pages/EmployeeMonitoring";
 import AttendanceDashboard from "./pages/AttendanceDashboard";
 import AttendanceDataManagement from "./components/admin/AttendanceDataManagement";
+import AdminAimsView from "./components/admin/AdminAimsView";
 import UserManagement from "./pages/UserManagement";
 import LeaveRequest from "./pages/LeaveRequest";
 import KnowledgeAdmin from "./pages/admin/KnowledgeAdmin";
@@ -382,6 +383,7 @@ function AppContent() {
                     </ProtectedRoute>
                   }
                 />
+
                 <Route
                   path="/ems-dashboard"
                   element={
