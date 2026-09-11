@@ -36,7 +36,6 @@ import AdminAimsView from "./components/admin/AdminAimsView";
 import UserManagement from "./pages/UserManagement";
 import LeaveRequest from "./pages/LeaveRequest";
 import KnowledgeAdmin from "./pages/admin/KnowledgeAdmin";
-import AdminAimsView from "./components/admin/AdminAimsView";
 import ErrorBoundary from "./components/ErrorBoundary";
 import axios from "axios";
 import { API_URL } from "./lib/api";
