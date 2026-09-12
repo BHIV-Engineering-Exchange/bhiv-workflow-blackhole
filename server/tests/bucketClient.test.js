@@ -311,7 +311,6 @@ describe("storeKarmaEventRecord", () => {
 
   it("writes an event_records artifact with canonical KARMA contract fields", async () => {
     mockAxiosPost
-      .mockResolvedValueOnce(ADMISSION_OK)
       .mockResolvedValueOnce(WRITE_OK);
 
     await storeKarmaEventRecord({
@@ -323,9 +322,9 @@ describe("storeKarmaEventRecord", () => {
       traceId: "trace-karma",
     });
 
-    const writeBody = mockAxiosPost.mock.calls[1][1];
-    const payload = writeBody.artifact.payload;
-    expect(writeBody.artifact.artifact_type).toBe(ARTIFACT_TYPES.EVENT_RECORD);
+    const writeBody = mockAxiosPost.mock.calls[0][1];
+    const payload = writeBody.payload;
+    expect(writeBody.artifact_type).toBe(ARTIFACT_TYPES.EVENT_RECORD);
     expect(payload.subject_id).toBe("user-789");
     expect(payload.product_context).toBe("workflow");
     expect(payload.signal).toBe("nudge");
