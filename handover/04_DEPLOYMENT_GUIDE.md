@@ -90,7 +90,7 @@ This is a genuinely complete pipeline, not a stub — worth understanding in ful
 
 **Verified, important production detail:** in `docker-compose.production.template.yml`, the `backend` and `frontend` containers deliberately have **no public port mapping** — comments in the file explicitly say "Public ports are OMITTED for security isolation." The only public entry point is the `proxy` container on 80/443. This is good, deliberate security design, confirmed by reading the compose file directly.
 
-**Confirmed production Bucket URL:** the production compose file hardcodes `BUCKET_BASE_URL: https://bhiv-bucket-i1l6.onrender.com` directly in the backend service's environment block — this is the real, externally-hosted Bucket instance this deployment talks to, consistent with the ecosystem map's description of Bucket as a Render-hosted external service.
+**Confirmed production Bucket URL:** the production compose file configures `BUCKET_BASE_URL: http://163.128.209.18:8012` directly in the backend service's environment block — this is the canonical VM-hosted Bucket instance (`http://163.128.209.18:8012`), migrated from the previous Render endpoint.
 
 ## 6. Scheduled jobs
 

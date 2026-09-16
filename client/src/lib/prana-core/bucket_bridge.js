@@ -16,7 +16,7 @@ class BucketBridge {
       console.log('[PRANA] Bucket Bridge disabled via kill switch');
     }
 
-    const defaultEndpoint = 'http://localhost:8001/bucket/prana/ingest';
+    const defaultEndpoint = 'http://localhost:8103/prana/ingest';
 
     this.endpoint = (options && options.endpoint) || defaultEndpoint;
 
@@ -193,6 +193,7 @@ class BucketBridge {
         headers: {
           'Content-Type': 'application/json',
           'X-CLIENT-TIMESTAMP': new Date().toISOString(),
+          'x-trace-id': packet.trace_id || `niyantran-${Math.random().toString(36).substring(2, 10)}`,
         },
         body,
         // Add signal for timeout handling

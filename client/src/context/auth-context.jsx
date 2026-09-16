@@ -73,7 +73,7 @@ export const AuthProvider = ({ children }) => {
         role: 'employee',
         user_id: currentUser.id || currentUser.email,
         session_id: localStorage.getItem("WorkflowToken") || 'no-session',
-        bucket_endpoint: import.meta.env.VITE_PRANA_BUCKET_URL || 'http://localhost:5000/api/ems-signals/signals'
+        bucket_endpoint: import.meta.env.VITE_PRANA_URL || import.meta.env.VITE_PRANA_BUCKET_URL || 'http://localhost:8103/prana/ingest'
       });
 
       // Expose PRANA internals on window so monitoring-service can read them

@@ -49,9 +49,9 @@ services:
         max-file: "3"
 
   # ── TANTRA Ecosystem Services ────────────────────────────────────────────
-  # Bucket: EXTERNAL — deployed on Render (https://bhiv-bucket-i1l6.onrender.com)
+  # Bucket: EXTERNAL — deployed on VM (http://163.128.209.18:8012)
   # PRANA:  NOT DEPLOYED — git repo only, for future integration
-  # KARMA:  Reached via Bucket relay on Render (not direct)
+  # KARMA:  Reached via Bucket relay on VM (not direct)
   # None of these run as containers in this compose file.
 
   # ── Niyantran Application ────────────────────────────────────────────────
@@ -63,8 +63,9 @@ services:
     # Public ports are OMITTED for security isolation
     environment:
       MONGODB_URI: ${MONGODB_URI}
-      # Bucket on Render — no local container needed
-      BUCKET_BASE_URL: https://bhiv-bucket-i1l6.onrender.com
+      # Bucket on VM — no local container needed
+      BUCKET_BASE_URL: http://163.128.209.18:8012
+      BUCKET_URL: http://163.128.209.18:8012
     env_file:
       - .env
     networks:

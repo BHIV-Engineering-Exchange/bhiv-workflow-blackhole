@@ -7,6 +7,7 @@ const {
   signalKeystrokeAnomaly,
   signalNormalActivity,
 } = require('../services/karmaClient');
+const pranaClient = require('../services/pranaClient');
 
 /**
  * EMS Signal API Routes
@@ -144,6 +145,33 @@ router.post('/signals', async (req, res) => {
     } else if (types.includes('window_focus') || types.includes('mouse_movement') || types.includes('task_tab_active')) {
       signalNormalActivity(String(employeeId)).catch(() => {});
     }
+
+    // PRANA Telemetry Propagation (asynchronous / non-blocking)
+    const traceId = req.headers['x-trace-id'] || req.headers['x-request-id'];
+    const traceparent = req.headers['traceparent'];
+    const tracestate = req.headers['tracestate'];
+
+    pranaClient.sendTelemetry(
+      {
+        user_id: String(employeeId),
+        session_id: String(sessionId || 'ems-session'),
+        focus_score: currentState?.statistics?.productivityScore ?? 85,
+        cognitive_state: currentState?.currentState || 'ACTIVE',
+        raw_signals: req.body.raw_signals || {
+          signals_count: signals.length,
+          processed_count: processed,
+          types: types,
+        },
+        timestamp: new Date().toISOString(),
+      },
+      {
+        traceId,
+        traceparent,
+        tracestate,
+      }
+    ).catch((err) => {
+      console.warn(`[EMS->PRANA] Non-blocking telemetry forward failed: ${err.message}`);
+    });
 
     res.json({
       success: true,

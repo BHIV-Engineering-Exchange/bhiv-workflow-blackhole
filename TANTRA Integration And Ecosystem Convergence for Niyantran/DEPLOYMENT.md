@@ -21,7 +21,7 @@ TANTRA_EXECUTION_KEY=your-tantra-execution-key
 REDIS_URL=redis://redis:6379
 
 # BHIV Bucket base URL for artifact writes (Required)
-BUCKET_BASE_URL=https://bhiv-bucket-i1l6.onrender.com
+BUCKET_BASE_URL=http://163.128.209.18:8012
 
 # Optional Bucket API secret
 # BUCKET_API_KEY=
