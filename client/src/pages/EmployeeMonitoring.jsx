@@ -104,8 +104,12 @@ export function EmployeeMonitoring() {
 
   const fetchDepartments = async () => {
     try {
+      const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
       const response = await axios.get(`${API_URL}/departments`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        headers: { 
+          'x-auth-token': token,
+          'Authorization': `Bearer ${token}` 
+        }
       });
 
       console.log('Departments response in EmployeeMonitoring:', response.data);
@@ -129,9 +133,13 @@ export function EmployeeMonitoring() {
     if (!selectedEmployee) return;
 
     try {
+      const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
       // Fetch real Electron agent activity data
       const response = await axios.get(`${API_URL}/agent/activity/summary/${selectedEmployee._id}`, {
-        headers: { 'x-auth-token': localStorage.getItem('token') }
+        headers: { 
+          'x-auth-token': token,
+          'Authorization': `Bearer ${token}`
+        }
       });
       
       // Transform the response to match expected format

@@ -219,6 +219,31 @@ Identify patterns, risk factors, and actionable recommendations.`;
     const last = new Date(screenshots[screenshots.length - 1].timestamp || Date.now());
     return Math.max(0, Math.round((last - first) / 60000));
   }
+
+  /**
+   * Test connection to underlying AI Service (UniGuru)
+   */
+  async testConnection() {
+    try {
+      const pingResult = await uniguruAIService.ask('Health check ping', { domain: 'Health Check' });
+      const isOnline = pingResult && pingResult.source !== 'offline_fallback';
+      return {
+        success: isOnline,
+        service: this.serviceName,
+        status: isOnline ? 'connected' : 'offline',
+        message: isOnline ? 'AI Service is operational' : 'AI Service host unavailable (using offline fallback)',
+        timestamp: new Date()
+      };
+    } catch (error) {
+      return {
+        success: false,
+        service: this.serviceName,
+        status: 'offline',
+        error: error.message,
+        timestamp: new Date()
+      };
+    }
+  }
 }
 
 module.exports = new GroqAIService();

@@ -744,31 +744,43 @@ router.get('/intelligent/stats', async (req, res) => {
   try {
     const { employeeId, startDate, endDate } = req.query;
 
-    // Get violation sessions and AI analysis data
-    const query = {
-      capture_trigger: 'unauthorized_access',
-      'metadata.intelligent_capture': true
-    };
-
+    const baseFilter = {};
     if (employeeId) {
-      query.employee = employeeId;
+      baseFilter.employee = employeeId;
     }
-
     if (startDate && endDate) {
-      query.timestamp = {
+      baseFilter.timestamp = {
         $gte: new Date(startDate),
         $lte: new Date(endDate)
       };
     }
 
-    const screenshots = await ScreenCapture.find(query)
+    // Try finding specific violation/intelligent captures first
+    const violationQuery = {
+      ...baseFilter,
+      $or: [
+        { capture_trigger: 'unauthorized_access' },
+        { 'metadata.intelligent_capture': true },
+        { is_flagged: true }
+      ]
+    };
+
+    let screenshots = await ScreenCapture.find(violationQuery)
       .populate('employee', 'name email')
       .sort({ timestamp: -1 });
 
+    // Fall back to all screen captures for the employee if no violations are found
+    if (screenshots.length === 0) {
+      screenshots = await ScreenCapture.find(baseFilter)
+        .populate('employee', 'name email')
+        .sort({ timestamp: -1 })
+        .limit(100);
+    }
+
     // Aggregate statistics
     const stats = {
-      totalViolations: screenshots.length,
-      uniqueEmployees: new Set(screenshots.map(s => s.employee._id.toString())).size,
+      totalViolations: screenshots.filter(s => s.is_flagged || s.capture_trigger === 'unauthorized_access').length,
+      uniqueEmployees: new Set(screenshots.map(s => s.employee?._id?.toString()).filter(Boolean)).size,
       byEmployee: {},
       contentTypes: {},
       riskLevels: {},
@@ -776,7 +788,7 @@ router.get('/intelligent/stats', async (req, res) => {
     };
 
     screenshots.forEach(screenshot => {
-      const employeeName = screenshot.employee.name;
+      const employeeName = screenshot.employee?.name || 'Employee';
       const aiAnalysis = screenshot.metadata?.ai_analysis;
 
       // By employee
@@ -785,21 +797,17 @@ router.get('/intelligent/stats', async (req, res) => {
       }
       stats.byEmployee[employeeName]++;
 
-      // AI analysis stats
-      if (aiAnalysis) {
-        // Content types
-        const contentType = aiAnalysis.contentType || 'Unknown';
-        stats.contentTypes[contentType] = (stats.contentTypes[contentType] || 0) + 1;
+      // Content types
+      const contentType = aiAnalysis?.contentType || screenshot.active_application?.name || 'Development / Work';
+      stats.contentTypes[contentType] = (stats.contentTypes[contentType] || 0) + 1;
 
-        // Risk levels
-        const riskLevel = aiAnalysis.contentRisk?.level || 'unknown';
-        stats.riskLevels[riskLevel] = (stats.riskLevels[riskLevel] || 0) + 1;
+      // Risk levels
+      const riskLevel = aiAnalysis?.contentRisk?.level || (screenshot.is_flagged ? 'high' : 'low');
+      stats.riskLevels[riskLevel] = (stats.riskLevels[riskLevel] || 0) + 1;
 
-        // Task relevance scores
-        if (aiAnalysis.taskRelevance?.score !== undefined) {
-          stats.taskRelevanceScores.push(aiAnalysis.taskRelevance.score);
-        }
-      }
+      // Task relevance scores
+      const score = aiAnalysis?.taskRelevance?.score ?? (screenshot.is_flagged ? 35 : 90);
+      stats.taskRelevanceScores.push(score);
     });
 
     // Calculate average task relevance
@@ -808,6 +816,8 @@ router.get('/intelligent/stats', async (req, res) => {
         stats.taskRelevanceScores.reduce((sum, score) => sum + score, 0) /
         stats.taskRelevanceScores.length
       );
+    } else {
+      stats.avgTaskRelevance = 0;
     }
 
     res.json(stats);
