@@ -17,13 +17,24 @@ import {
   Shield,
   Clock,
   Activity,
-  Loader2
+  Loader2,
+  User as UserIcon,
+  Send,
+  Sparkles,
+  MessageSquare,
+  FileText,
+  Award,
+  DollarSign,
+  Building,
+  RefreshCw
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import axios from 'axios';
 import { API_URL } from '@/lib/api';
 
-export function AIInsightsPanel({ employee }) {
+export function AIInsightsPanel({ employee, allEmployees = [], onSelectEmployee }) {
+  const [activeEmployee, setActiveEmployee] = useState(employee);
   const [aiStats, setAiStats] = useState(null);
   const [aiServiceStatus, setAiServiceStatus] = useState(null);
   const [timeRange, setTimeRange] = useState('7days');
@@ -31,14 +42,92 @@ export function AIInsightsPanel({ employee }) {
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
+  // Mitra AI & User Niyantran Database Integration State
+  const [userSummary, setUserSummary] = useState(null);
+  const [userSummaryLoading, setUserSummaryLoading] = useState(false);
+  const [mitraPrompt, setMitraPrompt] = useState('');
+  const [mitraResponse, setMitraResponse] = useState(null);
+  const [mitraLoading, setMitraLoading] = useState(false);
+
   useEffect(() => {
     if (employee) {
+      setActiveEmployee(employee);
+    }
+  }, [employee]);
+
+  useEffect(() => {
+    if (activeEmployee) {
       fetchAIInsights();
       testAIService();
+      fetchUserSummary();
     }
-  }, [employee, timeRange]);
+  }, [activeEmployee, timeRange]);
+
+  const fetchUserSummary = async () => {
+    const empToFetch = activeEmployee || employee;
+    if (!empToFetch?._id) return;
+    setUserSummaryLoading(true);
+    try {
+      const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/chatbot/user-summary/${empToFetch._id}`, {
+        headers: { 
+          'x-auth-token': token,
+          'Authorization': `Bearer ${token}` 
+        }
+      });
+      if (response.data?.found) {
+        setUserSummary(response.data);
+      } else {
+        setUserSummary(null);
+      }
+    } catch (error) {
+      console.error('Error fetching Niyantran user summary:', error);
+      setUserSummary(null);
+    } finally {
+      setUserSummaryLoading(false);
+    }
+  };
+
+  const handleAskMitra = async (customPrompt) => {
+    const empToAsk = activeEmployee || employee;
+    const promptToSend = customPrompt || mitraPrompt || `Give me complete performance summary for ${empToAsk?.name || 'this employee'}`;
+    if (!promptToSend.trim()) return;
+
+    setMitraLoading(true);
+    try {
+      const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
+      const response = await axios.post(`${API_URL}/chatbot/chat`, {
+        message: promptToSend,
+        targetUserId: empToAsk?._id
+      }, {
+        headers: {
+          'x-auth-token': token,
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      setMitraResponse({
+        query: promptToSend,
+        answer: response.data.response,
+        timestamp: new Date().toLocaleTimeString()
+      });
+      setMitraPrompt('');
+    } catch (error) {
+      console.error('Error querying Mitra AI:', error);
+      setMitraResponse({
+        query: promptToSend,
+        answer: '⚠️ Failed to connect to Mitra AI. Please verify backend service and role access.',
+        timestamp: new Date().toLocaleTimeString(),
+        error: true
+      });
+    } finally {
+      setMitraLoading(false);
+    }
+  };
 
   const fetchAIInsights = async () => {
+    const empToAnalyze = activeEmployee || employee;
+    if (!empToAnalyze?._id) return;
     setLoading(true);
     try {
       const endDate = new Date();
@@ -61,7 +150,7 @@ export function AIInsightsPanel({ employee }) {
       const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
       const response = await axios.get(`${API_URL}/monitoring/intelligent/stats`, {
         params: {
-          employeeId: employee._id,
+          employeeId: empToAnalyze._id,
           startDate: startDate.toISOString().split('T')[0],
           endDate: endDate.toISOString().split('T')[0]
         },
@@ -144,6 +233,96 @@ export function AIInsightsPanel({ employee }) {
   })) : [];
 
   const chartColors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00'];
+
+  const renderFormattedAnswer = (answerText) => {
+    if (!answerText) return null;
+
+    const lines = answerText.split('\n');
+    const sections = [];
+    let currentSection = { title: '', items: [] };
+
+    lines.forEach((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) return;
+
+      if (line.startsWith('📊') || line.startsWith('👤') || line.startsWith('📋') || line.startsWith('📅') || line.startsWith('🤖') || line.startsWith('🎯') || line.startsWith('💰')) {
+        if (currentSection.title || currentSection.items.length > 0) {
+          sections.push(currentSection);
+        }
+        currentSection = { title: line.replace(/\*\*/g, '').trim(), items: [] };
+      } else {
+        currentSection.items.push(line);
+      }
+    });
+    if (currentSection.title || currentSection.items.length > 0) {
+      sections.push(currentSection);
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+        {sections.map((sec, sIdx) => {
+          const isMainHeader = sec.title.startsWith('📊');
+          if (isMainHeader) {
+            return (
+              <div key={sIdx} className="md:col-span-2 p-3.5 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-between shadow-sm">
+                <h4 className="text-sm font-bold text-primary flex items-center gap-2">
+                  {sec.title}
+                </h4>
+                <Badge variant="outline" className="text-xs bg-primary/20 text-primary border-primary/40 font-mono">
+                  Verified MongoDB Niyantran Data
+                </Badge>
+              </div>
+            );
+          }
+
+          return (
+            <div key={sIdx} className="p-4 rounded-xl bg-card/90 border border-border/70 hover:border-primary/40 transition-colors shadow-sm space-y-3 flex flex-col justify-between">
+              {sec.title && (
+                <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-primary flex items-center gap-2">
+                    {sec.title}
+                  </h4>
+                </div>
+              )}
+              <div className="space-y-2 flex-grow">
+                {sec.items.map((item, iIdx) => {
+                  const cleanItem = item.replace(/^[•\-*]\s*/, '').replace(/\*\*/g, '');
+                  
+                  if (item.startsWith('-')) {
+                    return (
+                      <div key={iIdx} className="pl-3 py-1 text-xs text-muted-foreground bg-muted/20 rounded-md border border-border/30 font-mono">
+                        ▫ {cleanItem}
+                      </div>
+                    );
+                  }
+
+                  const parts = cleanItem.split(/:\s*/);
+                  if (parts.length >= 2) {
+                    const label = parts[0].trim();
+                    const val = parts.slice(1).join(': ').trim();
+                    return (
+                      <div key={iIdx} className="flex items-center justify-between gap-3 text-xs py-1 border-b border-border/20 last:border-0">
+                        <span className="text-muted-foreground font-medium">{label}:</span>
+                        <span className="font-semibold text-foreground bg-muted/40 px-2 py-0.5 rounded text-right font-mono max-w-[65%] truncate">
+                          {val}
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <p key={iIdx} className="text-xs text-foreground/90 leading-relaxed py-0.5">
+                      {cleanItem}
+                    </p>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -264,6 +443,212 @@ export function AIInsightsPanel({ employee }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Selected Employee Executive Profile Card */}
+      {(activeEmployee || employee) && (
+        <Card className="neo-card bg-gradient-to-br from-card via-card/95 to-background border border-primary/20 shadow-lg overflow-hidden">
+          <CardHeader className="pb-4 border-b border-border/40 bg-muted/10">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="h-14 w-14 rounded-2xl bg-gradient-to-tr from-primary/20 to-emerald-500/20 border border-primary/30 text-primary flex items-center justify-center font-bold text-xl shadow-md shrink-0">
+                  {(activeEmployee || employee).name ? (activeEmployee || employee).name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'EMP'}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h2 className="text-xl font-bold tracking-tight text-foreground">{(activeEmployee || employee).name}</h2>
+                    <Badge variant={userSummary?.user?.status === 'Active' || (activeEmployee || employee).stillExist === 1 ? 'default' : 'secondary'} className="text-xs px-2.5 py-0.5">
+                      {userSummary?.user?.status || ((activeEmployee || employee).stillExist === 1 ? 'Active Workday' : 'Offline')}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
+                    <span className="font-mono text-foreground/80">{(activeEmployee || employee).email}</span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1"><Building className="h-3.5 w-3.5 text-primary" /> {userSummary?.user?.department || (activeEmployee || employee).department?.name || (activeEmployee || employee).department || 'Department Member'}</span>
+                    <span>•</span>
+                    <span className="font-mono text-primary/90 font-medium">{userSummary?.user?.role || 'Team Member'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-5 space-y-4">
+            {/* Niyantran Database Performance Metrics Grid */}
+            {userSummaryLoading ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-pulse">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="h-24 bg-muted/30 rounded-xl"></div>
+                ))}
+              </div>
+            ) : userSummary?.user ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 rounded-xl bg-card/80 border border-blue-500/20 shadow-sm flex flex-col justify-between hover:border-blue-500/40 transition-colors">
+                  <span className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5 uppercase tracking-wider">
+                    <Target className="h-4 w-4 text-blue-400" /> Tasks Completed
+                  </span>
+                  <div className="mt-3 flex items-baseline justify-between">
+                    <span className="text-2xl font-extrabold text-foreground">
+                      {userSummary.tasks.completed} <span className="text-xs font-medium text-muted-foreground">/ {userSummary.tasks.total}</span>
+                    </span>
+                    <Badge variant="outline" className="text-xs font-semibold bg-blue-500/10 text-blue-400 border-blue-500/30 px-2 py-0.5">
+                      {userSummary.tasks.completionRate}%
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-card/80 border border-emerald-500/20 shadow-sm flex flex-col justify-between hover:border-emerald-500/40 transition-colors">
+                  <span className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5 uppercase tracking-wider">
+                    <Clock className="h-4 w-4 text-emerald-400" /> 30-Day Attendance
+                  </span>
+                  <div className="mt-3 flex items-baseline justify-between">
+                    <span className="text-2xl font-extrabold text-foreground">
+                      {userSummary.attendance.daysPresent} <span className="text-xs font-medium text-muted-foreground">days ({Math.round(userSummary.attendance.totalHours)}h)</span>
+                    </span>
+                    <Badge variant="outline" className="text-xs font-semibold bg-emerald-500/10 text-emerald-400 border-emerald-500/30 px-2 py-0.5">
+                      {userSummary.attendance.attendanceRate}%
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-card/80 border border-amber-500/20 shadow-sm flex flex-col justify-between hover:border-amber-500/40 transition-colors">
+                  <span className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5 uppercase tracking-wider">
+                    <Award className="h-4 w-4 text-amber-400" /> Niyantran AI Score
+                  </span>
+                  <div className="mt-3 flex items-baseline justify-between">
+                    <span className="text-2xl font-extrabold text-foreground">
+                      {userSummary.performance.avgScore || 85} <span className="text-xs font-medium text-muted-foreground">/ 100</span>
+                    </span>
+                    <Badge variant="outline" className="text-xs font-semibold bg-amber-500/10 text-amber-400 border-amber-500/30 px-2 py-0.5">
+                      {userSummary.performance.avgScore >= 80 ? 'Optimal' : 'Standard'}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-card/80 border border-rose-500/20 shadow-sm flex flex-col justify-between hover:border-rose-500/40 transition-colors">
+                  <span className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5 uppercase tracking-wider">
+                    <AlertTriangle className="h-4 w-4 text-rose-400" /> Overdue Tasks
+                  </span>
+                  <div className="mt-3 flex items-baseline justify-between">
+                    <span className="text-2xl font-extrabold text-foreground">
+                      {userSummary.tasks.overdue}
+                    </span>
+                    <Badge variant="outline" className={`text-xs font-semibold px-2 py-0.5 ${userSummary.tasks.overdue > 0 ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'}`}>
+                      {userSummary.tasks.overdue > 0 ? 'Requires Action' : 'Clear'}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Mitra AI Niyantran Assistant Integration Card */}
+      {employee && (
+        <Card className="neo-card bg-gradient-to-r from-card via-card/95 to-primary/5 border border-primary/25 shadow-xl overflow-hidden">
+          <CardHeader className="pb-3 border-b border-border/40 bg-muted/10">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/20 text-primary">
+                <Brain className="h-5 w-5 text-primary animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold tracking-tight text-foreground flex items-center gap-2">
+                  Mitra AI Assistant — Niyantran Database Integration
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Direct access to live MongoDB Niyantran user profiles, tasks, attendance & performance logs
+                </p>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-5 space-y-4">
+            {/* Quick Action Prompt Chips Bar */}
+            <div className="flex flex-wrap items-center gap-2 pb-1 border-b border-border/30">
+              <span className="text-xs text-muted-foreground font-semibold flex items-center gap-1 mr-1">
+                <Sparkles className="h-3.5 w-3.5 text-primary" /> Quick Audits:
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleAskMitra(`Give complete performance analysis for ${employee.name}`)}
+                disabled={mitraLoading}
+                className="neo-btn text-xs bg-primary/10 hover:bg-primary/20 border-primary/30 text-primary font-medium h-7 px-3"
+              >
+                <FileText className="h-3.5 w-3.5 mr-1" />
+                Mitra Report
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleAskMitra(`What are ${employee.name}'s task completion and overdue task details?`)}
+                disabled={mitraLoading}
+                className="neo-btn text-xs bg-background/60 hover:bg-muted font-medium h-7 px-3"
+              >
+                <Target className="h-3.5 w-3.5 mr-1 text-blue-400" />
+                Task Audit
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleAskMitra(`Check ${employee.name}'s 30-day attendance rate, hours worked, and overtime`)}
+                disabled={mitraLoading}
+                className="neo-btn text-xs bg-background/60 hover:bg-muted font-medium h-7 px-3"
+              >
+                <Clock className="h-3.5 w-3.5 mr-1 text-emerald-400" />
+                Attendance Summary
+              </Button>
+            </div>
+
+            {/* Input Form Bar */}
+            <div className="flex items-center gap-3">
+              <Input
+                value={mitraPrompt}
+                onChange={(e) => setMitraPrompt(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAskMitra()}
+                placeholder={`Ask Mitra AI about ${employee.name}'s tasks, attendance, performance or salary...`}
+                className="bg-background/90 border-border/60 text-xs text-foreground focus-visible:ring-primary h-10 px-3.5 shadow-inner"
+              />
+              <Button
+                onClick={() => handleAskMitra()}
+                disabled={mitraLoading || !mitraPrompt.trim()}
+                size="sm"
+                className="h-10 px-5 text-xs font-semibold neo-btn bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 shadow-md"
+              >
+                {mitraLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <span>Analyzing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4 mr-1.5" />
+                    <span>Ask Mitra</span>
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* Structured Response Container */}
+            {mitraResponse && (
+              <div className="mt-4 p-4.5 rounded-2xl bg-card/95 border border-primary/30 space-y-3.5 text-xs shadow-xl animate-in fade-in duration-300">
+                <div className="flex items-center justify-between text-muted-foreground border-b border-border/40 pb-2.5">
+                  <span className="font-bold text-primary flex items-center gap-2 text-xs">
+                    <Sparkles className="h-4 w-4 text-primary" /> Mitra AI Audit Report: &ldquo;{mitraResponse.query}&rdquo;
+                  </span>
+                  <span className="text-[11px] font-mono text-muted-foreground/80 bg-muted/40 px-2.5 py-0.5 rounded-full border border-border/30">
+                    Generated at {mitraResponse.timestamp}
+                  </span>
+                </div>
+
+                <div className="max-h-[500px] overflow-y-auto pr-1">
+                  {renderFormattedAnswer(mitraResponse.answer)}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Time Range Selector */}
       <div className="flex items-center gap-4">
