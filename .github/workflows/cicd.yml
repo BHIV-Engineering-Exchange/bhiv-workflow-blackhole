@@ -109,6 +109,14 @@ jobs:
           cat <<'EOF' > .env
           ${{ secrets.ENV_FILE }}
           EOF
+      
+      - name: Inject secrets into nginx config
+        run: |
+          export PRAVAH_API_KEY="${{ secrets.PRAVAH_API_KEY }}"
+          envsubst '${PRAVAH_API_KEY}' \
+            < "proxy configurations/nginx.ssl.conf" \
+            > "proxy configurations/nginx.ssl.conf.tmp"
+          mv "proxy configurations/nginx.ssl.conf.tmp" "proxy configurations/nginx.ssl.conf"
 
       - name: Tar deployment files
         run: |
