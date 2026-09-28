@@ -15,14 +15,14 @@ export const ProtectedRoute = ({ children }) => {
   }
 
   if (user.role === "User") {
-    // Allow access to /userdashboard and /tasks/* (including /tasks/:id)
-     if (location.pathname !== "/userdashboard" && location.pathname !== "/my-tasks" && !location.pathname.startsWith("/tasks/") && location.pathname !== "/progress" && location.pathname !== "/aims" && location.pathname !== "/leaderboard"&& location.pathname !== "/leave-request"&&!location.pathname.startsWith("/settings") ) {
+    // Allow access to /userdashboard, /knowledge-admin, and /tasks/* (including /tasks/:id)
+     if (location.pathname !== "/userdashboard" && location.pathname !== "/knowledge-admin" && location.pathname !== "/my-tasks" && !location.pathname.startsWith("/tasks/") && location.pathname !== "/progress" && location.pathname !== "/aims" && location.pathname !== "/leaderboard"&& location.pathname !== "/leave-request"&&!location.pathname.startsWith("/settings") ) {
       return <Navigate to="/userdashboard" replace />
     }
   }
 
   if (user.role === "Tester") {
-    const testerAllowed = ["/tester-dashboard", "/tester-tasks", "/tester-evaluation", "/tester-alerts", "/tested-tasks", "/settings"]
+    const testerAllowed = ["/tester-dashboard", "/tester-tasks", "/tester-evaluation", "/tester-alerts", "/tested-tasks", "/knowledge-admin", "/settings"]
     const isAllowed = testerAllowed.some(
       (p) => location.pathname === p || location.pathname.startsWith(p + "/")
     ) || location.pathname.startsWith("/tasks/")

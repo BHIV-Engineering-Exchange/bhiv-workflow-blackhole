@@ -87,6 +87,7 @@ export function DashboardSidebar() {
             { title: "My Tasks", href: "/my-tasks", icon: CheckSquare },
             { title: "Set Aims", href: "/aims", icon: Target },
             { title: "Progress", href: "/progress", icon: BarChart },
+            { title: "Knowledge Admin", href: "/knowledge-admin", icon: BookOpen },
           ]
         },
         {
@@ -114,6 +115,7 @@ export function DashboardSidebar() {
             { title: "All Aims", href: "/all-aims", icon: Target },
             { title: "Completed Tasks", href: "/completedtask", icon: CheckCircle },
             { title: "Test Tasks", href: "/tested-tasks", icon: FileText },
+            { title: "Knowledge Admin", href: "/knowledge-admin", icon: BookOpen },
           ]
         },
         {
@@ -190,6 +192,12 @@ export function DashboardSidebar() {
           ]
         },
         {
+          title: "Operations",
+          routes: [
+            { title: "Knowledge Admin", href: "/knowledge-admin", icon: BookOpen },
+          ]
+        },
+        {
           title: "Monitoring",
           routes: [
             { title: "Alerts", href: "/tester-alerts", icon: AlertTriangle },
@@ -198,7 +206,7 @@ export function DashboardSidebar() {
       ];
     }
 
-    // Default for other roles (Manager, etc.)
+    // Default for other roles (Manager, Employee, etc.)
     return [
       {
         title: "Main",
@@ -216,6 +224,7 @@ export function DashboardSidebar() {
           { title: "All Aims", href: "/all-aims", icon: Target },
           { title: "Completed Tasks", href: "/completedtask", icon: CheckCircle },
           { title: "Test Tasks", href: "/tested-tasks", icon: FileText },
+          { title: "Knowledge Admin", href: "/knowledge-admin", icon: BookOpen },
         ]
       },
       {
