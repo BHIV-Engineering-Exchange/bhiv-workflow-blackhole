@@ -57,11 +57,11 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
     return (
       <Card>
         <CardContent className="p-12 text-center">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <User className="w-8 h-8 text-gray-400" />
+          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+            <User className="w-8 h-8 text-muted-foreground" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No Attendance Data</h3>
-          <p className="text-gray-600 mb-4">No attendance records found for today.</p>
+          <h3 className="text-lg font-medium text-foreground mb-2">No Attendance Data</h3>
+          <p className="text-muted-foreground mb-4">No attendance records found for today.</p>
           <Button onClick={onRefresh} variant="outline">
             Refresh Data
           </Button>
@@ -73,15 +73,15 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
       case 'present':
-        return 'bg-green-100 text-green-800 border-green-200';
+        return 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800';
       case 'absent':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800';
       case 'late':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800';
       case 'on-leave':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700';
     }
   };
 
@@ -147,7 +147,7 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
                 transition: { type: "spring", stiffness: 400, damping: 10 }
               }}
             >
-              <Card className="relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-white via-gray-50 to-blue-50">
+              <Card className="relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-card via-card to-blue-50/30 dark:from-card dark:via-card dark:to-blue-900/10">
                 {/* Online Indicator */}
                 {isOnline && (
                   <div className="absolute top-3 right-3">
@@ -182,10 +182,10 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
                     </motion.div>
                     
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">
+                      <h3 className="font-semibold text-foreground truncate">
                         {record.user?.name || 'Unknown Employee'}
                       </h3>
-                      <p className="text-sm text-gray-600 truncate">
+                      <p className="text-sm text-muted-foreground truncate">
                         {record.user?.email}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
@@ -205,22 +205,22 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
                   {/* Time Information */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600 flex items-center gap-1">
+                      <span className="text-muted-foreground flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         Check In
                       </span>
-                      <span className="font-medium">
+                      <span className="font-medium text-foreground">
                         {formatTime(record.startDayTime || record.startTime)}
                       </span>
                     </div>
 
                     {(record.endDayTime || record.endTime) && (
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600 flex items-center gap-1">
+                          <span className="text-muted-foreground flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           Check Out
                         </span>
-                        <span className="font-medium">
+                        <span className="font-medium text-foreground">
                           {formatTime(record.endDayTime || record.endTime)}
                         </span>
                       </div>
@@ -228,7 +228,7 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
 
                     {/* Working Hours */}
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600 flex items-center gap-1">
+                      <span className="text-muted-foreground flex items-center gap-1">
                         <Timer className="w-3 h-3" />
                         Hours
                       </span>
@@ -239,7 +239,7 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
 
                     {/* Progress Bar for Working Hours */}
                     <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-gray-500">
+                      <div className="flex justify-between text-xs text-muted-foreground">
                         <span>Progress</span>
                         <span>{Math.min(100, (workingHours / 8) * 100).toFixed(0)}%</span>
                       </div>
@@ -251,7 +251,7 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
 
                     {/* Location */}
                     {record.location && (
-                      <div className="flex items-center gap-1 text-xs text-gray-500">
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <MapPin className="w-3 h-3" />
                         <span className="truncate">
                           {record.location.address || 'Office Location'}
@@ -261,7 +261,7 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
 
                     {/* Data Source */}
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-500">Source</span>
+                      <span className="text-muted-foreground">Source</span>
                       <div className="flex items-center gap-1">
                         {record.source === 'StartDay' ? (
                           <Smartphone className="w-3 h-3 text-blue-500" />
@@ -270,7 +270,7 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
                         ) : (
                           <Building className="w-3 h-3 text-gray-500" />
                         )}
-                        <span className="text-gray-600">{record.source || 'Manual'}</span>
+                        <span className="text-muted-foreground">{record.source || 'Manual'}</span>
                       </div>
                     </div>
 
@@ -284,7 +284,7 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="mt-4 pt-4 border-t border-gray-200 flex gap-2">
+                  <div className="mt-4 pt-4 border-t border-border flex gap-2">
                     <Button
                       onClick={() => setSelectedEmployee(record)}
                       variant="ghost"
@@ -348,7 +348,7 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto"
+              className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
@@ -372,7 +372,7 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
                   </Avatar>
                   <div>
                     <h4 className="font-medium">{selectedEmployee.user?.name}</h4>
-                    <p className="text-sm text-gray-600">{selectedEmployee.user?.email}</p>
+                    <p className="text-sm text-muted-foreground">{selectedEmployee.user?.email}</p>
                     <Badge className={getStatusColor(selectedEmployee.status)}>
                       {selectedEmployee.status}
                     </Badge>
@@ -381,34 +381,34 @@ const AttendanceGrid = ({ attendance, loading, onRefresh, onHistoryClick }) => {
 
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <label className="text-gray-600">Check In</label>
-                    <p className="font-medium">{formatTime(selectedEmployee.startDayTime)}</p>
+                    <label className="text-muted-foreground">Check In</label>
+                    <p className="font-medium text-foreground">{formatTime(selectedEmployee.startDayTime)}</p>
                   </div>
                   <div>
-                    <label className="text-gray-600">Check Out</label>
-                    <p className="font-medium">{formatTime(selectedEmployee.endDayTime)}</p>
+                    <label className="text-muted-foreground">Check Out</label>
+                    <p className="font-medium text-foreground">{formatTime(selectedEmployee.endDayTime)}</p>
                   </div>
                   <div>
-                    <label className="text-gray-600">Hours Worked</label>
-                    <p className="font-medium">{calculateWorkingHours(selectedEmployee.startDayTime, selectedEmployee.endDayTime).toFixed(1)}h</p>
+                    <label className="text-muted-foreground">Hours Worked</label>
+                    <p className="font-medium text-foreground">{calculateWorkingHours(selectedEmployee.startDayTime, selectedEmployee.endDayTime).toFixed(1)}h</p>
                   </div>
                   <div>
-                    <label className="text-gray-600">Source</label>
-                    <p className="font-medium">{selectedEmployee.source || 'Manual'}</p>
+                    <label className="text-muted-foreground">Source</label>
+                    <p className="font-medium text-foreground">{selectedEmployee.source || 'Manual'}</p>
                   </div>
                 </div>
 
                 {selectedEmployee.location && (
                   <div>
-                    <label className="text-sm text-gray-600">Location</label>
-                    <p className="text-sm">{selectedEmployee.location.address}</p>
+                    <label className="text-sm text-muted-foreground">Location</label>
+                    <p className="text-sm text-foreground">{selectedEmployee.location.address}</p>
                   </div>
                 )}
 
                 {selectedEmployee.employeeNotes && (
                   <div>
-                    <label className="text-sm text-gray-600">Notes</label>
-                    <p className="text-sm">{selectedEmployee.employeeNotes}</p>
+                    <label className="text-sm text-muted-foreground">Notes</label>
+                    <p className="text-sm text-foreground">{selectedEmployee.employeeNotes}</p>
                   </div>
                 )}
               </div>

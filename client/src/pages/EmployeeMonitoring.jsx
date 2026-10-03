@@ -88,13 +88,15 @@ export function EmployeeMonitoring() {
   useEffect(() => {
     // Auto-refresh real-time summary every 15 seconds when on live view mode
     if (viewMode === 'live' && !searchQuery) {
-      const interval = setInterval(fetchTeamSummary, 15000);
+      const interval = setInterval(() => fetchTeamSummary(true), 15000);
       return () => clearInterval(interval);
     }
   }, [viewMode, statusTab, filterDepartment, searchQuery]);
 
-  const fetchTeamSummary = async () => {
-    setLoadingTeamSummary(true);
+  const fetchTeamSummary = async (isBackgroundRefresh = false) => {
+    if (!isBackgroundRefresh) {
+      setLoadingTeamSummary(true);
+    }
     try {
       const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
       const response = await axios.get(
@@ -127,7 +129,9 @@ export function EmployeeMonitoring() {
     } catch (error) {
       console.error('Error fetching team monitoring summary:', error);
     } finally {
-      setLoadingTeamSummary(false);
+      if (!isBackgroundRefresh) {
+        setLoadingTeamSummary(false);
+      }
     }
   };
 
@@ -165,7 +169,7 @@ export function EmployeeMonitoring() {
         title: 'Success',
         description: `Monitoring started for ${selectedEmployee.name}`
       });
-      fetchTeamSummary();
+      fetchTeamSummary(true);
     } catch (error) {
       toast({
         title: 'Error',
@@ -191,7 +195,7 @@ export function EmployeeMonitoring() {
         title: 'Success',
         description: `Monitoring stopped for ${selectedEmployee.name}`
       });
-      fetchTeamSummary();
+      fetchTeamSummary(true);
     } catch (error) {
       toast({
         title: 'Error',
@@ -236,7 +240,7 @@ export function EmployeeMonitoring() {
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchTeamSummary}
+            onClick={() => fetchTeamSummary()}
             className="flex items-center gap-2 font-semibold"
           >
             <RefreshCw className={`h-4 w-4 ${loadingTeamSummary ? 'animate-spin' : ''}`} />

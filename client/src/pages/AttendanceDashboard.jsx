@@ -242,15 +242,15 @@ const AttendanceDashboard = () => {
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-blue-950/20 dark:to-indigo-950/20 p-6">
         <div className="max-w-2xl mx-auto">
           <Card className="text-center p-8">
             <CardContent>
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
                 <UserCheck className="w-8 h-8 text-red-600" />
               </div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Restricted</h2>
-              <p className="text-gray-600">
+              <h2 className="text-xl font-semibold text-foreground mb-2">Access Restricted</h2>
+              <p className="text-muted-foreground">
                 You need administrator privileges to access attendance dashboard.
               </p>
             </CardContent>
@@ -349,7 +349,7 @@ const AttendanceDashboard = () => {
               <Button
                 onClick={refreshDashboardData}
                 variant="outline"
-                className="flex items-center gap-2 border-2 rounded-xl hover:border-green-500/50 hover:bg-green-50"
+                className="flex items-center gap-2 border-2 rounded-xl hover:border-green-500/50 hover:bg-green-50 dark:hover:bg-green-900/20"
               >
                 <Activity className="w-4 h-4" />
                 Refresh
@@ -359,7 +359,7 @@ const AttendanceDashboard = () => {
                 <Button
                   onClick={exportStartTimes}
                   variant="outline"
-                  className="flex items-center gap-2 border-2 rounded-xl hover:border-blue-500/50 hover:bg-blue-50"
+                  className="flex items-center gap-2 border-2 rounded-xl hover:border-blue-500/50 hover:bg-blue-50 dark:hover:bg-blue-900/20"
                 >
                   <FileDown className="w-4 h-4" />
                   Export CSV
@@ -509,7 +509,7 @@ const AttendanceDashboard = () => {
               <div className="w-full">
                 <label className="text-sm font-semibold text-foreground mb-2 block">Data View</label>
                 <Select value={viewMode} onValueChange={setViewMode}>
-                  <SelectTrigger className="w-full border-2 rounded-xl text-base bg-gradient-to-r from-purple-50 to-blue-50">
+                  <SelectTrigger className="w-full border-2 rounded-xl text-base bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/10 dark:to-blue-900/10">
                     <SelectValue placeholder="Select view mode" />
                   </SelectTrigger>
                   <SelectContent>
