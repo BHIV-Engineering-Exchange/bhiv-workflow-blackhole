@@ -30,13 +30,13 @@ export function EmployeeDetailModal({ employee, onClose }) {
   const [loading, setLoading] = useState(true);
   const [activityLogs, setActivityLogs] = useState([]);
   const [metrics, setMetrics] = useState({
-    activeHours: '0h 0m',
-    idleTime: '0m',
-    keystrokes: 0,
-    mouseActivity: 0,
-    productivityScore: 0,
-    productivityEfficiency: 'No Logs Today',
-    currentActivity: { appName: 'Workspace', windowTitle: 'Active Session' }
+    activeHours: employee?.activeHours || '0h 0m',
+    idleTime: employee?.idleTime || '0m',
+    keystrokes: employee?.keystrokesToday || 0,
+    mouseActivity: employee?.mouseActivity || 0,
+    productivityScore: employee?.productivityScore || 0,
+    productivityEfficiency: employee?.productivityEfficiency || 'No Logs Today',
+    currentActivity: employee?.currentActivity || { appName: 'Workspace', windowTitle: 'Active Session' }
   });
   const [timelineData, setTimelineData] = useState([]);
 
@@ -71,7 +71,9 @@ export function EmployeeDetailModal({ employee, onClose }) {
       logs.forEach((log) => {
         totalKeystrokes += log.keystroke_count || 0;
         totalMouseScore += log.mouse_activity_score || 0;
-        totalIdleSec += log.idle_duration || 0;
+        let idleVal = log.idle_duration || 0;
+        if (idleVal > 10000) idleVal = idleVal / 1000;
+        totalIdleSec += idleVal;
         totalProdScore += log.productivity_score || 0;
 
         const hour = new Date(log.timestamp).getHours();
@@ -107,16 +109,16 @@ export function EmployeeDetailModal({ employee, onClose }) {
       const lastActiveDate = latest?.timestamp ? new Date(latest.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
 
       setMetrics({
-        activeHours: `${Math.floor(activeSec / 3600)}h ${Math.floor((activeSec % 3600) / 60)}m`,
-        idleTime: `${Math.floor(totalIdleSec / 60)}m`,
-        keystrokes: totalKeystrokes || employee.keystrokesToday || 0,
-        mouseActivity: avgMouse,
-        productivityScore: avgProd,
-        productivityEfficiency: efficiency,
+        activeHours: employee.activeHours || `${Math.floor(activeSec / 3600)}h ${Math.floor((activeSec % 3600) / 60)}m`,
+        idleTime: employee.idleTime || `${Math.floor(totalIdleSec / 60)}m`,
+        keystrokes: employee.keystrokesToday !== undefined ? employee.keystrokesToday : (totalKeystrokes || 0),
+        mouseActivity: employee.mouseActivity !== undefined ? employee.mouseActivity : avgMouse,
+        productivityScore: employee.productivityScore !== undefined ? employee.productivityScore : avgProd,
+        productivityEfficiency: employee.productivityEfficiency || efficiency,
         lastActiveDate,
-        currentActivity: {
-          appName: latest?.active_application?.name || employee.currentActivity?.appName || (employee.stillExist === 1 ? 'Active Workspace' : 'System Exited'),
-          windowTitle: latest?.active_application?.title || employee.currentActivity?.windowTitle || 'Session active',
+        currentActivity: employee.currentActivity || {
+          appName: latest?.active_application?.name || (employee.stillExist === 1 ? 'Active Workspace' : 'System Exited'),
+          windowTitle: latest?.active_application?.title || 'Session active',
           url: latest?.active_application?.url || ''
         }
       });

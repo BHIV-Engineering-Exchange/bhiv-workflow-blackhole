@@ -1612,7 +1612,12 @@ router.get('/team-summary', async (req, res) => {
           logsToProcess.forEach(act => {
             totalKeystrokes += (act.keystroke_count || 0);
             totalMouseScore += (act.mouse_activity_score || 0);
-            totalIdleSeconds += (act.idle_duration || 0);
+            // Assuming idle_duration from DB is in milliseconds, convert to seconds. 
+            // If it's already small (seconds), this will make it tiny, but huge values clearly indicate ms.
+            // Let's check if it's > 10000 to safely assume ms, else treat as seconds to be safe.
+            let idleVal = (act.idle_duration || 0);
+            if (idleVal > 10000) idleVal = idleVal / 1000;
+            totalIdleSeconds += idleVal;
             totalProductivityScore += (act.productivity_score || 0);
           });
 
