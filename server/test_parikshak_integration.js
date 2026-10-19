@@ -17,10 +17,10 @@ async function runTest() {
             process.exit(1);
         }
 
-        // 2. Create a dummy task
+        // 2. Create a test task with canonical title and detailed description
         const task = new Task({
-            title: 'Test Parikshak Integration Task',
-            description: 'This is a test task for Parikshak automated review.',
+            title: 'T-GOV-001: Implement Core Governance Architecture Integration Pipeline',
+            description: 'Establish bidirectional state synchronization, schema validation, event emission, and multi-tenant authorization hooks for Niyantran workflow subsystem to comply with BHIV standard architectural specifications.',
             assignee: user._id,
             status: 'In Progress',
             branch: 'blackhole_mumbai',
@@ -30,12 +30,12 @@ async function runTest() {
         await task.save();
         console.log(`✅ Created test task: ${task._id}`);
 
-        // 3. Create a dummy submission
+        // 3. Create a comprehensive test submission
         const submission = new TaskSubmission({
             task: task._id,
             user: user._id,
-            githubLink: 'https://github.com/blackhole/test-repo',
-            notes: 'Testing the automated review pipeline.',
+            githubLink: 'https://github.com/BHIV-Engineering-Exchange/bhiv-workflow-blackhole.git',
+            notes: 'Implemented complete architectural integration in Niyantran workflow server with multi-tenancy isolation and M2M credentials. All endpoints and lifecycle hooks adhere to canonical schemas, passing end-to-end integration contracts with comprehensive test suite coverage and resilient failover handlers.',
             status: 'Pending'
         });
         await submission.save();

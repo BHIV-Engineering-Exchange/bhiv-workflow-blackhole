@@ -6,6 +6,8 @@ node_modules
 Karma-Tracker/
 bhiv-bucket/
 bhiv_prana/
+logs/
+storage/
 
 # Task internal docs (not for git — sensitive planning artifacts)
 Niyantran Full TANTRA Ecosystem Integration And Production VM Convergence/Niyantran Full TANTRA Ecosystem Integration And Production VM Convergence.md

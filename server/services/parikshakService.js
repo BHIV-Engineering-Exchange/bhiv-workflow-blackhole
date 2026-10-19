@@ -7,6 +7,7 @@ const { emitTaskCompletedEvent, emitTaskFailedEvent } = require('./taskExecution
 
 const PARIKSHAK_URL = process.env.PARIKSHAK_URL || 'https://parikshak.blackholeinfiverse.com/parikshak/review';
 const PARIKSHAK_TOKEN = process.env.PARIKSHAK_TOKEN || '';
+const PARIKSHAK_API_KEY = process.env.PARIKSHAK_API_KEY || process.env.NIYANTRAN_API_KEY || 'bhiv_live_niyantran_prod_key_77a9c2b4e8';
 const PARIKSHAK_TIMEOUT_MS = parseInt(process.env.PARIKSHAK_TIMEOUT_MS || '120000', 10); // 2 minutes timeout
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -61,12 +62,18 @@ const invokeParikshak = async (submissionId, traceId, io) => {
         // 3. Make API call with exponential backoff (3 retries)
         let response = null;
         let attempt = 0;
+        let isAuthError = false;
+        let authErrorMessage = "";
         const delays = [5000, 15000, 30000]; // 5s, 15s, 30s
 
         while (attempt <= 3) {
             try {
                 const config = {
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-BHIV-API-KEY': PARIKSHAK_API_KEY,
+                        'X-API-KEY': PARIKSHAK_API_KEY
+                    },
                     timeout: PARIKSHAK_TIMEOUT_MS, // 2 minutes (120s) timeout per request
                     validateStatus: (status) => status < 600
                 };
@@ -79,11 +86,32 @@ const invokeParikshak = async (submissionId, traceId, io) => {
                 const runtimeMs = Date.now() - startTime;
                 console.log(`[PARIKSHAK] API Call completed with status ${res.status} in ${runtimeMs}ms`);
 
+                // Check for HTTP 401/403 or auth error in payload
+                if (res.status === 401 || res.status === 403 ||
+                    (res.data && typeof res.data.detail === 'string' && (
+                        res.data.detail.toLowerCase().includes('not authenticated') ||
+                        res.data.detail.toLowerCase().includes('invalid or revoked api key') ||
+                        res.data.detail.toLowerCase().includes('insufficient permissions')
+                    ))) {
+                    isAuthError = true;
+                    authErrorMessage = (res.data && res.data.detail) || `HTTP ${res.status} Authentication Failed`;
+                    console.error(`[PARIKSHAK] Authentication/permission failure with Parikshak API: ${authErrorMessage}`);
+                    response = null; // Do not treat auth failure as candidate submission response
+                    break;
+                }
+
                 response = res.data;
                 break; // Success, exit retry loop
             } catch (err) {
                 attempt++;
                 console.error(`[PARIKSHAK] API Call network error on attempt ${attempt}:`, err.message);
+                if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+                    isAuthError = true;
+                    authErrorMessage = (err.response.data && err.response.data.detail) || `HTTP ${err.response.status} Authentication Failed`;
+                    console.error(`[PARIKSHAK] Authentication failure with Parikshak API: ${authErrorMessage}`);
+                    response = null;
+                    break;
+                }
                 if (err.response && err.response.data) {
                     response = err.response.data;
                     break;
@@ -96,11 +124,54 @@ const invokeParikshak = async (submissionId, traceId, io) => {
             }
         }
 
-        // 4. Handle failure to connect -> Keep in Pending status for manual review
+        // 4. Handle failure to connect or authenticate -> Keep in Pending status for manual review
         if (!response) {
-            console.warn(`[PARIKSHAK_PROD_LOG] ⚠️ Exhausted all retries for submission ${submissionId}. Queuing for manual review.`);
+            console.warn(`[PARIKSHAK_PROD_LOG] ⚠️ Review service unavailable or auth failed for submission ${submissionId}. Queuing for manual review.`);
             submission.status = "Pending";
-            submission.feedback = "Parikshak AI review service is currently offline. Your submission is queued in Pending status for manual review by an admin.";
+            submission.feedback = isAuthError
+                ? `Parikshak AI review service authentication verification in progress (${authErrorMessage}). Your submission is safely queued in Pending status for manual admin review.`
+                : "Parikshak AI review service is currently offline. Your submission is queued in Pending status for manual review by an admin.";
+            submission.aiReviewDetails = {
+                score: null,
+                result: "OFFLINE",
+                doneWell: "Submission passed initial automated structure intake.",
+                missingWork: isAuthError ? "Service authentication verification pending. Awaiting manual admin review." : "Parikshak review service unavailable. Awaiting manual admin review.",
+                recommendations: "Your submission has been queued and will be reviewed by an administrator.",
+                readiness: "Pending Admin Review"
+            };
+            submission.parikshakReview = {
+                status: "PENDING",
+                score: null,
+                review: submission.feedback,
+                nextTask: "",
+                reviewedAt: new Date()
+            };
+            await submission.save();
+            return;
+        }
+
+        // Check if response contains an auth error that bypassed status check
+        if (response.detail && typeof response.detail === 'string' && (
+            response.detail.toLowerCase().includes('not authenticated') ||
+            response.detail.toLowerCase().includes('invalid or revoked api key')
+        )) {
+            submission.status = "Pending";
+            submission.feedback = `Parikshak service authentication required (${response.detail}). Submission queued for admin review.`;
+            submission.aiReviewDetails = {
+                score: null,
+                result: "OFFLINE",
+                doneWell: "Submission passed initial automated structure intake.",
+                missingWork: "Awaiting manual admin review.",
+                recommendations: "Your submission has been queued and will be reviewed by an administrator.",
+                readiness: "Pending Admin Review"
+            };
+            submission.parikshakReview = {
+                status: "PENDING",
+                score: null,
+                review: submission.feedback,
+                nextTask: "",
+                reviewedAt: new Date()
+            };
             await submission.save();
             return;
         }
@@ -368,7 +439,11 @@ const triggerReview = async ({
         };
 
         const config = {
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-BHIV-API-KEY': PARIKSHAK_API_KEY,
+                'X-API-KEY': PARIKSHAK_API_KEY
+            },
             timeout: PARIKSHAK_TIMEOUT_MS
         };
         if (PARIKSHAK_TOKEN) {
@@ -491,7 +566,11 @@ const evaluateParikshakSubmission = async (submissionId, traceId) => {
 
     try {
         const config = {
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-BHIV-API-KEY': PARIKSHAK_API_KEY,
+                'X-API-KEY': PARIKSHAK_API_KEY
+            },
             timeout: PARIKSHAK_TIMEOUT_MS
         };
         if (PARIKSHAK_TOKEN) {

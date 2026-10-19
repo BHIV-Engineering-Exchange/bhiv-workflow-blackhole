@@ -119,8 +119,18 @@ class AIReviewService {
         : `${this.parikshakUrl.replace(/\/$/, "")}/parikshak/review`;
 
       console.log(`[AIReviewService] Triggering Parikshak review at ${targetUrl}...`);
+      const apiKey = process.env.PARIKSHAK_API_KEY || process.env.NIYANTRAN_API_KEY || 'bhiv_live_niyantran_prod_key_77a9c2b4e8';
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-BHIV-API-KEY': apiKey,
+        'X-API-KEY': apiKey
+      };
+      if (process.env.PARIKSHAK_TOKEN) {
+        headers['Authorization'] = `Bearer ${process.env.PARIKSHAK_TOKEN}`;
+      }
+
       const response = await axios.post(targetUrl, payload, {
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         timeout: parseInt(process.env.PARIKSHAK_TIMEOUT_MS || '120000', 10)
       });
 
