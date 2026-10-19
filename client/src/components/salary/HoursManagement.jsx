@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { format } from 'date-fns';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
+import { compareBySurname, sortBySurname } from '@/utils/nameSorting';
 
 const HoursManagement = ({ userId }) => {
   const { user } = useAuth();
@@ -76,7 +77,8 @@ const HoursManagement = ({ userId }) => {
         
         console.log(`Found ${users.length} users with total ${totalHours} hours`);
         
-        setAllUsersHours(users);
+        const sortedUsers = sortBySurname(users);
+        setAllUsersHours(sortedUsers);
         setCumulativeTotal(totalHours);
         
         if (users.length === 0) {
@@ -106,11 +108,14 @@ const HoursManagement = ({ userId }) => {
 
   const activeCount = allUsersHours.filter(u => u.stillExist === undefined || u.stillExist === 1).length;
   const exitedCount = allUsersHours.filter(u => u.stillExist === 0).length;
-  const filteredUsersHours = allUsersHours.filter(u => {
-    if (statusTab === 'active') return u.stillExist === undefined || u.stillExist === 1;
-    if (statusTab === 'exited') return u.stillExist === 0;
-    return true;
-  });
+  const filteredUsersHours = useMemo(() => {
+    const filtered = allUsersHours.filter(u => {
+      if (statusTab === 'active') return u.stillExist === undefined || u.stillExist === 1;
+      if (statusTab === 'exited') return u.stillExist === 0;
+      return true;
+    });
+    return sortBySurname(filtered);
+  }, [allUsersHours, statusTab]);
 
   return (
     <Card className="neo-card">
@@ -230,7 +235,14 @@ const HoursManagement = ({ userId }) => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Employee Name</TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-1.5">
+                      <span>Employee Name</span>
+                      <Badge variant="outline" className="text-[10px] font-normal py-0 px-1.5 text-muted-foreground border-muted-foreground/30">
+                        Surname A-Z
+                      </Badge>
+                    </div>
+                  </TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Employee ID</TableHead>
                   <TableHead className="text-right">Total Days</TableHead>

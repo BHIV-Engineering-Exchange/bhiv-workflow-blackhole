@@ -7,6 +7,7 @@ const Attendance = require('../models/Attendance');
 const NewSalaryRecord = require('../models/NewSalaryRecord');
 const User = require('../models/User');
 const Aim = require('../models/Aim');
+const { compareBySurname, sortBySurname } = require('../utils/nameSorting');
 
 // Helper to get branch filter from request
 const getBranchQuery = (req) => {
@@ -581,13 +582,13 @@ router.get('/hours/all', auth, adminAuth, async (req, res) => {
     const maxDaysInRange = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
     console.log(`Date range: ${maxDaysInRange} days (${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]})`);
 
-    // Convert map to array and sort by cumulative hours (descending)
+    // Convert map to array and sort alphabetically by surname (last name)
     const usersWithHours = Array.from(userHoursMap.values())
       .map(user => ({
         ...user,
         cumulativeHours: Math.round(user.cumulativeHours * 100) / 100
       }))
-      .sort((a, b) => b.cumulativeHours - a.cumulativeHours);
+      .sort(compareBySurname);
     
     // Log any users with days exceeding the range (indicates data issue)
     usersWithHours.forEach(user => {
@@ -1251,6 +1252,8 @@ router.get('/records', auth, adminAuth, async (req, res) => {
       .populate('calculatedBy', 'name email')
       .select('-__v');
 
+    records.sort(compareBySurname);
+
     res.json({
       success: true,
       data: records
@@ -1385,6 +1388,8 @@ router.get('/confirmed', auth, adminAuth, async (req, res) => {
       .populate('confirmedBy', 'name email')
       .populate('calculatedBy', 'name email')
       .select('-__v');
+
+    records.sort(compareBySurname);
 
     res.json({
       success: true,
@@ -1589,8 +1594,9 @@ router.get('/history/bucket-details', auth, adminAuth, async (req, res) => {
         select: 'name color'
       }
     })
-    .populate('confirmedBy', 'name email')
-    .sort({ 'user.name': 1 });
+    .populate('confirmedBy', 'name email');
+
+    records.sort(compareBySurname);
 
     console.log(`📁 Found ${records.length} records for period ${startDate} to ${endDate}`);
 
@@ -1839,13 +1845,13 @@ router.get('/spam-users', auth, adminAuth, async (req, res) => {
       else if (status === 'Spam') userData.markedAsSpam += 1;
     });
 
-    // Convert to array and sort by total spam hours (descending)
+    // Convert to array and sort alphabetically by surname (last name)
     const spamUsers = Array.from(userSpamMap.values())
       .map(user => ({
         ...user,
         totalSpamHours: Math.round(user.totalSpamHours * 100) / 100
       }))
-      .sort((a, b) => b.totalSpamHours - a.totalSpamHours);
+      .sort(compareBySurname);
 
     res.json({
       success: true,

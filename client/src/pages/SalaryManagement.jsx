@@ -27,6 +27,7 @@ import { Label } from '../components/ui/label';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import salaryAPI from '../services/salaryAPI';
+import { sortBySurname } from '../utils/nameSorting';
 
 const SalaryManagement = () => {
   const [activeTab, setActiveTab] = useState('upload');
@@ -319,7 +320,7 @@ const SalaryManagement = () => {
           <TabsContent value="overview" className="space-y-6">
             {salaryData?.salaryCards && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {salaryData.salaryCards.map((card, index) => (
+                {sortBySurname(salaryData.salaryCards).map((card, index) => (
                   <div key={card.user.id}>
                     <SalaryCard
                       data={card}

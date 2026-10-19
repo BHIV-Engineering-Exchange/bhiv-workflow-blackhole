@@ -21,6 +21,7 @@ import { Badge } from '../components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { useAuth } from '../context/auth-context';
 import api from '../lib/api';
+import { sortBySurname } from '../utils/nameSorting';
 
 const IndividualSalaryManagement = () => {
   const navigate = useNavigate();
@@ -176,6 +177,8 @@ const IndividualSalaryManagement = () => {
     return matchesSearch && matchesDepartment;
   });
 
+  const sortedFilteredUsers = sortBySurname(filteredUsers);
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
@@ -267,14 +270,14 @@ const IndividualSalaryManagement = () => {
                 </CardContent>
               </Card>
             ))
-          ) : filteredUsers.length === 0 ? (
+          ) : sortedFilteredUsers.length === 0 ? (
             <div className="col-span-full text-center py-12">
               <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No employees found</h3>
               <p className="text-gray-600">Try adjusting your search or filter criteria.</p>
             </div>
           ) : (
-            filteredUsers.map((employee) => (
+            sortedFilteredUsers.map((employee) => (
               <Card key={employee._id} className="hover:shadow-lg transition-shadow">
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3 mb-4">

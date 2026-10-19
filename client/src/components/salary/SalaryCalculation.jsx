@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
+import { compareBySurname, sortBySurname } from '@/utils/nameSorting';
 
 const SalaryCalculation = ({ userId, onConfirmSalary, persistedState, onStateChange }) => {
   const { user } = useAuth();
@@ -96,11 +97,14 @@ const SalaryCalculation = ({ userId, onConfirmSalary, persistedState, onStateCha
 
   const activeUsersCount = usersData.filter(u => u.stillExist === undefined || u.stillExist === 1).length;
   const exitedUsersCount = usersData.filter(u => u.stillExist === 0).length;
-  const filteredUsersData = usersData.filter(u => {
-    if (statusTab === 'active') return u.stillExist === undefined || u.stillExist === 1;
-    if (statusTab === 'exited') return u.stillExist === 0;
-    return true;
-  });
+  const filteredUsersData = useMemo(() => {
+    const filtered = usersData.filter(u => {
+      if (statusTab === 'active') return u.stillExist === undefined || u.stillExist === 1;
+      if (statusTab === 'exited') return u.stillExist === 0;
+      return true;
+    });
+    return sortBySurname(filtered);
+  }, [usersData, statusTab]);
 
   const fetchAllUsersHours = async () => {
     if (!startDate || !endDate) return;
@@ -115,7 +119,7 @@ const SalaryCalculation = ({ userId, onConfirmSalary, persistedState, onStateCha
       });
 
       if (response.success) {
-        const users = response.data.users || [];
+        const users = sortBySurname(response.data.users || []);
         setUsersData(users);
         
         // Initialize rates object with empty values
@@ -598,7 +602,7 @@ const SalaryCalculation = ({ userId, onConfirmSalary, persistedState, onStateCha
               <div>
                 <CardTitle className="text-lg">Employees Salary Calculation</CardTitle>
                 <CardDescription>
-                  Enter per hour rate for each employee to calculate their salary
+                  Enter per hour rate for each employee to calculate their salary. Ordered alphabetically by surname (last name).
                 </CardDescription>
               </div>
               <Tabs value={statusTab} onValueChange={setStatusTab}>
@@ -629,7 +633,14 @@ const SalaryCalculation = ({ userId, onConfirmSalary, persistedState, onStateCha
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="min-w-[280px]">Employee Name & Per Hour Rate</TableHead>
+                          <TableHead className="min-w-[280px]">
+                            <div className="flex items-center gap-1.5">
+                              <span>Employee Name & Per Hour Rate</span>
+                              <Badge variant="outline" className="text-[10px] font-normal py-0 px-1.5 text-muted-foreground border-muted-foreground/30">
+                                Surname A-Z
+                              </Badge>
+                            </div>
+                          </TableHead>
                           <TableHead className="min-w-[150px]">Department</TableHead>
                           <TableHead className="text-right min-w-[120px]">Working Hours</TableHead>
                           <TableHead className="text-right min-w-[120px]">Holiday Hours</TableHead>

@@ -10,6 +10,7 @@ import { format } from 'date-fns';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
+import { sortBySurname } from '@/utils/nameSorting';
 import {
   Dialog,
   DialogContent,
@@ -63,7 +64,7 @@ const SpamUsers = () => {
       });
 
       if (response.success) {
-        setSpamUsers(response.data?.spamUsers || []);
+        setSpamUsers(sortBySurname(response.data?.spamUsers || []));
         
         if (response.data?.spamUsers?.length === 0) {
           toast({

@@ -19,6 +19,7 @@ import {
 import { format } from 'date-fns';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { sortBySurname } from '@/utils/nameSorting';
 
 const SalaryHistory = () => {
   const [buckets, setBuckets] = useState([]);
@@ -81,7 +82,7 @@ const SalaryHistory = () => {
           if (response.success) {
             setBucketDetailsMap(prev => ({
               ...prev,
-              [bucketKey]: response.data || []
+              [bucketKey]: sortBySurname(response.data || [])
             }));
           }
         } catch (error) {
@@ -531,7 +532,14 @@ const SalaryHistory = () => {
                                 <TableHeader>
                                   <TableRow>
                                     <TableHead>#</TableHead>
-                                    <TableHead>Employee</TableHead>
+                                    <TableHead>
+                                      <div className="flex items-center gap-1.5">
+                                        <span>Employee</span>
+                                        <Badge variant="outline" className="text-[10px] font-normal py-0 px-1.5 text-muted-foreground border-muted-foreground/30">
+                                          Surname A-Z
+                                        </Badge>
+                                      </div>
+                                    </TableHead>
                                     <TableHead className="text-right">Working Hrs</TableHead>
                                     <TableHead className="text-right">Holiday Hrs</TableHead>
                                     <TableHead className="text-right">Total Hrs</TableHead>

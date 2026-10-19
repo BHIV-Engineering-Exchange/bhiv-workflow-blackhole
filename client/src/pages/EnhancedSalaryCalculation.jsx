@@ -39,6 +39,7 @@ import { Input } from '../components/ui/input';
 import { useAuth } from '../context/auth-context';
 import api from '../lib/api';
 import { toast } from 'react-hot-toast';
+import { compareBySurname } from '../utils/nameSorting';
 
 const EnhancedSalaryCalculation = () => {
   const { user } = useAuth();
@@ -238,9 +239,7 @@ const EnhancedSalaryCalculation = () => {
     
     switch (sortBy) {
       case 'name':
-        aValue = a.user.name;
-        bValue = b.user.name;
-        break;
+        return sortOrder === 'asc' ? compareBySurname(a.user, b.user) : compareBySurname(b.user, a.user);
       case 'salary':
         aValue = a.salary.netSalary;
         bValue = b.salary.netSalary;

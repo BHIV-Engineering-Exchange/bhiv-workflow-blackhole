@@ -11,6 +11,7 @@ import { CheckCircle, Edit2, Trash2, RefreshCw, IndianRupee, Download, FolderPlu
 import { format } from 'date-fns';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { sortBySurname } from '@/utils/nameSorting';
 
 const ConfirmedSalary = () => {
   const [confirmedRecords, setConfirmedRecords] = useState([]);
@@ -29,7 +30,7 @@ const ConfirmedSalary = () => {
     try {
       const response = await api.get('/new-salary/confirmed');
       if (response.success) {
-        setConfirmedRecords(response.data || []);
+        setConfirmedRecords(sortBySurname(response.data || []));
       }
     } catch (error) {
       console.error('Error fetching confirmed salaries:', error);
@@ -426,7 +427,14 @@ const ConfirmedSalary = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Employee</TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-1.5">
+                      <span>Employee</span>
+                      <Badge variant="outline" className="text-[10px] font-normal py-0 px-1.5 text-muted-foreground border-muted-foreground/30">
+                        Surname A-Z
+                      </Badge>
+                    </div>
+                  </TableHead>
                   <TableHead>Period</TableHead>
                   <TableHead className="text-right">Working Hours</TableHead>
                   <TableHead className="text-right">Holiday Hours</TableHead>

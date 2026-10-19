@@ -12,7 +12,7 @@ export default defineConfig({
     registerType: 'autoUpdate',
     includeAssets: ['vite.svg'],
     workbox: {
-      maximumFileSizeToCacheInBytes: 5 * 1024 * 1024 // 5 MB
+      maximumFileSizeToCacheInBytes: 10 * 1024 * 1024 // 10 MB
     },
     manifest: {
       name: 'WorkflowAI Management App',

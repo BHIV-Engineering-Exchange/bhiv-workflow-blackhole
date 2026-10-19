@@ -12,6 +12,7 @@ const SalaryAdjustment = require('../models/SalaryAdjustment');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 const { Parser } = require('json2csv');
+const { compareBySurname } = require('../utils/nameSorting');
 
 // Configure multer for Excel file uploads
 const upload = multer({
@@ -326,7 +327,8 @@ router.get('/', auth, async (req, res) => {
       query.exposed = exposed === 'true';
     }
 
-    const data = await SalaryAttendance.find(query).sort({ name: 1 });
+    const data = await SalaryAttendance.find(query);
+    data.sort(compareBySurname);
     res.json(data);
   } catch (error) {
     console.error('Get salary attendance error:', error);
@@ -508,7 +510,8 @@ router.get('/download', auth, async (req, res) => {
       query.monthYear = monthYear;
     }
 
-    const data = await SalaryAttendance.find(query).sort({ name: 1 });
+    const data = await SalaryAttendance.find(query);
+    data.sort(compareBySurname);
 
     if (format === 'csv') {
       // Generate CSV file

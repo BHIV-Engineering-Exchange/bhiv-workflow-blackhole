@@ -5,6 +5,7 @@ const path = require('path');
 const SalaryRecord = require('../models/SalaryRecord');
 const Holiday = require('../models/Holiday');
 const User = require('../models/User'); // Using User model as Employee
+const { compareBySurname } = require('../utils/nameSorting');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -344,8 +345,8 @@ exports.getSalaryByMonth = async (req, res) => {
       });
     }
     
-    const salaryRecords = await SalaryRecord.find({ month })
-      .sort({ employeeId: 1 });
+    const salaryRecords = await SalaryRecord.find({ month });
+    salaryRecords.sort(compareBySurname);
     
     const holidays = await Holiday.getHolidaysForMonth(month);
     
