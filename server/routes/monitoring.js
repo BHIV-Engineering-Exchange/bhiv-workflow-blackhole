@@ -1711,6 +1711,21 @@ router.get('/team-summary', async (req, res) => {
       }
     }
 
+    // Fetch today's official Attendance sessions to synchronize working hours with Work Hours Manager
+    const Attendance = require('../models/Attendance');
+    const todayAttendances = await Attendance.find({
+      user: { $in: empIds },
+      $or: [
+        { date: { $gte: startOfDay, $lte: endOfDay } },
+        { startDayTime: { $gte: startOfDay, $lte: endOfDay } }
+      ]
+    }).lean();
+
+    const attendanceByEmp = new Map();
+    for (const att of todayAttendances) {
+      attendanceByEmp.set(att.user.toString(), att);
+    }
+
     const teamData = employees.map((emp) => {
       const empIdStr = emp._id.toString();
       const activities = todayActivitiesByEmp.get(empIdStr) || [];
@@ -1728,8 +1743,15 @@ router.get('/team-summary', async (req, res) => {
         logsToProcess.forEach(act => {
           totalKeystrokes += (act.keystroke_count || 0);
           totalMouseScore += (act.mouse_activity_score || 0);
-          let idleVal = (act.idle_duration || 0);
-          if (idleVal > 10000) idleVal = idleVal / 1000;
+          
+          // If employee had keystrokes or mouse movement in this 30s window, they were active!
+          const isActActive = (act.keystroke_count || 0) > 0 || (act.mouse_activity_score || 0) >= 15;
+          let idleVal = 0;
+          if (!isActActive) {
+            let rawIdle = (act.idle_duration || 0);
+            if (rawIdle > 10000) rawIdle = Math.round(rawIdle / 1000);
+            idleVal = Math.min(30, rawIdle > 0 ? rawIdle : 30);
+          }
           totalIdleSeconds += idleVal;
           totalProductivityScore += (act.productivity_score || 0);
         });
@@ -1737,6 +1759,22 @@ router.get('/team-summary', async (req, res) => {
         // Estimated active duration based on log counts (assuming ~30s interval per log) minus idle
         const totalLogSeconds = logsToProcess.length * 30;
         activeSeconds = Math.max(0, totalLogSeconds - totalIdleSeconds);
+      }
+
+      // Synchronize with official Attendance session (Work Hours Manager)
+      const att = attendanceByEmp.get(empIdStr);
+      let attendanceElapsedSec = 0;
+      if (att && att.startDayTime) {
+        const sessionEnd = att.endDayTime ? new Date(att.endDayTime) : new Date();
+        attendanceElapsedSec = Math.max(0, Math.floor((sessionEnd - new Date(att.startDayTime)) / 1000));
+        if (att.hoursWorked > 0) {
+          attendanceElapsedSec = Math.max(attendanceElapsedSec, Math.round(att.hoursWorked * 3600));
+        }
+      }
+
+      if (attendanceElapsedSec > 0) {
+        // Attendance record provides official elapsed work hours!
+        activeSeconds = Math.max(activeSeconds, attendanceElapsedSec - totalIdleSeconds);
       }
 
       let avgMouseActivity = logsToProcess.length > 0 ? Math.round(totalMouseScore / logsToProcess.length) : 0;
@@ -1747,7 +1785,7 @@ router.get('/team-summary', async (req, res) => {
 
       if (logsToProcess.length === 0) {
         avgProductivityScore = fallback.avgProductivityScore;
-        activeSeconds = fallback.activeSeconds;
+        activeSeconds = Math.max(fallback.activeSeconds, attendanceElapsedSec);
         totalIdleSeconds = fallback.totalIdleSeconds;
         totalKeystrokes = fallback.totalKeystrokes;
         avgMouseActivity = fallback.avgMouseActivity;
@@ -1757,6 +1795,9 @@ router.get('/team-summary', async (req, res) => {
       let currentStatus = fallback.currentStatus;
       if (emp.stillExist === 0) {
         currentStatus = 'Exited';
+      } else if (att && att.startDayTime && !att.endDayTime) {
+        // Officially clocked in and active on Work Hours Manager
+        currentStatus = 'Active';
       } else if (latestLog) {
         const timeSinceLastLogSec = (new Date() - new Date(latestLog.timestamp)) / 1000;
         if (timeSinceLastLogSec <= 300) {
@@ -1885,6 +1926,21 @@ router.get('/daily-summary', async (req, res) => {
       activitiesByEmp.get(empIdStr).push(act);
     }
 
+    // Fetch official Attendance sessions for this date to synchronize working hours with Work Hours Manager
+    const Attendance = require('../models/Attendance');
+    const dayAttendances = await Attendance.find({
+      user: { $in: activeEmpIds },
+      $or: [
+        { date: { $gte: startOfDay, $lte: endOfDay } },
+        { startDayTime: { $gte: startOfDay, $lte: endOfDay } }
+      ]
+    }).lean();
+
+    const attendanceByEmp = new Map();
+    for (const att of dayAttendances) {
+      attendanceByEmp.set(att.user.toString(), att);
+    }
+
     let totalTeamKeystrokes = 0;
     let totalTeamActiveSeconds = 0;
     let totalTeamIdleSeconds = 0;
@@ -1924,9 +1980,15 @@ router.get('/daily-summary', async (req, res) => {
       activities.forEach(act => {
         totalKeystrokes += (act.keystroke_count || 0);
         totalMouseScore += (act.mouse_activity_score || 0);
-        let idleVal = (act.idle_duration || 0);
-        if (idleVal > 10000) idleVal = Math.round(idleVal / 1000);
-        idleVal = Math.min(30, idleVal);
+
+        // If employee had keystrokes or mouse movement in this 30s window, they were active!
+        const isActActive = (act.keystroke_count || 0) > 0 || (act.mouse_activity_score || 0) >= 15;
+        let idleVal = 0;
+        if (!isActActive) {
+          let rawIdle = (act.idle_duration || 0);
+          if (rawIdle > 10000) rawIdle = Math.round(rawIdle / 1000);
+          idleVal = Math.min(30, rawIdle > 0 ? rawIdle : 30);
+        }
         totalIdleSeconds += idleVal;
         totalProductivityScore += (act.productivity_score || 0);
 
@@ -1937,6 +1999,24 @@ router.get('/daily-summary', async (req, res) => {
       let logCount = activities.length;
       let totalLogSeconds = logCount * 30;
       let activeSeconds = Math.max(0, totalLogSeconds - totalIdleSeconds);
+
+      // Synchronize with official Attendance session (Work Hours Manager)
+      const att = attendanceByEmp.get(emp._id.toString());
+      let attendanceElapsedSec = 0;
+      if (att && att.startDayTime) {
+        const isSelectedDateToday = targetDate.toDateString() === new Date().toDateString();
+        const sessionEnd = att.endDayTime ? new Date(att.endDayTime) : (isSelectedDateToday ? new Date() : endOfDay);
+        attendanceElapsedSec = Math.max(0, Math.floor((sessionEnd - new Date(att.startDayTime)) / 1000));
+        if (att.hoursWorked > 0) {
+          attendanceElapsedSec = Math.max(attendanceElapsedSec, Math.round(att.hoursWorked * 3600));
+        }
+      }
+
+      if (attendanceElapsedSec > 0) {
+        // Attendance record provides official work hours!
+        activeSeconds = Math.max(activeSeconds, attendanceElapsedSec - totalIdleSeconds);
+      }
+
       let avgMouseActivity = logCount > 0 ? Math.round(totalMouseScore / logCount) : 0;
       let avgProductivityScore = logCount > 0 ? Math.round(totalProductivityScore / logCount) : 0;
 
@@ -1949,7 +2029,7 @@ router.get('/daily-summary', async (req, res) => {
       } else {
         const fallback = getFallbackTelemetry(emp, targetDate);
         avgProductivityScore = fallback.avgProductivityScore;
-        activeSeconds = fallback.activeSeconds;
+        activeSeconds = Math.max(fallback.activeSeconds, attendanceElapsedSec);
         totalIdleSeconds = fallback.totalIdleSeconds;
         totalKeystrokes = fallback.totalKeystrokes;
         avgMouseActivity = fallback.avgMouseActivity;
@@ -2100,9 +2180,13 @@ router.get('/monthly-summary', async (req, res) => {
       const dateStr = log.timestamp.toISOString().split('T')[0];
       const empIdStr = log.employee ? log.employee.toString() : '';
 
-      let idleVal = (log.idle_duration || 0);
-      if (idleVal > 10000) idleVal = Math.round(idleVal / 1000);
-      idleVal = Math.min(30, idleVal);
+      const isLogActive = (log.keystroke_count || 0) > 0 || (log.mouse_activity_score || 0) >= 15;
+      let idleVal = 0;
+      if (!isLogActive) {
+        let rawIdle = (log.idle_duration || 0);
+        if (rawIdle > 10000) rawIdle = Math.round(rawIdle / 1000);
+        idleVal = Math.min(30, rawIdle > 0 ? rawIdle : 30);
+      }
 
       if (dayByDayMap[dateStr]) {
         dayByDayMap[dateStr].keystrokes += (log.keystroke_count || 0);
@@ -2296,9 +2380,13 @@ router.get('/monthly-employee-breakdown', async (req, res) => {
     logs.forEach(log => {
       const dateStr = log.timestamp.toISOString().split('T')[0];
       if (dailyMap[dateStr]) {
-        let idleVal = (log.idle_duration || 0);
-        if (idleVal > 10000) idleVal = Math.round(idleVal / 1000);
-        idleVal = Math.min(30, idleVal);
+        const isLogActive = (log.keystroke_count || 0) > 0 || (log.mouse_activity_score || 0) >= 15;
+        let idleVal = 0;
+        if (!isLogActive) {
+          let rawIdle = (log.idle_duration || 0);
+          if (rawIdle > 10000) rawIdle = Math.round(rawIdle / 1000);
+          idleVal = Math.min(30, rawIdle > 0 ? rawIdle : 30);
+        }
 
         dailyMap[dateStr].keystrokes += (log.keystroke_count || 0);
         dailyMap[dateStr].mouseScoreSum += (log.mouse_activity_score || 0);
