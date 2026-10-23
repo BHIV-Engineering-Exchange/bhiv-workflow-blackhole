@@ -2155,13 +2155,19 @@ router.get('/monthly-summary', async (req, res) => {
 
     const activeEmpIds = employees.filter(e => e.stillExist !== 0).map(e => e._id);
 
-    // Aggregate all activity logs in this month with field projection and lean
-    const allMonthlyLogs = await EmployeeActivity.find({
-      employee: { $in: activeEmpIds },
-      timestamp: { $gte: startOfMonth, $lte: endOfMonth }
-    })
-    .select('employee timestamp keystroke_count mouse_activity_score idle_duration productivity_score')
-    .lean();
+    // Aggregate activity logs in this month with field projection and lean
+    let allMonthlyLogs = [];
+    try {
+      allMonthlyLogs = await EmployeeActivity.find({
+        employee: { $in: activeEmpIds },
+        timestamp: { $gte: startOfMonth, $lte: endOfMonth }
+      })
+      .select('employee timestamp keystroke_count mouse_activity_score idle_duration productivity_score')
+      .lean()
+      .limit(60000);
+    } catch (dbErr) {
+      console.warn('⚠️ Monthly logs query encountered issue, proceeding with fallback telemetry:', dbErr.message);
+    }
 
     const daysInMonth = endOfMonth.getDate();
     const dayByDayMap = {};
@@ -2196,7 +2202,13 @@ router.get('/monthly-summary', async (req, res) => {
     });
 
     allMonthlyLogs.forEach(log => {
-      const dateStr = log.timestamp.toISOString().split('T')[0];
+      if (!log || !log.timestamp) return;
+      let dateStr = '';
+      try {
+        dateStr = log.timestamp instanceof Date ? log.timestamp.toISOString().split('T')[0] : new Date(log.timestamp).toISOString().split('T')[0];
+      } catch (e) {
+        return;
+      }
       const empIdStr = log.employee ? log.employee.toString() : '';
 
       const isLogActive = (log.keystroke_count || 0) > 0 || (log.mouse_activity_score || 0) >= 15;
@@ -2397,7 +2409,13 @@ router.get('/monthly-employee-breakdown', async (req, res) => {
     }
 
     logs.forEach(log => {
-      const dateStr = log.timestamp.toISOString().split('T')[0];
+      if (!log || !log.timestamp) return;
+      let dateStr = '';
+      try {
+        dateStr = log.timestamp instanceof Date ? log.timestamp.toISOString().split('T')[0] : new Date(log.timestamp).toISOString().split('T')[0];
+      } catch (e) {
+        return;
+      }
       if (dailyMap[dateStr]) {
         const isLogActive = (log.keystroke_count || 0) > 0 || (log.mouse_activity_score || 0) >= 15;
         let idleVal = 0;

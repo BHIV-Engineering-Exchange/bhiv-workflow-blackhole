@@ -599,8 +599,27 @@ class EMSSignalLayer extends EventEmitter {
    * Flush current signal state to MongoDB for all tracked employees
    */
   async flushToMongo() {
+    const now = Date.now();
     for (const [employeeId, employee] of this.employeeSignals) {
       try {
+        const lastActivity = Math.max(
+          employee.realtime.lastKeystroke || 0,
+          employee.realtime.lastMouseMove || 0,
+          employee.realtime.lastScrollEvent || 0,
+          employee.realtime.lastFocusChange || 0
+        );
+
+        // If inactive for > 2 hours, stop tracking to prevent memory and DB bloat
+        if (now - lastActivity > 2 * 60 * 60 * 1000) {
+          this.employeeSignals.delete(employeeId);
+          continue;
+        }
+
+        // If inactive for > 15 minutes, skip periodic snapshot flush (user is away)
+        if (now - lastActivity > 15 * 60 * 1000) {
+          continue;
+        }
+
         const stats = this.calculateSignalStatistics(employeeId);
         const activityScore = stats.activityScore;
         const riskLevel = stats.riskLevel;

@@ -103,6 +103,9 @@ export function MonthlyMonitoringView({
     dailyBreakdown: []
   });
 
+  // Direct employees list fallback (guarantees selector is NEVER empty)
+  const [directEmployees, setDirectEmployees] = useState([]);
+
   // Table filter inside individual day breakdown (all | worked | weekend)
   const [dayFilter, setDayFilter] = useState('all');
 
@@ -120,6 +123,26 @@ export function MonthlyMonitoringView({
     }
   }, [initialSelectedEmployee]);
 
+  // Fetch direct employees list to ensure employee combobox is always populated
+  useEffect(() => {
+    fetchDirectEmployees();
+  }, [statusTab, departmentFilter]);
+
+  const fetchDirectEmployees = async () => {
+    try {
+      const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
+      const response = await axios.get(
+        `${API_URL}/monitoring/team-summary?statusTab=${statusTab}&department=${departmentFilter}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (response.data.success && Array.isArray(response.data.employees) && response.data.employees.length > 0) {
+        setDirectEmployees(response.data.employees);
+      }
+    } catch (e) {
+      console.warn('Direct employees fetch error:', e);
+    }
+  };
+
   // Fetch Team Monthly Summary when month, department, or statusTab changes
   useEffect(() => {
     fetchTeamMonthlySummary();
@@ -128,7 +151,7 @@ export function MonthlyMonitoringView({
   // Fetch Individual Employee Breakdown when selectedEmp or selectedMonth changes
   useEffect(() => {
     if (selectedEmp?._id || selectedEmp?.employeeId) {
-      fetchEmployeeMonthlyBreakdown(selectedEmp._id || selectedEmp.employeeId);
+      fetchEmployeeMonthlyBreakdown(selectedEmp._id || selectedEmp.employeeId, selectedEmp);
     }
   }, [selectedEmp?._id, selectedEmp?.employeeId, selectedMonth]);
 
@@ -149,11 +172,10 @@ export function MonthlyMonitoringView({
           employeePerformance: perf
         });
 
-        // Automatically select first matching employee if none selected or if selection no longer valid
+        // Automatically select first matching employee if none selected
         if (perf.length > 0) {
           const validSelected = selectedEmp && perf.find(e => String(e.employeeId || e._id) === String(selectedEmp._id || selectedEmp.employeeId));
           if (!validSelected) {
-            // Find active user if statusTab is active, else first available
             const defaultEmp = (statusTab === 'active')
               ? perf.find(e => e.stillExist === 1) || perf[0]
               : perf[0];
@@ -168,8 +190,15 @@ export function MonthlyMonitoringView({
     }
   };
 
-  const fetchEmployeeMonthlyBreakdown = async (empId) => {
+  const fetchEmployeeMonthlyBreakdown = async (empId, empObj = null) => {
     if (!empId) return;
+    if (empObj) {
+      setSelectedEmp(empObj);
+      setEmpMonthlyData(prev => ({
+        ...prev,
+        employee: empObj
+      }));
+    }
     setLoadingEmpBreakdown(true);
     try {
       const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
@@ -180,7 +209,7 @@ export function MonthlyMonitoringView({
 
       if (response.data.success) {
         setEmpMonthlyData({
-          employee: response.data.employee || selectedEmp,
+          employee: response.data.employee || empObj || selectedEmp,
           dailyBreakdown: response.data.dailyBreakdown || []
         });
       }
@@ -218,16 +247,37 @@ export function MonthlyMonitoringView({
     }
   };
 
-  // Combine propEmployees (immediate, in-memory) with team monthly performance list
+  // Combine all sources: teamMonthlyData, propEmployees, and directEmployees with deduplication
   const availableEmployees = useMemo(() => {
-    if (Array.isArray(propEmployees) && propEmployees.length > 0) {
-      return propEmployees;
+    const list = [
+      ...(Array.isArray(teamMonthlyData.employeePerformance) ? teamMonthlyData.employeePerformance : []),
+      ...(Array.isArray(propEmployees) ? propEmployees : []),
+      ...(Array.isArray(directEmployees) ? directEmployees : [])
+    ];
+    const seen = new Set();
+    const unique = [];
+    for (const emp of list) {
+      const id = String(emp.employeeId || emp._id || '');
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        unique.push(emp);
+      }
     }
-    if (Array.isArray(teamMonthlyData.employeePerformance) && teamMonthlyData.employeePerformance.length > 0) {
-      return teamMonthlyData.employeePerformance;
+    return unique;
+  }, [teamMonthlyData.employeePerformance, propEmployees, directEmployees]);
+
+  // Auto-select active employee when availableEmployees loads and none is selected
+  useEffect(() => {
+    if (!selectedEmp && availableEmployees.length > 0) {
+      const defaultEmp = (statusTab === 'active')
+        ? availableEmployees.find(e => e.stillExist === 1) || availableEmployees[0]
+        : availableEmployees[0];
+      setSelectedEmp(defaultEmp);
+      if (defaultEmp) {
+        fetchEmployeeMonthlyBreakdown(defaultEmp.employeeId || defaultEmp._id, defaultEmp);
+      }
     }
-    return [];
-  }, [propEmployees, teamMonthlyData.employeePerformance]);
+  }, [availableEmployees, selectedEmp, statusTab]);
 
   // Filter employees for dropdown/selector strictly enforcing statusTab and dropdownSearch
   const filteredEmployeesList = useMemo(() => {
@@ -504,7 +554,7 @@ export function MonthlyMonitoringView({
                               type="button"
                               onClick={() => {
                                 setSelectedEmp(emp);
-                                fetchEmployeeMonthlyBreakdown(empId);
+                                fetchEmployeeMonthlyBreakdown(empId, emp);
                                 setEmployeePickerOpen(false);
                               }}
                               className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition-all ${

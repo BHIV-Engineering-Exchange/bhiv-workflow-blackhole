@@ -91,8 +91,7 @@ const websiteWhitelistSchema = new mongoose.Schema({
   approval_status: {
     type: String,
     enum: ['pending', 'approved', 'rejected'],
-    default: 'pending',
-    index: true
+    default: 'pending'
   },
   approval_date: Date,
   rejection_reason: String,

@@ -34,8 +34,6 @@ const ARTIFACT_TYPES = {
 let _lastAcceptedHash = null;
 let _hashBootstrapped = false;
 
-// Serialize hash-chain writes — prevents concurrent parent_hash conflicts (400s)
-let _karmaWriteChain = Promise.resolve();
 
 function buildHttpClient() {
   if (!BUCKET_BASE_URL) {
@@ -59,6 +57,14 @@ function buildHttpClient() {
   });
 }
 
+let _httpClientInstance = null;
+function getHttpClient() {
+  if (!_httpClientInstance) {
+    _httpClientInstance = buildHttpClient();
+  }
+  return _httpClientInstance;
+}
+
 async function _bootstrapHash(client) {
   if (_lastAcceptedHash) return _lastAcceptedHash;
   try {
@@ -77,13 +83,13 @@ async function _bootstrapHash(client) {
 }
 
 async function getArtifactPolicy() {
-  const client = buildHttpClient();
+  const client = getHttpClient();
   const res = await client.get("/governance/artifacts/policy");
   return res.data;
 }
 
 async function validateArtifactAdmission(artifactType, payloadSizeBytes) {
-  const client = buildHttpClient();
+  const client = getHttpClient();
   try {
     const res = await client.post("/governance/gate/validate-operation", null, {
       params: {
@@ -119,7 +125,7 @@ function buildArtifactEnvelope({ artifactType, traceId, payload, parentHash }) {
 }
 
 async function writeArtifact({ artifactType, traceId, payload, parentHash }) {
-  const client = buildHttpClient();
+  const client = getHttpClient();
 
   const payloadBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
 
@@ -165,9 +171,114 @@ async function writeArtifact({ artifactType, traceId, payload, parentHash }) {
   return res.data.data;
 }
 
+
+// Bounded FIFO queue to process Karma artifact writes sequentially without memory accumulation
+const _karmaWriteQueue = [];
+let _isProcessingKarmaQueue = false;
+const MAX_PENDING_KARMA_WRITES = 10;
+
+async function _processKarmaQueue() {
+  if (_isProcessingKarmaQueue) return;
+  _isProcessingKarmaQueue = true;
+
+  while (_karmaWriteQueue.length > 0) {
+    const task = _karmaWriteQueue.shift();
+    if (!task) break;
+
+    try {
+      const client = getHttpClient();
+      await _bootstrapHash(client);
+
+      const { subjectId, signal, severity, ttl, opaqueReasonCode, traceId } = task.params;
+      const artifactId = randomUUID();
+      const resolvedTraceId = traceId || randomUUID();
+
+      const body = {
+        artifact_id: artifactId,
+        trace_id: resolvedTraceId,
+        timestamp_utc: new Date().toISOString(),
+        schema_version: BUCKET_SCHEMA_VERSION,
+        source_module_id: NIYANTRAN_REQUESTER_ID,
+        artifact_type: ARTIFACT_TYPES.EVENT_RECORD,
+        payload: {
+          subject_id: subjectId,
+          product_context: "workflow",
+          signal,
+          severity,
+          ttl,
+          requires_core_ack: true,
+          opaque_reason_code: opaqueReasonCode,
+          emitted_at: new Date().toISOString(),
+          source: "niyantran",
+        },
+      };
+
+      if (_lastAcceptedHash) {
+        body.parent_hash = _lastAcceptedHash;
+      }
+
+      let res;
+      try {
+        res = await client.post("/bucket/artifact", body);
+      } catch (postErr) {
+        if (postErr.response?.status === 400) {
+          const apiMsg = postErr.response?.data?.detail?.message || postErr.response?.data?.detail || postErr.response?.data?.message || postErr.message;
+          console.warn(`[bucketClient] 400 error on /bucket/artifact (${apiMsg}), auto-recovering parent hash...`);
+
+          try {
+            const hashRes = await client.get("/bucket/latest-hash");
+            if (hashRes.data && (hashRes.data.last_hash || hashRes.data.hash)) {
+              _lastAcceptedHash = hashRes.data.last_hash || hashRes.data.hash;
+              body.parent_hash = _lastAcceptedHash;
+              console.log(`[bucketClient] Re-fetched latest hash: ${_lastAcceptedHash}, retrying write once...`);
+              res = await client.post("/bucket/artifact", body);
+            } else {
+              throw postErr;
+            }
+          } catch (retryErr) {
+            const retryMsg = retryErr.response?.data?.detail?.message || retryErr.response?.data?.detail || retryErr.response?.data?.message || retryErr.message;
+            const err = new Error(`[bucketClient] Retry failed after parent hash auto-recovery: ${retryMsg}`);
+            err.statusCode = retryErr.response?.status || 400;
+            throw err;
+          }
+        } else {
+          const errorDetails = postErr.response?.data?.detail?.message || postErr.response?.data?.detail || postErr.response?.data?.message || postErr.message;
+          const err = new Error(`[bucketClient] /bucket/artifact write error: ${errorDetails}`);
+          err.statusCode = postErr.response?.status;
+          throw err;
+        }
+      }
+
+      if (res.data && (res.data.hash || res.data.success)) {
+        const newHash = res.data.hash || res.data.data?.hash;
+        if (newHash) {
+          _lastAcceptedHash = newHash;
+        }
+        const out = {
+          artifact_id: artifactId,
+          hash: newHash,
+          parent_hash: body.parent_hash || null,
+          timestamp_utc: body.timestamp_utc,
+        };
+        task.resolve(out);
+      } else {
+        const err = new Error(`[bucketClient] Unexpected response from /bucket/artifact: ${JSON.stringify(res.data)}`);
+        task.reject(err);
+      }
+    } catch (err) {
+      const errorDetails = err.response?.data?.detail?.message || err.response?.data?.detail || err.response?.data?.message || err.message;
+      console.error(`[bucketClient] storeKarmaEventRecord failed: ${errorDetails}`);
+      _lastAcceptedHash = null;
+      task.reject(err);
+    }
+  }
+
+  _isProcessingKarmaQueue = false;
+}
+
 /**
  * storeKarmaEventRecord — writes directly to /bucket/artifact (bypasses governance gate).
- * Serialized via _karmaWriteChain to prevent concurrent parent_hash conflicts.
+ * Serialized via bounded FIFO queue to prevent concurrent parent_hash conflicts and memory accumulation.
  */
 async function storeKarmaEventRecord({
   subjectId,
@@ -188,103 +299,25 @@ async function storeKarmaEventRecord({
     throw new Error(`[bucketClient] Invalid ttl "${ttl}".`);
   }
 
-  // Enqueue behind any in-flight write — guarantees sequential parent_hash
-  const result = new Promise((resolve, reject) => {
-    _karmaWriteChain = _karmaWriteChain.then(async () => {
-      try {
-        const client = buildHttpClient();
-        await _bootstrapHash(client);
+  // Backpressure protection: Drop redundant signals if Bucket VM is lagging to prevent heap exhaustion
+  if (_karmaWriteQueue.length >= MAX_PENDING_KARMA_WRITES) {
+    return {
+      artifact_id: randomUUID(),
+      hash: null,
+      parent_hash: _lastAcceptedHash,
+      timestamp_utc: new Date().toISOString(),
+      skipped: true
+    };
+  }
 
-        const artifactId = randomUUID();
-        const resolvedTraceId = traceId || randomUUID();
-
-        const body = {
-          artifact_id: artifactId,
-          trace_id: resolvedTraceId,
-          timestamp_utc: new Date().toISOString(),
-          schema_version: BUCKET_SCHEMA_VERSION,
-          source_module_id: NIYANTRAN_REQUESTER_ID,
-          artifact_type: ARTIFACT_TYPES.EVENT_RECORD,
-          payload: {
-            subject_id: subjectId,
-            product_context: "workflow",
-            signal,
-            severity,
-            ttl,
-            requires_core_ack: true,
-            opaque_reason_code: opaqueReasonCode,
-            emitted_at: new Date().toISOString(),
-            source: "niyantran",
-          },
-        };
-
-        if (_lastAcceptedHash) {
-          body.parent_hash = _lastAcceptedHash;
-        }
-
-        let res;
-        try {
-          res = await client.post("/bucket/artifact", body);
-        } catch (postErr) {
-          // Auto-recovery on 400: If Bucket responds with HTTP 400 (parent hash mismatch/required), immediately re-fetch GET /bucket/latest-hash and retry the write once.
-          if (postErr.response?.status === 400) {
-            const apiMsg = postErr.response?.data?.detail?.message || postErr.response?.data?.detail || postErr.response?.data?.message || postErr.message;
-            console.warn(`[bucketClient] 400 error on /bucket/artifact (${apiMsg}), auto-recovering parent hash...`);
-            
-            try {
-              const hashRes = await client.get("/bucket/latest-hash");
-              if (hashRes.data && (hashRes.data.last_hash || hashRes.data.hash)) {
-                _lastAcceptedHash = hashRes.data.last_hash || hashRes.data.hash;
-                body.parent_hash = _lastAcceptedHash;
-                console.log(`[bucketClient] Re-fetched latest hash: ${_lastAcceptedHash}, retrying write once...`);
-                res = await client.post("/bucket/artifact", body);
-              } else {
-                throw postErr;
-              }
-            } catch (retryErr) {
-              const retryMsg = retryErr.response?.data?.detail?.message || retryErr.response?.data?.detail || retryErr.response?.data?.message || retryErr.message;
-              const err = new Error(`[bucketClient] Retry failed after parent hash auto-recovery: ${retryMsg}`);
-              err.statusCode = retryErr.response?.status || 400;
-              err.originalError = retryErr;
-              throw err;
-            }
-          } else {
-            const errorDetails = postErr.response?.data?.detail?.message || postErr.response?.data?.detail || postErr.response?.data?.message || postErr.message;
-            const err = new Error(`[bucketClient] /bucket/artifact write error: ${errorDetails}`);
-            err.statusCode = postErr.response?.status;
-            err.originalError = postErr;
-            throw err;
-          }
-        }
-
-        if (res.data && (res.data.hash || res.data.success)) {
-          const newHash = res.data.hash || res.data.data?.hash;
-          if (newHash) {
-            _lastAcceptedHash = newHash;
-          }
-          const out = {
-            artifact_id: artifactId,
-            hash: newHash,
-            parent_hash: body.parent_hash || null,
-            timestamp_utc: body.timestamp_utc,
-          };
-          resolve(out);
-          return out;
-        }
-
-        const err = new Error(`[bucketClient] Unexpected response from /bucket/artifact: ${JSON.stringify(res.data)}`);
-        reject(err);
-        throw err;
-      } catch (err) {
-        const errorDetails = err.response?.data?.detail?.message || err.response?.data?.detail || err.response?.data?.message || err.message;
-        console.error(`[bucketClient] storeKarmaEventRecord failed: ${errorDetails}`);
-        reject(err);
-        // Don't re-throw — keeps the chain alive for next callers
-      }
+  return new Promise((resolve, reject) => {
+    _karmaWriteQueue.push({
+      params: { subjectId, signal, severity, ttl, opaqueReasonCode, traceId },
+      resolve,
+      reject
     });
+    _processKarmaQueue();
   });
-
-  return result;
 }
 
 async function storeScreenshot({ userId, sessionId, imageBase64, metadata = {}, traceId }) {

@@ -9,6 +9,21 @@ const {
 } = require('../services/karmaClient');
 const pranaClient = require('../services/pranaClient');
 
+// Throttle normal activity signals to avoid hammering Bucket VM and Karma chain (TTL is 300s)
+const normalActivityLastSent = new Map();
+const NORMAL_ACTIVITY_THROTTLE_MS = 60 * 1000;
+
+function throttledSignalNormalActivity(empId) {
+  const empKey = String(empId);
+  const now = Date.now();
+  const last = normalActivityLastSent.get(empKey) || 0;
+  if (now - last < NORMAL_ACTIVITY_THROTTLE_MS) {
+    return;
+  }
+  normalActivityLastSent.set(empKey, now);
+  signalNormalActivity(empKey).catch(() => {});
+}
+
 /**
  * EMS Signal API Routes
  * Endpoints for receiving and managing real-time employee activity signals
@@ -140,10 +155,10 @@ router.post('/signals', async (req, res) => {
       if (anomalyScore > 0.3) {
         signalKeystrokeAnomaly(String(employeeId), anomalyScore).catch(() => {});
       } else {
-        signalNormalActivity(String(employeeId)).catch(() => {});
+        throttledSignalNormalActivity(String(employeeId));
       }
     } else if (types.includes('window_focus') || types.includes('mouse_movement') || types.includes('task_tab_active')) {
-      signalNormalActivity(String(employeeId)).catch(() => {});
+      throttledSignalNormalActivity(String(employeeId));
     }
 
     // PRANA Telemetry Propagation (asynchronous / non-blocking)
