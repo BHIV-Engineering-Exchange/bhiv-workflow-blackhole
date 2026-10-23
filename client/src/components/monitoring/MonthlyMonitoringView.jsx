@@ -12,6 +12,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
   Calendar as CalendarIcon,
   Clock,
   Clock3,
@@ -72,6 +77,7 @@ export function MonthlyMonitoringView({
   // Selected Employee for individual full monthly view
   const [selectedEmp, setSelectedEmp] = useState(initialSelectedEmployee);
   const [employeeSearch, setEmployeeSearch] = useState(externalSearch || '');
+  const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
 
   // Data states
   const [loadingTeam, setLoadingTeam] = useState(true);
@@ -105,6 +111,13 @@ export function MonthlyMonitoringView({
     }
   }, [externalSearch]);
 
+  // Sync initialSelectedEmployee when prop updates
+  useEffect(() => {
+    if (initialSelectedEmployee) {
+      setSelectedEmp(initialSelectedEmployee);
+    }
+  }, [initialSelectedEmployee]);
+
   // Fetch Team Monthly Summary when month, department, or statusTab changes
   useEffect(() => {
     fetchTeamMonthlySummary();
@@ -136,7 +149,7 @@ export function MonthlyMonitoringView({
 
         // Automatically select first matching employee if none selected or if selection no longer valid
         if (perf.length > 0) {
-          const validSelected = selectedEmp && perf.find(e => (e.employeeId || e._id) === (selectedEmp._id || selectedEmp.employeeId));
+          const validSelected = selectedEmp && perf.find(e => String(e.employeeId || e._id) === String(selectedEmp._id || selectedEmp.employeeId));
           if (!validSelected) {
             // Find active user if statusTab is active, else first available
             const defaultEmp = (statusTab === 'active')
@@ -211,11 +224,12 @@ export function MonthlyMonitoringView({
       if (statusTab === 'exited' && emp.stillExist === 1) return false;
 
       if (!employeeSearch.trim()) return true;
-      const q = employeeSearch.toLowerCase();
+      const q = employeeSearch.toLowerCase().trim();
+      const dept = typeof emp.department === 'object' ? (emp.department?.name || '') : (emp.department || '');
       return (
         (emp.name && emp.name.toLowerCase().includes(q)) ||
         (emp.email && emp.email.toLowerCase().includes(q)) ||
-        (emp.department && emp.department.toLowerCase().includes(q))
+        (dept && dept.toLowerCase().includes(q))
       );
     });
   }, [teamMonthlyData.employeePerformance, statusTab, employeeSearch]);
@@ -387,84 +401,137 @@ export function MonthlyMonitoringView({
                 </div>
               </div>
 
-              {/* Professional Employee Selector & Quick Search */}
-              <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
-                {/* Search Bar - Standalone search to quickly jump to any employee */}
-                <div className="relative w-full sm:w-60">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    placeholder="Search employee by name..."
-                    value={employeeSearch}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setEmployeeSearch(val);
-                      if (val.trim()) {
-                        const match = teamMonthlyData.employeePerformance.find(emp => {
-                          if (statusTab === 'active' && emp.stillExist === 0) return false;
-                          if (statusTab === 'exited' && emp.stillExist === 1) return false;
-                          return (
-                            (emp.name && emp.name.toLowerCase().includes(val.toLowerCase())) ||
-                            (emp.email && emp.email.toLowerCase().includes(val.toLowerCase()))
-                          );
-                        });
-                        if (match) setSelectedEmp(match);
-                      }
-                    }}
-                    className="pl-8.5 h-10 text-xs bg-background rounded-xl border-border"
-                  />
-                  {employeeSearch && (
-                    <button
-                      onClick={() => setEmployeeSearch('')}
-                      className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground font-bold"
+              {/* Unified Searchable Employee Combobox & Refresh Button */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+                <Popover open={employeePickerOpen} onOpenChange={setEmployeePickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={employeePickerOpen}
+                      className="w-full sm:w-80 h-10 justify-between bg-background border-border hover:border-primary/50 text-left font-normal rounded-xl px-3 transition-all shadow-sm"
                     >
-                      ✕
-                    </button>
-                  )}
-                </div>
-
-                {/* Professional shadcn Radix Select Dropdown */}
-                <Select
-                  value={activeEmployeeObj?._id || activeEmployeeObj?.employeeId || ''}
-                  onValueChange={(val) => {
-                    const found = teamMonthlyData.employeePerformance.find(
-                      emp => (emp.employeeId || emp._id) === val
-                    );
-                    if (found) {
-                      setSelectedEmp(found);
-                      setEmployeeSearch('');
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-full sm:w-72 h-10 bg-background border-border rounded-xl text-xs font-semibold px-3.5 focus:ring-2 focus:ring-primary">
-                    <SelectValue placeholder="Choose an employee..." />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-80 z-[100] bg-zinc-950 border-zinc-800 text-zinc-100 shadow-2xl">
-                    {teamMonthlyData.employeePerformance
-                      .filter(emp => {
-                        if (statusTab === 'active' && emp.stillExist === 0) return false;
-                        if (statusTab === 'exited' && emp.stillExist === 1) return false;
-                        return true;
-                      })
-                      .map((emp) => (
-                        <SelectItem
-                          key={emp.employeeId || emp._id}
-                          value={emp.employeeId || emp._id}
-                          className="text-xs py-2.5 px-3 focus:bg-zinc-900 focus:text-white cursor-pointer"
-                        >
-                          <span className="font-bold text-zinc-100">{emp.name}</span>
-                          <span className="text-[11px] text-zinc-400 ml-2">
-                            • {emp.department || 'General'} {emp.stillExist === 0 ? '(Exited)' : ''}
+                      {activeEmployeeObj ? (
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0 shadow-sm">
+                            {activeEmployeeObj.name ? activeEmployeeObj.name.charAt(0).toUpperCase() : 'U'}
+                          </div>
+                          <div className="min-w-0 truncate">
+                            <span className="font-bold text-xs text-foreground block truncate">
+                              {activeEmployeeObj.name}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground flex-shrink-0 truncate max-w-[100px]">
+                            • {typeof activeEmployeeObj.department === 'object' ? activeEmployeeObj.department?.name : (activeEmployeeObj.department || 'General')}
                           </span>
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Select an employee...</span>
+                      )}
+                      <ChevronDown className={`h-4 w-4 ml-2 text-muted-foreground flex-shrink-0 transition-transform duration-200 ${employeePickerOpen ? 'rotate-180 text-primary' : ''}`} />
+                    </Button>
+                  </PopoverTrigger>
+
+                  <PopoverContent 
+                    className="w-[320px] sm:w-[380px] p-0 z-[100] bg-zinc-950/95 backdrop-blur-xl border border-zinc-800 rounded-xl shadow-2xl text-zinc-100 overflow-hidden" 
+                    align="end"
+                  >
+                    {/* Search Bar inside Combobox */}
+                    <div className="p-3 border-b border-zinc-800/80 bg-zinc-900/60">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-zinc-400" />
+                        <Input
+                          placeholder="Search employee by name, email, dept..."
+                          value={employeeSearch}
+                          onChange={(e) => setEmployeeSearch(e.target.value)}
+                          className="pl-8.5 pr-8 h-9 text-xs bg-zinc-950 border-zinc-700/60 rounded-lg text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-1 focus-visible:ring-purple-500"
+                          autoFocus
+                        />
+                        {employeeSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setEmployeeSearch('')}
+                            className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-xs text-zinc-400 hover:text-white"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between mt-2 px-1 text-[11px] text-zinc-400">
+                        <span>{filteredEmployeesList.length} employees found</span>
+                        <span className="text-zinc-500 capitalize">{statusTab}</span>
+                      </div>
+                    </div>
+
+                    {/* Scrollable Employees List */}
+                    <div className="max-h-72 overflow-y-auto p-1.5 space-y-1">
+                      {filteredEmployeesList.length === 0 ? (
+                        <div className="py-8 text-center text-xs text-zinc-500">
+                          No employees match "{employeeSearch}"
+                        </div>
+                      ) : (
+                        filteredEmployeesList.map((emp) => {
+                          const empId = String(emp.employeeId || emp._id);
+                          const currentId = String(activeEmployeeObj?._id || activeEmployeeObj?.employeeId || '');
+                          const isSelected = empId === currentId;
+                          const deptName = typeof emp.department === 'object' ? emp.department?.name : (emp.department || 'General');
+
+                          return (
+                            <button
+                              key={empId}
+                              type="button"
+                              onClick={() => {
+                                setSelectedEmp(emp);
+                                fetchEmployeeMonthlyBreakdown(empId);
+                                setEmployeePickerOpen(false);
+                              }}
+                              className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition-all ${
+                                isSelected
+                                  ? 'bg-purple-600/20 text-purple-200 border border-purple-500/30'
+                                  : 'hover:bg-zinc-900 text-zinc-300 hover:text-white border border-transparent'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                                  isSelected
+                                    ? 'bg-purple-600 text-white'
+                                    : 'bg-zinc-800 text-zinc-300'
+                                }`}>
+                                  {emp.name ? emp.name.charAt(0).toUpperCase() : 'U'}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-bold text-xs truncate text-zinc-100">{emp.name}</span>
+                                    {emp.stillExist === 0 && (
+                                      <Badge variant="outline" className="text-[9px] px-1 py-0 text-rose-400 border-rose-500/30 bg-rose-500/10">
+                                        Exited
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-zinc-400 truncate flex items-center gap-1.5 mt-0.5">
+                                    <span>{deptName}</span>
+                                    <span>•</span>
+                                    <span className="truncate">{emp.email}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {isSelected && (
+                                <Check className="h-4 w-4 text-purple-400 flex-shrink-0 ml-2" />
+                              )}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
 
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => activeEmployeeObj && fetchEmployeeMonthlyBreakdown(activeEmployeeObj._id || activeEmployeeObj.employeeId)}
-                  className="h-10 px-3.5 text-xs font-semibold flex items-center gap-1.5 rounded-xl flex-shrink-0"
+                  className="h-10 px-3.5 text-xs font-semibold flex items-center gap-1.5 rounded-xl flex-shrink-0 shadow-sm"
                   title="Reload monthly breakdown for this employee"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${loadingEmpBreakdown ? 'animate-spin' : ''}`} />
