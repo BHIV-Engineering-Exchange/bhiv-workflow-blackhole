@@ -459,6 +459,7 @@ export function EmployeeMonitoring() {
             statusTab={statusTab}
             searchQuery={searchQuery}
             selectedEmployee={selectedEmployee}
+            employees={teamSummaryData.employees}
           />
         </TabsContent>
 

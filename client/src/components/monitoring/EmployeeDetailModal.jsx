@@ -53,13 +53,26 @@ export function EmployeeDetailModal({ employee, onClose }) {
     try {
       const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
       
+      // Target date for activity telemetry (defaults to today in local calendar date YYYY-MM-DD)
+      const now = new Date();
+      const localTodayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const targetDate = employee.selectedDate || employee.date || localTodayStr;
+
       const response = await axios.get(
-        `${API_URL}/monitoring/employees/${empId}/activity`,
+        `${API_URL}/monitoring/employees/${empId}/activity?date=${targetDate}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       const logs = response.data.activities || [];
       setActivityLogs(logs);
+
+      // Only count logs matching target date for active hours and timeline graph
+      const dayLogs = logs.filter((log) => {
+        if (!log.timestamp) return false;
+        const d = new Date(log.timestamp);
+        const logDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return logDateStr === targetDate;
+      });
 
       // Process logs for timeline & metrics
       let totalKeystrokes = 0;
@@ -68,7 +81,7 @@ export function EmployeeDetailModal({ employee, onClose }) {
       let totalProdScore = 0;
       const hourlyMap = {};
 
-      logs.forEach((log) => {
+      dayLogs.forEach((log) => {
         totalKeystrokes += log.keystroke_count || 0;
         totalMouseScore += log.mouse_activity_score || 0;
         let idleVal = log.idle_duration || 0;
@@ -95,7 +108,7 @@ export function EmployeeDetailModal({ employee, onClose }) {
       }));
       setTimelineData(processedTimeline);
 
-      const logCount = logs.length;
+      const logCount = dayLogs.length;
       const calculatedActiveSec = Math.max(0, logCount * 30 - totalIdleSec);
       const avgProd = logCount > 0 ? Math.round(totalProdScore / logCount) : (employee.productivityScore || 0);
       const avgMouse = logCount > 0 ? Math.round(totalMouseScore / logCount) : (employee.mouseActivity || 0);
@@ -113,12 +126,24 @@ export function EmployeeDetailModal({ employee, onClose }) {
       const calculatedActiveHours = `${Math.floor(calculatedActiveSec / 3600)}h ${Math.floor((calculatedActiveSec % 3600) / 60)}m`;
       const calculatedIdleTime = `${Math.floor(totalIdleSec / 60)}m`;
 
-      // Prioritize active hours from table summary if present
-      const finalActiveHours = employee.totalActiveHours || employee.activeHours || calculatedActiveHours;
-      const finalIdleTime = employee.totalIdleTime || employee.idleTime || calculatedIdleTime;
-      const finalKeystrokes = employee.keystrokes !== undefined ? employee.keystrokes : (employee.keystrokesToday !== undefined ? employee.keystrokesToday : (totalKeystrokes || 0));
-      const finalMouse = employee.mouseActivity !== undefined ? employee.mouseActivity : avgMouse;
-      const finalProd = employee.productivityScore !== undefined ? employee.productivityScore : avgProd;
+      // Active hours display:
+      // When dayLogs exist, calculatedActiveHours is verified directly from today's telemetry snapshots.
+      let finalActiveHours = calculatedActiveHours;
+      if (employee.activeHours && employee.activeHours !== '0h 0m') {
+        const match = employee.activeHours.match(/(?:(\d+)h)?\s*(?:(\d+)m)?/);
+        const empSec = match ? (parseInt(match[1] || 0) * 3600 + parseInt(match[2] || 0) * 60) : 0;
+        // Accept employee.activeHours (e.g. from attendance check-in) if it does not wildly conflict with verified logs
+        if (logCount === 0 || (empSec > 0 && Math.abs(empSec - calculatedActiveSec) < 7200)) {
+          finalActiveHours = employee.activeHours;
+        }
+      } else if (logCount === 0 && employee.totalActiveHours && employee.date) {
+        finalActiveHours = employee.totalActiveHours;
+      }
+
+      const finalIdleTime = employee.idleTime || employee.totalIdleTime || calculatedIdleTime;
+      const finalKeystrokes = totalKeystrokes > 0 ? totalKeystrokes : (employee.keystrokesToday !== undefined ? employee.keystrokesToday : (employee.keystrokes || 0));
+      const finalMouse = avgMouse > 0 ? avgMouse : (employee.mouseActivity !== undefined ? employee.mouseActivity : 0);
+      const finalProd = avgProd > 0 ? avgProd : (employee.productivityScore !== undefined ? employee.productivityScore : 0);
       const finalEfficiency = employee.productivityEfficiency || efficiency;
 
       setMetrics({

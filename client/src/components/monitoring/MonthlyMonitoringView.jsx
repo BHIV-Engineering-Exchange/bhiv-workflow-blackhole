@@ -61,7 +61,8 @@ export function MonthlyMonitoringView({
   departmentFilter = 'all',
   statusTab = 'active',
   searchQuery: externalSearch = '',
-  selectedEmployee: initialSelectedEmployee = null
+  selectedEmployee: initialSelectedEmployee = null,
+  employees: propEmployees = []
 }) {
   // Current month state in YYYY-MM format
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -77,6 +78,7 @@ export function MonthlyMonitoringView({
   // Selected Employee for individual full monthly view
   const [selectedEmp, setSelectedEmp] = useState(initialSelectedEmployee);
   const [employeeSearch, setEmployeeSearch] = useState(externalSearch || '');
+  const [dropdownSearch, setDropdownSearch] = useState('');
   const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
 
   // Data states
@@ -216,23 +218,34 @@ export function MonthlyMonitoringView({
     }
   };
 
-  // Filter employees for dropdown/selector strictly enforcing statusTab
+  // Combine propEmployees (immediate, in-memory) with team monthly performance list
+  const availableEmployees = useMemo(() => {
+    if (Array.isArray(propEmployees) && propEmployees.length > 0) {
+      return propEmployees;
+    }
+    if (Array.isArray(teamMonthlyData.employeePerformance) && teamMonthlyData.employeePerformance.length > 0) {
+      return teamMonthlyData.employeePerformance;
+    }
+    return [];
+  }, [propEmployees, teamMonthlyData.employeePerformance]);
+
+  // Filter employees for dropdown/selector strictly enforcing statusTab and dropdownSearch
   const filteredEmployeesList = useMemo(() => {
-    return teamMonthlyData.employeePerformance.filter((emp) => {
+    return availableEmployees.filter((emp) => {
       // Strict statusTab filter
       if (statusTab === 'active' && emp.stillExist === 0) return false;
       if (statusTab === 'exited' && emp.stillExist === 1) return false;
 
-      if (!employeeSearch.trim()) return true;
-      const q = employeeSearch.toLowerCase().trim();
+      if (!dropdownSearch.trim()) return true;
+      const q = dropdownSearch.toLowerCase().trim();
+      const empName = (emp.name || '').toLowerCase();
+      const empEmail = (emp.email || '').toLowerCase();
       const dept = typeof emp.department === 'object' ? (emp.department?.name || '') : (emp.department || '');
-      return (
-        (emp.name && emp.name.toLowerCase().includes(q)) ||
-        (emp.email && emp.email.toLowerCase().includes(q)) ||
-        (dept && dept.toLowerCase().includes(q))
-      );
+      const empDept = dept.toLowerCase();
+
+      return empName.includes(q) || empEmail.includes(q) || empDept.includes(q);
     });
-  }, [teamMonthlyData.employeePerformance, statusTab, employeeSearch]);
+  }, [availableEmployees, statusTab, dropdownSearch]);
 
   // Filter individual day-by-day records
   const filteredDailyBreakdown = useMemo(() => {
@@ -403,7 +416,13 @@ export function MonthlyMonitoringView({
 
               {/* Unified Searchable Employee Combobox & Refresh Button */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
-                <Popover open={employeePickerOpen} onOpenChange={setEmployeePickerOpen}>
+                <Popover
+                  open={employeePickerOpen}
+                  onOpenChange={(open) => {
+                    setEmployeePickerOpen(open);
+                    if (open) setDropdownSearch('');
+                  }}
+                >
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
@@ -433,24 +452,27 @@ export function MonthlyMonitoringView({
                   </PopoverTrigger>
 
                   <PopoverContent 
-                    className="w-[320px] sm:w-[380px] p-0 z-[100] bg-zinc-950/95 backdrop-blur-xl border border-zinc-800 rounded-xl shadow-2xl text-zinc-100 overflow-hidden" 
+                    side="bottom"
                     align="end"
+                    sideOffset={8}
+                    avoidCollisions={false}
+                    className="w-[320px] sm:w-[380px] p-0 z-[100] bg-zinc-950/95 backdrop-blur-xl border border-zinc-800 rounded-xl shadow-2xl text-zinc-100 overflow-hidden" 
                   >
                     {/* Search Bar inside Combobox */}
                     <div className="p-3 border-b border-zinc-800/80 bg-zinc-900/60">
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-zinc-400" />
                         <Input
-                          placeholder="Search employee by name, email, dept..."
-                          value={employeeSearch}
-                          onChange={(e) => setEmployeeSearch(e.target.value)}
+                          placeholder="Search employee by name, email..."
+                          value={dropdownSearch}
+                          onChange={(e) => setDropdownSearch(e.target.value)}
                           className="pl-8.5 pr-8 h-9 text-xs bg-zinc-950 border-zinc-700/60 rounded-lg text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-1 focus-visible:ring-purple-500"
                           autoFocus
                         />
-                        {employeeSearch && (
+                        {dropdownSearch && (
                           <button
                             type="button"
-                            onClick={() => setEmployeeSearch('')}
+                            onClick={() => setDropdownSearch('')}
                             className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-xs text-zinc-400 hover:text-white"
                           >
                             ✕
@@ -458,7 +480,7 @@ export function MonthlyMonitoringView({
                         )}
                       </div>
                       <div className="flex items-center justify-between mt-2 px-1 text-[11px] text-zinc-400">
-                        <span>{filteredEmployeesList.length} employees found</span>
+                        <span>{filteredEmployeesList.length} employees available</span>
                         <span className="text-zinc-500 capitalize">{statusTab}</span>
                       </div>
                     </div>
@@ -467,7 +489,7 @@ export function MonthlyMonitoringView({
                     <div className="max-h-72 overflow-y-auto p-1.5 space-y-1">
                       {filteredEmployeesList.length === 0 ? (
                         <div className="py-8 text-center text-xs text-zinc-500">
-                          No employees match "{employeeSearch}"
+                          {dropdownSearch ? `No employees match "${dropdownSearch}"` : 'No employees available'}
                         </div>
                       ) : (
                         filteredEmployeesList.map((emp) => {
@@ -510,8 +532,12 @@ export function MonthlyMonitoringView({
                                   </div>
                                   <div className="text-[10px] text-zinc-400 truncate flex items-center gap-1.5 mt-0.5">
                                     <span>{deptName}</span>
-                                    <span>•</span>
-                                    <span className="truncate">{emp.email}</span>
+                                    {emp.email && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="truncate">{emp.email}</span>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                               </div>

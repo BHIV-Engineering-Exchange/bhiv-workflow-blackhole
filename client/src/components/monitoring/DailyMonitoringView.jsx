@@ -258,7 +258,7 @@ export function DailyMonitoringView({ onSelectEmployee, departmentFilter = 'all'
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => onSelectEmployee(emp)}
+                        onClick={() => onSelectEmployee({ ...emp, selectedDate })}
                         className="text-xs font-semibold text-primary hover:bg-primary/10"
                       >
                         <Eye className="h-3.5 w-3.5 mr-1" />

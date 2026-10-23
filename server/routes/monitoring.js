@@ -456,11 +456,18 @@ router.get('/employees/:id/activity', async (req, res) => {
 
     let activities = [];
     if (date) {
-      // Get activities for specific date
-      const start = new Date(date);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(date);
-      end.setHours(23, 59, 59, 999);
+      // Get activities for specific date (support YYYY-MM-DD string or ISO date)
+      let start, end;
+      if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+        const [y, m, d] = date.trim().split('-').map(Number);
+        start = new Date(y, m - 1, d, 0, 0, 0, 0);
+        end = new Date(y, m - 1, d, 23, 59, 59, 999);
+      } else {
+        start = new Date(date);
+        start.setHours(0, 0, 0, 0);
+        end = new Date(date);
+        end.setHours(23, 59, 59, 999);
+      }
       
       activities = await EmployeeActivity.find({
         employee: employeeId,
@@ -479,13 +486,14 @@ router.get('/employees/:id/activity', async (req, res) => {
         parseInt(limit)
       );
     } else {
-      // Get recent activities (last 24 hours)
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
+      // Default to today's activities (calendar day 00:00:00 to 23:59:59.999)
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
       
       activities = await EmployeeActivity.find({
         employee: employeeId,
-        timestamp: { $gte: yesterday }
+        timestamp: { $gte: start, $lte: end }
       })
       .sort({ timestamp: -1 })
       .limit(parseInt(limit))
@@ -1766,15 +1774,22 @@ router.get('/team-summary', async (req, res) => {
       let attendanceElapsedSec = 0;
       if (att && att.startDayTime) {
         const sessionEnd = att.endDayTime ? new Date(att.endDayTime) : new Date();
-        attendanceElapsedSec = Math.max(0, Math.floor((sessionEnd - new Date(att.startDayTime)) / 1000));
-        if (att.hoursWorked > 0) {
-          attendanceElapsedSec = Math.max(attendanceElapsedSec, Math.round(att.hoursWorked * 3600));
+        const maxSessionSec = Math.max(0, Math.floor((sessionEnd - new Date(att.startDayTime)) / 1000));
+        
+        if (att.endDayTime && att.hoursWorked > 0) {
+          // Completed session: use validated hoursWorked, capped by physical session duration
+          attendanceElapsedSec = Math.min(maxSessionSec, Math.round(att.hoursWorked * 3600));
+        } else {
+          // Active ongoing session: cannot exceed physical elapsed time since check-in!
+          attendanceElapsedSec = maxSessionSec;
         }
       }
 
       if (attendanceElapsedSec > 0) {
         // Attendance record provides official elapsed work hours!
         activeSeconds = Math.max(activeSeconds, attendanceElapsedSec - totalIdleSeconds);
+        // Ensure active duration does not exceed physical session length
+        activeSeconds = Math.min(activeSeconds, attendanceElapsedSec);
       }
 
       let avgMouseActivity = logsToProcess.length > 0 ? Math.round(totalMouseScore / logsToProcess.length) : 0;
@@ -2006,15 +2021,19 @@ router.get('/daily-summary', async (req, res) => {
       if (att && att.startDayTime) {
         const isSelectedDateToday = targetDate.toDateString() === new Date().toDateString();
         const sessionEnd = att.endDayTime ? new Date(att.endDayTime) : (isSelectedDateToday ? new Date() : endOfDay);
-        attendanceElapsedSec = Math.max(0, Math.floor((sessionEnd - new Date(att.startDayTime)) / 1000));
-        if (att.hoursWorked > 0) {
-          attendanceElapsedSec = Math.max(attendanceElapsedSec, Math.round(att.hoursWorked * 3600));
+        const maxSessionSec = Math.max(0, Math.floor((sessionEnd - new Date(att.startDayTime)) / 1000));
+        
+        if (att.endDayTime && att.hoursWorked > 0) {
+          attendanceElapsedSec = Math.min(maxSessionSec, Math.round(att.hoursWorked * 3600));
+        } else {
+          attendanceElapsedSec = maxSessionSec;
         }
       }
 
       if (attendanceElapsedSec > 0) {
         // Attendance record provides official work hours!
         activeSeconds = Math.max(activeSeconds, attendanceElapsedSec - totalIdleSeconds);
+        activeSeconds = Math.min(activeSeconds, attendanceElapsedSec);
       }
 
       let avgMouseActivity = logCount > 0 ? Math.round(totalMouseScore / logCount) : 0;
