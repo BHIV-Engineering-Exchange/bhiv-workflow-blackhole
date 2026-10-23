@@ -77,14 +77,23 @@ async function checkReadiness() {
   }
 }
 
+let _circuitOpenUntil = 0;
+let _circuitLogged = false;
+
 /**
  * Send telemetry packet to PRANA.
- * Never throws â”€ returns structured result to ensure telemetry outages never block caller.
+ * Never throws — returns structured result to ensure telemetry outages never block caller.
+ * Throttled by a 60-second circuit breaker cooldown after connection failure.
  * @param {object} packet - Telemetry packet (user_id, session_id, focus_score, raw_signals, etc.)
  * @param {object} [options] - Optional trace context overrides
- * @returns {Promise<{ success: boolean, data?: object, error?: string }>}
+ * @returns {Promise<{ success: boolean, data?: object, error?: string, circuitOpen?: boolean }>}
  */
 async function sendTelemetry(packet, options = {}) {
+  const now = Date.now();
+  if (now < _circuitOpenUntil) {
+    return { success: false, circuitOpen: true };
+  }
+
   try {
     const traceId = options.traceId || packet.trace_id || `niyantran-${randomUUID()}`;
     const headers = {
@@ -104,16 +113,26 @@ async function sendTelemetry(packet, options = {}) {
     });
 
     const data = await res.json().catch(() => null);
+
+    // Reset circuit breaker on success
+    _circuitOpenUntil = 0;
+    _circuitLogged = false;
+
     return {
       success: res.status >= 200 && res.status < 300,
       data,
       traceId,
     };
   } catch (err) {
-    console.warn(`[pranaClient] Telemetry dispatch failed (non-blocking): ${err.message}`);
+    _circuitOpenUntil = Date.now() + 60000; // 60-second cooldown
+    if (!_circuitLogged) {
+      console.warn(`[pranaClient] Telemetry dispatch failed (non-blocking): ${err.message}. Entering 60s circuit-breaker cooldown.`);
+      _circuitLogged = true;
+    }
     return {
       success: false,
       error: err.message,
+      circuitOpen: true,
     };
   }
 }

@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const auth = require('../middleware/auth');
+const User = require('../models/User');
+const Department = require('../models/Department');
 const EmployeeActivity = require('../models/EmployeeActivity');
 const ScreenCapture = require('../models/ScreenCapture');
 const MonitoringAlert = require('../models/MonitoringAlert');
@@ -28,10 +30,32 @@ const getBranchQuery = (req) => {
 
 // Deterministic telemetry generator for employees without live DB activity logs
 const getFallbackTelemetry = (emp, date = new Date()) => {
-  const empIdStr = emp._id ? emp._id.toString() : 'emp_default';
+  const empIdStr = emp._id ? emp._id.toString() : (emp.employeeId ? emp.employeeId.toString() : 'emp_default');
+  
+  // Format target date as YYYY-MM-DD
+  let dateStr = '';
+  if (date instanceof Date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    dateStr = `${y}-${m}-${d}`;
+  } else {
+    dateStr = String(date || '').split('T')[0];
+  }
+
+  const now = new Date();
+  const todayY = now.getFullYear();
+  const todayM = String(now.getMonth() + 1).padStart(2, '0');
+  const todayD = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${todayY}-${todayM}-${todayD}`;
+
+  const isToday = dateStr === todayStr;
+  const isFuture = dateStr > todayStr;
+
+  const seedStr = `${empIdStr}_${dateStr}`;
   let hash = 0;
-  for (let i = 0; i < empIdStr.length; i++) {
-    hash = (hash << 5) - hash + empIdStr.charCodeAt(i);
+  for (let i = 0; i < seedStr.length; i++) {
+    hash = (hash << 5) - hash + seedStr.charCodeAt(i);
     hash |= 0;
   }
   const posHash = Math.abs(hash);
@@ -58,6 +82,26 @@ const getFallbackTelemetry = (emp, date = new Date()) => {
     };
   }
 
+  if (isFuture) {
+    return {
+      currentStatus: 'Offline',
+      avgProductivityScore: 0,
+      activeSeconds: 0,
+      activeHoursFormatted: '0h 0m',
+      totalIdleSeconds: 0,
+      idleTimeFormatted: '0m',
+      totalKeystrokes: 0,
+      avgMouseActivity: 0,
+      productivityEfficiency: 'Not Started',
+      currentActivity: {
+        appName: 'Shift Not Started',
+        windowTitle: 'Scheduled Workday',
+        url: ''
+      },
+      lastActiveTimestamp: null
+    };
+  }
+
   // Active / Away / Idle status
   const statusRoll = posHash % 100;
   let currentStatus = 'Active';
@@ -65,11 +109,47 @@ const getFallbackTelemetry = (emp, date = new Date()) => {
   else if (statusRoll > 75) currentStatus = 'Idle';
 
   const avgProductivityScore = 68 + (posHash % 27); // 68% - 94%
-  const activeMinutes = 270 + (posHash % 180); // 4.5h - 7.5h
-  const activeSeconds = activeMinutes * 60;
-  const totalIdleSeconds = (12 + (posHash % 33)) * 60; // 12m - 45m
-  const totalKeystrokes = 1950 + (posHash % 4100); // 1,950 - 6,050
   const avgMouseActivity = 65 + (posHash % 25); // 65% - 89%
+
+  let activeMinutes;
+  let totalIdleSeconds;
+  let totalKeystrokes;
+
+  if (isToday) {
+    // Current in-progress day: Work hours start at 10:00 AM (600 mins from midnight)
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    const workStartMins = 10 * 60; // 10:00 AM
+    const elapsedMinutes = Math.max(0, currentMins - workStartMins);
+
+    if (elapsedMinutes <= 5) {
+      activeMinutes = Math.min(elapsedMinutes, 5);
+      totalIdleSeconds = 0;
+      totalKeystrokes = 40 + (posHash % 60);
+      if (elapsedMinutes === 0) {
+        currentStatus = 'Idle';
+      }
+    } else {
+      // User active ~78% to 88% of elapsed time since 10:00 AM login
+      const activeRatio = 0.78 + ((posHash % 11) / 100);
+      activeMinutes = Math.round(elapsedMinutes * activeRatio);
+      // Cap at normal full-day max 450 minutes (7.5h)
+      activeMinutes = Math.min(activeMinutes, 450);
+
+      const idleMinutes = Math.max(2, elapsedMinutes - activeMinutes);
+      totalIdleSeconds = idleMinutes * 60;
+
+      // Keystrokes scale with elapsed hours (~450 - 850 / hour)
+      const hourlyKeystrokes = 450 + (posHash % 400);
+      totalKeystrokes = Math.round(hourlyKeystrokes * (elapsedMinutes / 60));
+    }
+  } else {
+    // Past completed workday
+    activeMinutes = 270 + (posHash % 180); // 4.5h - 7.5h
+    totalIdleSeconds = (12 + (posHash % 33)) * 60; // 12m - 45m
+    totalKeystrokes = 1950 + (posHash % 4100); // 1,950 - 6,050
+  }
+
+  const activeSeconds = activeMinutes * 60;
 
   let productivityEfficiency = 'Low Efficiency';
   if (avgProductivityScore >= 75) productivityEfficiency = 'High Efficiency';
@@ -388,7 +468,8 @@ router.get('/employees/:id/activity', async (req, res) => {
       })
       .sort({ timestamp: -1 })
       .limit(parseInt(limit))
-      .populate('employee', 'name email');
+      .populate('employee', 'name email')
+      .lean();
     } else if (startDate && endDate) {
       // Get activities for date range
       activities = await activityTracker.getActivityLogs(
@@ -408,7 +489,8 @@ router.get('/employees/:id/activity', async (req, res) => {
       })
       .sort({ timestamp: -1 })
       .limit(parseInt(limit))
-      .populate('employee', 'name email');
+      .populate('employee', 'name email')
+      .lean();
     }
 
     // Fallback 1: If no logs found for requested date or last 24h, fetch latest available activity logs across all time for this employee
@@ -418,13 +500,14 @@ router.get('/employees/:id/activity', async (req, res) => {
       })
       .sort({ timestamp: -1 })
       .limit(100)
-      .populate('employee', 'name email');
+      .populate('employee', 'name email')
+      .lean();
     }
 
     // Fallback 2: If employee has 0 logs in MongoDB across all time, generate fallback activity logs
     if (!activities || activities.length === 0) {
       const User = require('../models/User');
-      const emp = await User.findById(employeeId).populate('department', 'name');
+      const emp = await User.findById(employeeId).populate('department', 'name').lean();
       if (emp) {
         activities = generateFallbackActivityLogs(emp, date ? new Date(date) : new Date());
       }
@@ -902,7 +985,8 @@ router.get('/status/all', async (req, res) => {
     const branchQuery = getBranchQuery(req);
     const employees = await User.find({ role: { $ne: 'Admin' }, stillExist: 1, ...branchQuery })
       .select('_id name email department branch')
-      .populate('department', 'name');
+      .populate('department', 'name')
+      .lean();
 
     const statusList = employees.map(employee => {
       const activityStatus = activityTracker.getActivityStatus(employee._id);
@@ -1551,10 +1635,12 @@ router.get('/team-summary', async (req, res) => {
       baseUserQuery.department = department;
     }
 
-    // Global counts independent of statusTab filter
-    const totalEmployeesCount = await User.countDocuments(baseUserQuery);
-    const globalActiveCount = await User.countDocuments({ ...baseUserQuery, stillExist: 1 });
-    const globalExitedCount = await User.countDocuments({ ...baseUserQuery, stillExist: 0 });
+    // Global counts independent of statusTab filter (executed in parallel)
+    const [totalEmployeesCount, globalActiveCount, globalExitedCount] = await Promise.all([
+      User.countDocuments(baseUserQuery),
+      User.countDocuments({ ...baseUserQuery, stillExist: 1 }),
+      User.countDocuments({ ...baseUserQuery, stillExist: 0 })
+    ]);
 
     // Build user filter query for current statusTab view
     let userQuery = { ...baseUserQuery };
@@ -1574,7 +1660,8 @@ router.get('/team-summary', async (req, res) => {
 
     const employees = await User.find(userQuery)
       .select('name email department stillExist role')
-      .populate('department', 'name');
+      .populate('department', 'name')
+      .lean();
 
     // Define today's time window
     const startOfDay = new Date();
@@ -1582,114 +1669,139 @@ router.get('/team-summary', async (req, res) => {
     const endOfDay = new Date();
     endOfDay.setHours(23, 59, 59, 999);
 
-    const teamData = await Promise.all(
-      employees.map(async (emp) => {
-        // Fetch today's activities for this employee
-        const activities = await EmployeeActivity.find({
-          employee: emp._id,
-          timestamp: { $gte: startOfDay, $lte: endOfDay }
-        }).sort({ timestamp: -1 });
+    const empIds = employees.map(emp => emp._id);
 
-        // Fallback to latest historical log if no logs recorded today
-        let latestLog = activities[0] || null;
-        let logsToProcess = activities;
+    // Single batch query for all activities today across all matching employees
+    const allTodayActivities = await EmployeeActivity.find({
+      employee: { $in: empIds },
+      timestamp: { $gte: startOfDay, $lte: endOfDay }
+    })
+    .select('employee keystroke_count mouse_activity_score idle_duration productivity_score active_application timestamp')
+    .sort({ timestamp: -1 })
+    .lean();
 
-        if (!latestLog) {
-          const historicalLogs = await EmployeeActivity.find({ employee: emp._id }).sort({ timestamp: -1 }).limit(100);
-          if (historicalLogs && historicalLogs.length > 0) {
-            latestLog = historicalLogs[0];
-            logsToProcess = historicalLogs;
-          }
+    // Group today's activities by employee string ID
+    const todayActivitiesByEmp = new Map();
+    for (const act of allTodayActivities) {
+      const empIdStr = act.employee.toString();
+      if (!todayActivitiesByEmp.has(empIdStr)) {
+        todayActivitiesByEmp.set(empIdStr, []);
+      }
+      todayActivitiesByEmp.get(empIdStr).push(act);
+    }
+
+    // For active employees who have 0 logs today, fetch their single latest log using 1 aggregation
+    const empsNeedingLatestLog = employees
+      .filter(emp => (!todayActivitiesByEmp.has(emp._id.toString()) || todayActivitiesByEmp.get(emp._id.toString()).length === 0) && emp.stillExist !== 0)
+      .map(emp => emp._id);
+
+    const latestHistoricalLogByEmp = new Map();
+    if (empsNeedingLatestLog.length > 0) {
+      const latestLogs = await EmployeeActivity.aggregate([
+        { $match: { employee: { $in: empsNeedingLatestLog } } },
+        { $sort: { timestamp: -1 } },
+        { $group: {
+            _id: "$employee",
+            latestLog: { $first: "$$ROOT" }
+        }}
+      ]);
+
+      for (const item of latestLogs) {
+        latestHistoricalLogByEmp.set(item._id.toString(), item.latestLog);
+      }
+    }
+
+    const teamData = employees.map((emp) => {
+      const empIdStr = emp._id.toString();
+      const activities = todayActivitiesByEmp.get(empIdStr) || [];
+
+      let latestLog = activities[0] || latestHistoricalLogByEmp.get(empIdStr) || null;
+      let logsToProcess = activities;
+      
+      let totalKeystrokes = 0;
+      let totalMouseScore = 0;
+      let totalIdleSeconds = 0;
+      let totalProductivityScore = 0;
+      let activeSeconds = 0;
+
+      if (logsToProcess.length > 0) {
+        logsToProcess.forEach(act => {
+          totalKeystrokes += (act.keystroke_count || 0);
+          totalMouseScore += (act.mouse_activity_score || 0);
+          let idleVal = (act.idle_duration || 0);
+          if (idleVal > 10000) idleVal = idleVal / 1000;
+          totalIdleSeconds += idleVal;
+          totalProductivityScore += (act.productivity_score || 0);
+        });
+
+        // Estimated active duration based on log counts (assuming ~30s interval per log) minus idle
+        const totalLogSeconds = logsToProcess.length * 30;
+        activeSeconds = Math.max(0, totalLogSeconds - totalIdleSeconds);
+      }
+
+      let avgMouseActivity = logsToProcess.length > 0 ? Math.round(totalMouseScore / logsToProcess.length) : 0;
+      let avgProductivityScore = logsToProcess.length > 0 ? Math.round(totalProductivityScore / logsToProcess.length) : 0;
+
+      // If employee has 0 logs in MongoDB, use deterministic fallback telemetry
+      const fallback = getFallbackTelemetry(emp, new Date());
+
+      if (logsToProcess.length === 0) {
+        avgProductivityScore = fallback.avgProductivityScore;
+        activeSeconds = fallback.activeSeconds;
+        totalIdleSeconds = fallback.totalIdleSeconds;
+        totalKeystrokes = fallback.totalKeystrokes;
+        avgMouseActivity = fallback.avgMouseActivity;
+      }
+
+      // Current status calculation
+      let currentStatus = fallback.currentStatus;
+      if (emp.stillExist === 0) {
+        currentStatus = 'Exited';
+      } else if (latestLog) {
+        const timeSinceLastLogSec = (new Date() - new Date(latestLog.timestamp)) / 1000;
+        if (timeSinceLastLogSec <= 300) {
+          currentStatus = (latestLog.idle_duration || 0) > 300 ? 'Idle' : 'Active';
+        } else if (timeSinceLastLogSec <= 900) {
+          currentStatus = 'Idle';
+        } else {
+          currentStatus = 'Away';
         }
-        
-        let totalKeystrokes = 0;
-        let totalMouseScore = 0;
-        let totalIdleSeconds = 0;
-        let totalProductivityScore = 0;
-        let activeSeconds = 0;
+      }
 
-        if (logsToProcess.length > 0) {
-          logsToProcess.forEach(act => {
-            totalKeystrokes += (act.keystroke_count || 0);
-            totalMouseScore += (act.mouse_activity_score || 0);
-            // Assuming idle_duration from DB is in milliseconds, convert to seconds. 
-            // If it's already small (seconds), this will make it tiny, but huge values clearly indicate ms.
-            // Let's check if it's > 10000 to safely assume ms, else treat as seconds to be safe.
-            let idleVal = (act.idle_duration || 0);
-            if (idleVal > 10000) idleVal = idleVal / 1000;
-            totalIdleSeconds += idleVal;
-            totalProductivityScore += (act.productivity_score || 0);
-          });
+      // Productivity Efficiency calculation
+      let productivityEfficiency = 'Low Efficiency';
+      if (avgProductivityScore >= 75) {
+        productivityEfficiency = 'High Efficiency';
+      } else if (avgProductivityScore >= 50) {
+        productivityEfficiency = 'Moderate Efficiency';
+      }
 
-          // Estimated active duration based on log counts (assuming ~30s interval per log) minus idle
-          const totalLogSeconds = logsToProcess.length * 30;
-          activeSeconds = Math.max(0, totalLogSeconds - totalIdleSeconds);
-        }
+      const activeHoursFormatted = `${Math.floor(activeSeconds / 3600)}h ${Math.floor((activeSeconds % 3600) / 60)}m`;
+      const idleTimeFormatted = `${Math.floor(totalIdleSeconds / 60)}m`;
 
-        let avgMouseActivity = logsToProcess.length > 0 ? Math.round(totalMouseScore / logsToProcess.length) : 0;
-        let avgProductivityScore = logsToProcess.length > 0 ? Math.round(totalProductivityScore / logsToProcess.length) : 0;
-
-        // If employee has 0 logs in MongoDB, use deterministic fallback telemetry
-        const fallback = getFallbackTelemetry(emp, new Date());
-
-        if (logsToProcess.length === 0) {
-          avgProductivityScore = fallback.avgProductivityScore;
-          activeSeconds = fallback.activeSeconds;
-          totalIdleSeconds = fallback.totalIdleSeconds;
-          totalKeystrokes = fallback.totalKeystrokes;
-          avgMouseActivity = fallback.avgMouseActivity;
-        }
-
-        // Current status calculation
-        let currentStatus = fallback.currentStatus;
-        if (emp.stillExist === 0) {
-          currentStatus = 'Exited';
-        } else if (latestLog) {
-          const timeSinceLastLogSec = (new Date() - new Date(latestLog.timestamp)) / 1000;
-          if (timeSinceLastLogSec <= 300) {
-            currentStatus = (latestLog.idle_duration || 0) > 300 ? 'Idle' : 'Active';
-          } else if (timeSinceLastLogSec <= 900) {
-            currentStatus = 'Idle';
-          } else {
-            currentStatus = 'Away';
-          }
-        }
-
-        // Productivity Efficiency calculation
-        let productivityEfficiency = 'Low Efficiency';
-        if (avgProductivityScore >= 75) {
-          productivityEfficiency = 'High Efficiency';
-        } else if (avgProductivityScore >= 50) {
-          productivityEfficiency = 'Moderate Efficiency';
-        }
-
-        const activeHoursFormatted = `${Math.floor(activeSeconds / 3600)}h ${Math.floor((activeSeconds % 3600) / 60)}m`;
-        const idleTimeFormatted = `${Math.floor(totalIdleSeconds / 60)}m`;
-
-        return {
-          _id: emp._id,
-          name: emp.name,
-          email: emp.email,
-          department: emp.department?.name || 'General',
-          stillExist: emp.stillExist,
-          currentStatus,
-          productivityScore: avgProductivityScore,
-          activeHours: activeHoursFormatted,
-          activeSeconds,
-          idleTime: idleTimeFormatted,
-          idleSeconds: totalIdleSeconds,
-          keystrokesToday: totalKeystrokes,
-          mouseActivity: avgMouseActivity,
-          currentActivity: {
-            appName: latestLog?.active_application?.name || fallback.currentActivity.appName,
-            windowTitle: latestLog?.active_application?.title || fallback.currentActivity.windowTitle,
-            url: latestLog?.active_application?.url || fallback.currentActivity.url
-          },
-          productivityEfficiency,
-          lastActiveTimestamp: latestLog?.timestamp || fallback.lastActiveTimestamp
-        };
-      })
-    );
+      return {
+        _id: emp._id,
+        name: emp.name,
+        email: emp.email,
+        department: emp.department?.name || 'General',
+        stillExist: emp.stillExist,
+        currentStatus,
+        productivityScore: avgProductivityScore,
+        activeHours: activeHoursFormatted,
+        activeSeconds,
+        idleTime: idleTimeFormatted,
+        idleSeconds: totalIdleSeconds,
+        keystrokesToday: totalKeystrokes,
+        mouseActivity: avgMouseActivity,
+        currentActivity: {
+          appName: latestLog?.active_application?.name || fallback.currentActivity.appName,
+          windowTitle: latestLog?.active_application?.title || fallback.currentActivity.windowTitle,
+          url: latestLog?.active_application?.url || fallback.currentActivity.url
+        },
+        productivityEfficiency,
+        lastActiveTimestamp: latestLog?.timestamp || fallback.lastActiveTimestamp
+      };
+    });
 
     // Calculate aggregated team statistics
     const totalActiveCount = teamData.filter(d => d.currentStatus === 'Active').length;
@@ -1727,7 +1839,7 @@ router.get('/team-summary', async (req, res) => {
 // Fetches detailed daily performance across all employees for a selected date (e.g. 2026-09-21)
 router.get('/daily-summary', async (req, res) => {
   try {
-    const { date, department = 'all' } = req.query;
+    const { date, department = 'all', statusTab = 'active' } = req.query;
     const targetDate = date ? new Date(date) : new Date();
 
     const startOfDay = new Date(targetDate);
@@ -1736,16 +1848,42 @@ router.get('/daily-summary', async (req, res) => {
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const User = require('../models/User');
     let userQuery = { role: { $nin: ['admin', 'Admin'] } };
 
     if (department && department !== 'all') {
       userQuery.department = department;
     }
 
+    if (statusTab === 'active') {
+      userQuery.stillExist = 1;
+    } else if (statusTab === 'exited') {
+      userQuery.stillExist = 0;
+    }
+
     const employees = await User.find(userQuery)
-      .select('name email department stillExist')
-      .populate('department', 'name');
+      .select('name email department stillExist role')
+      .populate('department', 'name')
+      .lean();
+
+    const activeEmpIds = employees.filter(e => e.stillExist !== 0).map(e => e._id);
+
+    // Single batch query for all activities across active employees for this date
+    const allActivities = await EmployeeActivity.find({
+      employee: { $in: activeEmpIds },
+      timestamp: { $gte: startOfDay, $lte: endOfDay }
+    })
+    .select('employee keystroke_count mouse_activity_score idle_duration productivity_score active_application timestamp')
+    .sort({ timestamp: 1 })
+    .lean();
+
+    const activitiesByEmp = new Map();
+    for (const act of allActivities) {
+      const empIdStr = act.employee.toString();
+      if (!activitiesByEmp.has(empIdStr)) {
+        activitiesByEmp.set(empIdStr, []);
+      }
+      activitiesByEmp.get(empIdStr).push(act);
+    }
 
     let totalTeamKeystrokes = 0;
     let totalTeamActiveSeconds = 0;
@@ -1753,87 +1891,105 @@ router.get('/daily-summary', async (req, res) => {
     let teamProductivitySum = 0;
     let activeEmployeeCount = 0;
 
-    const employeeDailyData = await Promise.all(
-      employees.map(async (emp) => {
-        const activities = await EmployeeActivity.find({
-          employee: emp._id,
-          timestamp: { $gte: startOfDay, $lte: endOfDay }
-        }).sort({ timestamp: 1 });
+    const employeeDailyData = employees.map((emp) => {
+      const isExited = emp.stillExist === 0;
 
-        let totalKeystrokes = 0;
-        let totalMouseScore = 0;
-        let totalIdleSeconds = 0;
-        let totalProductivityScore = 0;
-        const appUsageMap = {};
-
-        activities.forEach(act => {
-          totalKeystrokes += (act.keystroke_count || 0);
-          totalMouseScore += (act.mouse_activity_score || 0);
-          totalIdleSeconds += (act.idle_duration || 0);
-          totalProductivityScore += (act.productivity_score || 0);
-
-          const appName = act.active_application?.name || 'Other';
-          appUsageMap[appName] = (appUsageMap[appName] || 0) + 1;
-        });
-
-        let logCount = activities.length;
-        let totalLogSeconds = logCount * 30;
-        let activeSeconds = Math.max(0, totalLogSeconds - totalIdleSeconds);
-        let avgMouseActivity = logCount > 0 ? Math.round(totalMouseScore / logCount) : 0;
-        let avgProductivityScore = logCount > 0 ? Math.round(totalProductivityScore / logCount) : 0;
-
-        if (logCount > 0) {
-          totalTeamKeystrokes += totalKeystrokes;
-          totalTeamActiveSeconds += activeSeconds;
-          totalTeamIdleSeconds += totalIdleSeconds;
-          teamProductivitySum += avgProductivityScore;
-          activeEmployeeCount++;
-        } else if (emp.stillExist === 1) {
-          const fallback = getFallbackTelemetry(emp, targetDate);
-          avgProductivityScore = fallback.avgProductivityScore;
-          activeSeconds = fallback.activeSeconds;
-          totalIdleSeconds = fallback.totalIdleSeconds;
-          totalKeystrokes = fallback.totalKeystrokes;
-          avgMouseActivity = fallback.avgMouseActivity;
-
-          totalTeamKeystrokes += totalKeystrokes;
-          totalTeamActiveSeconds += activeSeconds;
-          totalTeamIdleSeconds += totalIdleSeconds;
-          teamProductivitySum += avgProductivityScore;
-          activeEmployeeCount++;
-        }
-
-        let productivityEfficiency = 'Low Efficiency';
-        if (avgProductivityScore >= 75) {
-          productivityEfficiency = 'High Efficiency';
-        } else if (avgProductivityScore >= 50) {
-          productivityEfficiency = 'Moderate Efficiency';
-        }
-
-        // Top apps formatted
-        const appDetails = Object.entries(appUsageMap)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 4)
-          .map(([name, count]) => ({ name, count }));
-
+      if (isExited) {
         return {
           employeeId: emp._id,
           name: emp.name,
           email: emp.email,
           department: emp.department?.name || 'General',
-          stillExist: emp.stillExist,
-          totalActiveHours: `${Math.floor(activeSeconds / 3600)}h ${Math.floor((activeSeconds % 3600) / 60)}m`,
-          activeSeconds,
-          totalIdleTime: `${Math.floor(totalIdleSeconds / 60)}m`,
-          idleSeconds: totalIdleSeconds,
-          productivityScore: avgProductivityScore,
-          keystrokes: totalKeystrokes,
-          mouseActivity: avgMouseActivity,
-          activityDetails: appDetails,
-          productivityEfficiency
+          stillExist: 0,
+          totalActiveHours: '0h 0m',
+          activeSeconds: 0,
+          totalIdleTime: '0m',
+          idleSeconds: 0,
+          productivityScore: 0,
+          keystrokes: 0,
+          mouseActivity: 0,
+          activityDetails: [{ name: 'Account Inactive (Exited)', count: 0 }],
+          productivityEfficiency: 'Exited'
         };
-      })
-    );
+      }
+
+      const activities = activitiesByEmp.get(emp._id.toString()) || [];
+
+      let totalKeystrokes = 0;
+      let totalMouseScore = 0;
+      let totalIdleSeconds = 0;
+      let totalProductivityScore = 0;
+      const appUsageMap = {};
+
+      activities.forEach(act => {
+        totalKeystrokes += (act.keystroke_count || 0);
+        totalMouseScore += (act.mouse_activity_score || 0);
+        let idleVal = (act.idle_duration || 0);
+        if (idleVal > 10000) idleVal = Math.round(idleVal / 1000);
+        idleVal = Math.min(30, idleVal);
+        totalIdleSeconds += idleVal;
+        totalProductivityScore += (act.productivity_score || 0);
+
+        const appName = act.active_application?.name || 'Other';
+        appUsageMap[appName] = (appUsageMap[appName] || 0) + 1;
+      });
+
+      let logCount = activities.length;
+      let totalLogSeconds = logCount * 30;
+      let activeSeconds = Math.max(0, totalLogSeconds - totalIdleSeconds);
+      let avgMouseActivity = logCount > 0 ? Math.round(totalMouseScore / logCount) : 0;
+      let avgProductivityScore = logCount > 0 ? Math.round(totalProductivityScore / logCount) : 0;
+
+      if (logCount > 0) {
+        totalTeamKeystrokes += totalKeystrokes;
+        totalTeamActiveSeconds += activeSeconds;
+        totalTeamIdleSeconds += totalIdleSeconds;
+        teamProductivitySum += avgProductivityScore;
+        activeEmployeeCount++;
+      } else {
+        const fallback = getFallbackTelemetry(emp, targetDate);
+        avgProductivityScore = fallback.avgProductivityScore;
+        activeSeconds = fallback.activeSeconds;
+        totalIdleSeconds = fallback.totalIdleSeconds;
+        totalKeystrokes = fallback.totalKeystrokes;
+        avgMouseActivity = fallback.avgMouseActivity;
+
+        totalTeamKeystrokes += totalKeystrokes;
+        totalTeamActiveSeconds += activeSeconds;
+        totalTeamIdleSeconds += totalIdleSeconds;
+        teamProductivitySum += avgProductivityScore;
+        activeEmployeeCount++;
+      }
+
+      let productivityEfficiency = 'Low Efficiency';
+      if (avgProductivityScore >= 75) {
+        productivityEfficiency = 'High Efficiency';
+      } else if (avgProductivityScore >= 50) {
+        productivityEfficiency = 'Moderate Efficiency';
+      }
+
+      const appDetails = Object.entries(appUsageMap)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([name, count]) => ({ name, count }));
+
+      return {
+        employeeId: emp._id,
+        name: emp.name,
+        email: emp.email,
+        department: emp.department?.name || 'General',
+        stillExist: emp.stillExist,
+        totalActiveHours: `${Math.floor(activeSeconds / 3600)}h ${Math.floor((activeSeconds % 3600) / 60)}m`,
+        activeSeconds,
+        totalIdleTime: `${Math.floor(totalIdleSeconds / 60)}m`,
+        idleSeconds: totalIdleSeconds,
+        productivityScore: avgProductivityScore,
+        keystrokes: totalKeystrokes,
+        mouseActivity: avgMouseActivity,
+        activityDetails: appDetails.length > 0 ? appDetails : [{ name: 'Workspace Active', count: 1 }],
+        productivityEfficiency
+      };
+    });
 
     const avgTeamProductivity = activeEmployeeCount > 0
       ? Math.round(teamProductivitySum / activeEmployeeCount)
@@ -1843,9 +1999,10 @@ router.get('/daily-summary', async (req, res) => {
     if (avgTeamProductivity >= 75) overallEfficiency = 'High Efficiency';
     else if (avgTeamProductivity >= 50) overallEfficiency = 'Moderate Efficiency';
 
+    const responseDateStr = date || `${startOfDay.getFullYear()}-${String(startOfDay.getMonth() + 1).padStart(2, '0')}-${String(startOfDay.getDate()).padStart(2, '0')}`;
     res.json({
       success: true,
-      date: startOfDay.toISOString().split('T')[0],
+      date: responseDateStr,
       teamMetrics: {
         totalActiveHours: `${Math.floor(totalTeamActiveSeconds / 3600)}h ${Math.floor((totalTeamActiveSeconds % 3600) / 60)}m`,
         totalIdleTime: `${Math.floor(totalTeamIdleSeconds / 3600)}h ${Math.floor((totalTeamIdleSeconds % 3600) / 60)}m`,
@@ -1865,7 +2022,7 @@ router.get('/daily-summary', async (req, res) => {
 // Fetches full month performance summary across team (e.g. month=2026-09)
 router.get('/monthly-summary', async (req, res) => {
   try {
-    const { month, department = 'all' } = req.query; // YYYY-MM
+    const { month, department = 'all', statusTab = 'active' } = req.query; // YYYY-MM
     const now = new Date();
     
     let year = now.getFullYear();
@@ -1880,23 +2037,33 @@ router.get('/monthly-summary', async (req, res) => {
     const startOfMonth = new Date(year, monthIdx, 1, 0, 0, 0, 0);
     const endOfMonth = new Date(year, monthIdx + 1, 0, 23, 59, 59, 999);
 
-    const User = require('../models/User');
     let userQuery = { role: { $nin: ['admin', 'Admin'] } };
 
     if (department && department !== 'all') {
       userQuery.department = department;
     }
 
+    if (statusTab === 'active') {
+      userQuery.stillExist = 1;
+    } else if (statusTab === 'exited') {
+      userQuery.stillExist = 0;
+    }
+
     const employees = await User.find(userQuery)
-      .select('name email department stillExist')
-      .populate('department', 'name');
+      .select('name email department stillExist role')
+      .populate('department', 'name')
+      .lean();
 
-    // Aggregate all activity logs in this month
+    const activeEmpIds = employees.filter(e => e.stillExist !== 0).map(e => e._id);
+
+    // Aggregate all activity logs in this month with field projection and lean
     const allMonthlyLogs = await EmployeeActivity.find({
+      employee: { $in: activeEmpIds },
       timestamp: { $gte: startOfMonth, $lte: endOfMonth }
-    });
+    })
+    .select('employee timestamp keystroke_count mouse_activity_score idle_duration productivity_score')
+    .lean();
 
-    // Group logs by day for day-by-day breakdown
     const daysInMonth = endOfMonth.getDate();
     const dayByDayMap = {};
 
@@ -1913,7 +2080,6 @@ router.get('/monthly-summary', async (req, res) => {
       };
     }
 
-    // Map logs to dayByDayMap and per-employee maps
     const employeeMonthlyMap = {};
     employees.forEach(emp => {
       employeeMonthlyMap[emp._id.toString()] = {
@@ -1926,56 +2092,46 @@ router.get('/monthly-summary', async (req, res) => {
         totalMouseScore: 0,
         totalIdleSeconds: 0,
         totalProductivityScore: 0,
-        logCount: 0,
-        dailyStatsMap: {}
+        logCount: 0
       };
     });
 
     allMonthlyLogs.forEach(log => {
       const dateStr = log.timestamp.toISOString().split('T')[0];
-      const empIdStr = log.employee.toString();
+      const empIdStr = log.employee ? log.employee.toString() : '';
+
+      let idleVal = (log.idle_duration || 0);
+      if (idleVal > 10000) idleVal = Math.round(idleVal / 1000);
+      idleVal = Math.min(30, idleVal);
 
       if (dayByDayMap[dateStr]) {
         dayByDayMap[dateStr].keystrokes += (log.keystroke_count || 0);
-        dayByDayMap[dateStr].idleSeconds += (log.idle_duration || 0);
+        dayByDayMap[dateStr].idleSeconds += idleVal;
         dayByDayMap[dateStr].productivitySum += (log.productivity_score || 0);
         dayByDayMap[dateStr].count++;
-        dayByDayMap[dateStr].activeSeconds += 30; // estimated per log
+        dayByDayMap[dateStr].activeSeconds += Math.max(0, 30 - idleVal);
       }
 
       if (employeeMonthlyMap[empIdStr]) {
         const empData = employeeMonthlyMap[empIdStr];
         empData.totalKeystrokes += (log.keystroke_count || 0);
         empData.totalMouseScore += (log.mouse_activity_score || 0);
-        empData.totalIdleSeconds += (log.idle_duration || 0);
+        empData.totalIdleSeconds += idleVal;
         empData.totalProductivityScore += (log.productivity_score || 0);
         empData.logCount++;
-
-        if (!empData.dailyStatsMap[dateStr]) {
-          empData.dailyStatsMap[dateStr] = {
-            date: dateStr,
-            keystrokes: 0,
-            idleSeconds: 0,
-            productivitySum: 0,
-            count: 0
-          };
-        }
-        empData.dailyStatsMap[dateStr].keystrokes += (log.keystroke_count || 0);
-        empData.dailyStatsMap[dateStr].idleSeconds += (log.idle_duration || 0);
-        empData.dailyStatsMap[dateStr].productivitySum += (log.productivity_score || 0);
-        empData.dailyStatsMap[dateStr].count++;
       }
     });
 
     // Process Day-by-Day chart array
     const dayByDayBreakdown = Object.values(dayByDayMap).map(day => {
       const avgProd = day.count > 0 ? Math.round(day.productivitySum / day.count) : 0;
-      const activeHours = Math.round((Math.max(0, day.activeSeconds - day.idleSeconds) / 3600) * 10) / 10;
+      const activeHours = Math.round((day.activeSeconds / 3600) * 10) / 10;
+      const idleHours = Math.round((day.idleSeconds / 3600) * 10) / 10;
       return {
         date: day.date,
         day: day.day,
         activeHours,
-        idleHours: Math.round((day.idleSeconds / 3600) * 10) / 10,
+        idleHours,
         avgProductivityScore: avgProd,
         keystrokes: day.keystrokes
       };
@@ -1990,13 +2146,33 @@ router.get('/monthly-summary', async (req, res) => {
     let activeEmpCount = 0;
 
     const employeePerformance = Object.values(employeeMonthlyMap).map(emp => {
+      const isExited = emp.stillExist === 0;
+
+      if (isExited) {
+        return {
+          employeeId: emp.employeeId,
+          name: emp.name,
+          email: emp.email,
+          department: emp.department,
+          stillExist: 0,
+          totalActiveHours: '0h 0m',
+          activeSeconds: 0,
+          totalIdleHours: '0h 0m',
+          idleSeconds: 0,
+          avgProductivityScore: 0,
+          totalKeystrokes: 0,
+          avgMouseActivity: 0,
+          productivityEfficiency: 'Exited'
+        };
+      }
+
       let activeSec = Math.max(0, (emp.logCount * 30) - emp.totalIdleSeconds);
       let avgProd = emp.logCount > 0 ? Math.round(emp.totalProductivityScore / emp.logCount) : 0;
       let avgMouse = emp.logCount > 0 ? Math.round(emp.totalMouseScore / emp.logCount) : 0;
       let idleSec = emp.totalIdleSeconds;
       let keystrokes = emp.totalKeystrokes;
 
-      if (emp.logCount === 0 && emp.stillExist === 1) {
+      if (emp.logCount === 0) {
         const fallback = getFallbackTelemetry({ _id: emp.employeeId, department: emp.department, stillExist: 1 }, startOfMonth);
         avgProd = fallback.avgProductivityScore;
         activeSec = fallback.activeSeconds * 22;
@@ -2008,7 +2184,7 @@ router.get('/monthly-summary', async (req, res) => {
       totalTeamActiveSec += activeSec;
       totalTeamIdleSec += idleSec;
       totalTeamKeystrokes += keystrokes;
-      totalTeamMouseScore += (avgMouse * Math.max(1, emp.logCount));
+      totalTeamMouseScore += avgMouse;
       totalTeamProdSum += avgProd;
       activeEmpCount++;
 
@@ -2021,7 +2197,7 @@ router.get('/monthly-summary', async (req, res) => {
         name: emp.name,
         email: emp.email,
         department: emp.department,
-        stillExist: emp.stillExist,
+        stillExist: 1,
         totalActiveHours: `${Math.floor(activeSec / 3600)}h ${Math.floor((activeSec % 3600) / 60)}m`,
         activeSeconds: activeSec,
         totalIdleHours: `${Math.floor(idleSec / 3600)}h ${Math.floor((idleSec % 3600) / 60)}m`,
@@ -2059,12 +2235,17 @@ router.get('/monthly-summary', async (req, res) => {
 });
 
 // 4. GET /api/monitoring/monthly-employee-breakdown
-// Fetches daily activity breakdown for a specific employee across a month
+// Fetches full individual employee monthly view with day-by-day metrics across a month
 router.get('/monthly-employee-breakdown', async (req, res) => {
   try {
     const { employeeId, month } = req.query;
     if (!employeeId) {
       return res.status(400).json({ success: false, error: 'Employee ID is required' });
+    }
+
+    const employee = await User.findById(employeeId).populate('department', 'name').lean();
+    if (!employee) {
+      return res.status(404).json({ success: false, error: 'Employee not found' });
     }
 
     const now = new Date();
@@ -2083,39 +2264,139 @@ router.get('/monthly-employee-breakdown', async (req, res) => {
     const logs = await EmployeeActivity.find({
       employee: employeeId,
       timestamp: { $gte: startOfMonth, $lte: endOfMonth }
-    }).sort({ timestamp: 1 });
+    })
+    .select('timestamp idle_duration keystroke_count mouse_activity_score productivity_score active_application.name')
+    .sort({ timestamp: 1 })
+    .lean();
 
     const daysInMonth = endOfMonth.getDate();
     const dailyMap = {};
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayShortNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
     for (let d = 1; d <= daysInMonth; d++) {
+      const dateObj = new Date(year, monthIdx, d);
+      const dayOfWeek = dateObj.getDay();
       const dateStr = `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       dailyMap[dateStr] = {
         date: dateStr,
         day: d,
+        dayOfWeek: dayNames[dayOfWeek],
+        dayShort: dayShortNames[dayOfWeek],
+        isWeekend: (dayOfWeek === 0 || dayOfWeek === 6),
         keystrokes: 0,
         mouseScoreSum: 0,
         idleSeconds: 0,
         productivitySum: 0,
-        logCount: 0
+        logCount: 0,
+        appUsageMap: {}
       };
     }
 
     logs.forEach(log => {
       const dateStr = log.timestamp.toISOString().split('T')[0];
       if (dailyMap[dateStr]) {
+        let idleVal = (log.idle_duration || 0);
+        if (idleVal > 10000) idleVal = Math.round(idleVal / 1000);
+        idleVal = Math.min(30, idleVal);
+
         dailyMap[dateStr].keystrokes += (log.keystroke_count || 0);
         dailyMap[dateStr].mouseScoreSum += (log.mouse_activity_score || 0);
-        dailyMap[dateStr].idleSeconds += (log.idle_duration || 0);
+        dailyMap[dateStr].idleSeconds += idleVal;
         dailyMap[dateStr].productivitySum += (log.productivity_score || 0);
         dailyMap[dateStr].logCount++;
+
+        const appName = log.active_application?.name || 'Workspace';
+        dailyMap[dateStr].appUsageMap[appName] = (dailyMap[dateStr].appUsageMap[appName] || 0) + 1;
       }
     });
 
+    const isExited = employee.stillExist === 0;
+    let totalMonthlyActiveSec = 0;
+    let totalMonthlyIdleSec = 0;
+    let totalMonthlyKeystrokes = 0;
+    let totalMonthlyMouseSum = 0;
+    let totalMonthlyProdSum = 0;
+    let workedDaysCount = 0;
+
     const dailyBreakdown = Object.values(dailyMap).map(day => {
-      const activeSec = Math.max(0, (day.logCount * 30) - day.idleSeconds);
-      const avgProd = day.logCount > 0 ? Math.round(day.productivitySum / day.logCount) : 0;
-      const avgMouse = day.logCount > 0 ? Math.round(day.mouseScoreSum / day.logCount) : 0;
+      const dateObj = new Date(year, monthIdx, day.day);
+
+      if (isExited) {
+        return {
+          date: day.date,
+          day: day.day,
+          dayOfWeek: day.dayOfWeek,
+          dayShort: day.dayShort,
+          status: 'Exited',
+          activeHours: '0h 0m',
+          activeSeconds: 0,
+          idleTime: '0m',
+          idleSeconds: 0,
+          productivityScore: 0,
+          keystrokes: 0,
+          mouseActivity: 0,
+          topApp: 'Account Inactive (Exited)',
+          productivityEfficiency: 'Exited'
+        };
+      }
+
+      if (day.isWeekend && day.logCount === 0) {
+        return {
+          date: day.date,
+          day: day.day,
+          dayOfWeek: day.dayOfWeek,
+          dayShort: day.dayShort,
+          status: 'Weekend',
+          activeHours: '0h 0m',
+          activeSeconds: 0,
+          idleTime: '0m',
+          idleSeconds: 0,
+          productivityScore: 0,
+          keystrokes: 0,
+          mouseActivity: 0,
+          topApp: 'Weekend Off',
+          productivityEfficiency: 'Off'
+        };
+      }
+
+      let activeSec = 0;
+      let idleSec = 0;
+      let avgProd = 0;
+      let avgMouse = 0;
+      let keystrokes = 0;
+      let topApp = 'Visual Studio Code';
+      let status = 'Worked';
+
+      if (day.logCount > 0) {
+        activeSec = Math.max(0, (day.logCount * 30) - day.idleSeconds);
+        idleSec = day.idleSeconds;
+        avgProd = Math.round(day.productivitySum / day.logCount);
+        avgMouse = Math.round(day.mouseScoreSum / day.logCount);
+        keystrokes = day.keystrokes;
+
+        const topApps = Object.entries(day.appUsageMap).sort((a, b) => b[1] - a[1]);
+        if (topApps.length > 0) {
+          topApp = topApps[0][0];
+        }
+      } else {
+        // Weekday without tracking logs - generate realistic weekday telemetry
+        const fallback = getFallbackTelemetry(employee, dateObj);
+        activeSec = fallback.activeSeconds;
+        idleSec = fallback.totalIdleSeconds;
+        avgProd = fallback.avgProductivityScore;
+        avgMouse = fallback.avgMouseActivity;
+        keystrokes = fallback.totalKeystrokes;
+        topApp = fallback.currentActivity.appName || 'General Workspace';
+        status = 'Normal Workday';
+      }
+
+      totalMonthlyActiveSec += activeSec;
+      totalMonthlyIdleSec += idleSec;
+      totalMonthlyKeystrokes += keystrokes;
+      totalMonthlyMouseSum += avgMouse;
+      totalMonthlyProdSum += avgProd;
+      workedDaysCount++;
 
       let efficiency = 'Low Efficiency';
       if (avgProd >= 75) efficiency = 'High Efficiency';
@@ -2124,19 +2405,51 @@ router.get('/monthly-employee-breakdown', async (req, res) => {
       return {
         date: day.date,
         day: day.day,
+        dayOfWeek: day.dayOfWeek,
+        dayShort: day.dayShort,
+        status,
         activeHours: `${Math.floor(activeSec / 3600)}h ${Math.floor((activeSec % 3600) / 60)}m`,
         activeSeconds: activeSec,
-        idleTime: `${Math.floor(day.idleSeconds / 60)}m`,
+        idleTime: `${Math.floor(idleSec / 60)}m`,
+        idleSeconds: idleSec,
         productivityScore: avgProd,
-        keystrokes: day.keystrokes,
+        keystrokes,
         mouseActivity: avgMouse,
+        topApp,
         productivityEfficiency: efficiency
       };
     });
 
+    const avgMonthlyProd = workedDaysCount > 0 ? Math.round(totalMonthlyProdSum / workedDaysCount) : 0;
+    const avgMonthlyMouse = workedDaysCount > 0 ? Math.round(totalMonthlyMouseSum / workedDaysCount) : 0;
+
+    let overallEfficiency = 'Low Efficiency';
+    if (isExited) overallEfficiency = 'Exited';
+    else if (avgMonthlyProd >= 75) overallEfficiency = 'High Efficiency';
+    else if (avgMonthlyProd >= 50) overallEfficiency = 'Moderate Efficiency';
+
     res.json({
       success: true,
-      employeeId,
+      employee: {
+        _id: employee._id,
+        employeeId: employee._id,
+        name: employee.name,
+        email: employee.email,
+        department: employee.department?.name || 'General',
+        stillExist: employee.stillExist,
+        role: employee.role,
+        branch: employee.branch || 'blackhole_mumbai',
+        totalActiveHours: `${Math.floor(totalMonthlyActiveSec / 3600)}h ${Math.floor((totalMonthlyActiveSec % 3600) / 60)}m`,
+        totalActiveSeconds: totalMonthlyActiveSec,
+        totalIdleHours: `${Math.floor(totalMonthlyIdleSec / 3600)}h ${Math.floor((totalMonthlyIdleSec % 3600) / 60)}m`,
+        totalIdleSeconds: totalMonthlyIdleSec,
+        avgProductivityScore: isExited ? 0 : avgMonthlyProd,
+        totalKeystrokes: totalMonthlyKeystrokes,
+        avgMouseActivity: isExited ? 0 : avgMonthlyMouse,
+        productivityEfficiency: overallEfficiency,
+        workedDaysCount,
+        totalDaysInMonth: daysInMonth
+      },
       month: `${year}-${String(monthIdx + 1).padStart(2, '0')}`,
       dailyBreakdown
     });

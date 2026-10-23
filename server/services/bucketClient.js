@@ -9,9 +9,14 @@
 const axios = require("axios");
 const { randomUUID } = require("crypto");
 
-const BUCKET_BASE_URL = process.env.BUCKET_BASE_URL;
+const BUCKET_BASE_URL = (
+  process.env.BUCKET_BASE_URL ||
+  process.env.BUCKET_VM_URL ||
+  process.env.BUCKET_URL ||
+  "http://163.128.209.18:8012"
+).replace(/\/+$/, "");
 const BUCKET_API_KEY = process.env.BUCKET_API_KEY;
-const BUCKET_TIMEOUT_MS = parseInt(process.env.BUCKET_TIMEOUT_MS || "5000", 10);
+const BUCKET_TIMEOUT_MS = parseInt(process.env.BUCKET_TIMEOUT_MS || "20000", 10);
 
 const NIYANTRAN_INTEGRATION_ID = "niyantran-hr-platform";
 const NIYANTRAN_REQUESTER_ID = "niyantran";
@@ -55,17 +60,20 @@ function buildHttpClient() {
 }
 
 async function _bootstrapHash(client) {
-  if (_hashBootstrapped) return;
+  if (_lastAcceptedHash) return _lastAcceptedHash;
   try {
     const res = await client.get("/bucket/latest-hash");
     if (res.data && (res.data.last_hash || res.data.hash)) {
       _lastAcceptedHash = res.data.last_hash || res.data.hash;
+      _hashBootstrapped = true;
       console.log(`[bucketClient] Bootstrapped hash: ${_lastAcceptedHash}`);
     }
   } catch (err) {
-    // Not fatal — first artifact will have no parent_hash
+    // Not fatal — do not lock _hashBootstrapped = true so future calls can retry
+    const errMsg = err.response?.data?.detail?.message || err.response?.data?.detail || err.response?.data?.message || err.message;
+    console.warn(`[bucketClient] Hash bootstrap attempt failed: ${errMsg}`);
   }
-  _hashBootstrapped = true;
+  return _lastAcceptedHash;
 }
 
 async function getArtifactPolicy() {
@@ -133,11 +141,21 @@ async function writeArtifact({ artifactType, traceId, payload, parentHash }) {
     artifact,
   };
 
-  const res = await client.post("/bucket/artifacts/write", body);
+  let res;
+  try {
+    res = await client.post("/bucket/artifacts/write", body);
+  } catch (err) {
+    const errorDetails = err.response?.data?.detail?.message || err.response?.data?.detail || err.response?.data?.message || err.message;
+    const customErr = new Error(`[bucketClient] Bucket write failed: ${errorDetails}`);
+    customErr.code = "BUCKET_WRITE_FAILED";
+    customErr.statusCode = err.response?.status;
+    customErr.bucketResponse = err.response?.data;
+    throw customErr;
+  }
 
   if (!res.data.success) {
     const err = new Error(
-      `[bucketClient] Bucket write failed: ${res.data.error}`
+      `[bucketClient] Bucket write failed: ${res.data.error || "Unknown error"}`
     );
     err.code = "BUCKET_WRITE_FAILED";
     err.bucketResponse = res.data;
@@ -204,7 +222,40 @@ async function storeKarmaEventRecord({
           body.parent_hash = _lastAcceptedHash;
         }
 
-        const res = await client.post("/bucket/artifact", body);
+        let res;
+        try {
+          res = await client.post("/bucket/artifact", body);
+        } catch (postErr) {
+          // Auto-recovery on 400: If Bucket responds with HTTP 400 (parent hash mismatch/required), immediately re-fetch GET /bucket/latest-hash and retry the write once.
+          if (postErr.response?.status === 400) {
+            const apiMsg = postErr.response?.data?.detail?.message || postErr.response?.data?.detail || postErr.response?.data?.message || postErr.message;
+            console.warn(`[bucketClient] 400 error on /bucket/artifact (${apiMsg}), auto-recovering parent hash...`);
+            
+            try {
+              const hashRes = await client.get("/bucket/latest-hash");
+              if (hashRes.data && (hashRes.data.last_hash || hashRes.data.hash)) {
+                _lastAcceptedHash = hashRes.data.last_hash || hashRes.data.hash;
+                body.parent_hash = _lastAcceptedHash;
+                console.log(`[bucketClient] Re-fetched latest hash: ${_lastAcceptedHash}, retrying write once...`);
+                res = await client.post("/bucket/artifact", body);
+              } else {
+                throw postErr;
+              }
+            } catch (retryErr) {
+              const retryMsg = retryErr.response?.data?.detail?.message || retryErr.response?.data?.detail || retryErr.response?.data?.message || retryErr.message;
+              const err = new Error(`[bucketClient] Retry failed after parent hash auto-recovery: ${retryMsg}`);
+              err.statusCode = retryErr.response?.status || 400;
+              err.originalError = retryErr;
+              throw err;
+            }
+          } else {
+            const errorDetails = postErr.response?.data?.detail?.message || postErr.response?.data?.detail || postErr.response?.data?.message || postErr.message;
+            const err = new Error(`[bucketClient] /bucket/artifact write error: ${errorDetails}`);
+            err.statusCode = postErr.response?.status;
+            err.originalError = postErr;
+            throw err;
+          }
+        }
 
         if (res.data && (res.data.hash || res.data.success)) {
           const newHash = res.data.hash || res.data.data?.hash;
@@ -225,6 +276,8 @@ async function storeKarmaEventRecord({
         reject(err);
         throw err;
       } catch (err) {
+        const errorDetails = err.response?.data?.detail?.message || err.response?.data?.detail || err.response?.data?.message || err.message;
+        console.error(`[bucketClient] storeKarmaEventRecord failed: ${errorDetails}`);
         reject(err);
         // Don't re-throw — keeps the chain alive for next callers
       }

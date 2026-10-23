@@ -22,9 +22,9 @@ import axios from 'axios';
 import { API_URL } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 
-export function BulkMonitoringControls() {
+export function BulkMonitoringControls({ departments: propDepartments }) {
   const [allEmployeesStatus, setAllEmployeesStatus] = useState([]);
-  const [departments, setDepartments] = useState([]);
+  const [departments, setDepartments] = useState(Array.isArray(propDepartments) ? propDepartments : []);
   const [selectedDepartment, setSelectedDepartment] = useState('all');
   const [intelligentMode, setIntelligentMode] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -33,19 +33,27 @@ export function BulkMonitoringControls() {
 
   useEffect(() => {
     fetchAllEmployeesStatus();
-    fetchDepartments();
+    if (Array.isArray(propDepartments) && propDepartments.length > 0) {
+      setDepartments(propDepartments);
+    } else {
+      fetchDepartments();
+    }
     
     // Set up real-time updates
     const interval = setInterval(fetchAllEmployeesStatus, 30000); // Update every 30 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [propDepartments]);
 
   const fetchAllEmployeesStatus = async () => {
     try {
+      const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
       const response = await axios.get(`${API_URL}/monitoring/status/all`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        headers: {
+          'x-auth-token': token,
+          Authorization: `Bearer ${token}`
+        }
       });
-      setAllEmployeesStatus(response.data.employees || []);
+      setAllEmployeesStatus(response.data?.employees || []);
     } catch (error) {
       console.error('Error fetching all employees status:', error);
     }
@@ -53,12 +61,20 @@ export function BulkMonitoringControls() {
 
   const fetchDepartments = async () => {
     try {
+      const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
       const response = await axios.get(`${API_URL}/departments`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        headers: {
+          'x-auth-token': token,
+          Authorization: `Bearer ${token}`
+        }
       });
-      setDepartments(response.data);
+      const depts = Array.isArray(response.data?.data)
+        ? response.data.data
+        : (Array.isArray(response.data) ? response.data : []);
+      setDepartments(depts);
     } catch (error) {
       console.error('Error fetching departments:', error);
+      setDepartments([]);
     }
   };
 
@@ -72,8 +88,12 @@ export function BulkMonitoringControls() {
         departmentFilter: selectedDepartment !== 'all' ? selectedDepartment : null
       };
 
+      const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
       const response = await axios.post(`${API_URL}/monitoring/start-all`, payload, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        headers: {
+          'x-auth-token': token,
+          Authorization: `Bearer ${token}`
+        }
       });
 
       setBulkOperationProgress({
@@ -114,8 +134,12 @@ export function BulkMonitoringControls() {
     setBulkOperationProgress({ current: 0, total: 0, status: 'Stopping all monitoring...' });
     
     try {
+      const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
       await axios.post(`${API_URL}/monitoring/stop-all`, {}, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        headers: {
+          'x-auth-token': token,
+          Authorization: `Bearer ${token}`
+        }
       });
 
       setBulkOperationProgress({ current: 1, total: 1, status: 'All monitoring stopped' });
@@ -171,8 +195,8 @@ export function BulkMonitoringControls() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Departments</SelectItem>
-                  {departments.map(dept => (
-                    <SelectItem key={dept._id} value={dept.name}>
+                  {Array.isArray(departments) && departments.map(dept => (
+                    <SelectItem key={dept._id || dept.name} value={dept.name}>
                       {dept.name}
                     </SelectItem>
                   ))}

@@ -446,6 +446,8 @@ export function EmployeeMonitoring() {
           <DailyMonitoringView
             onSelectEmployee={(emp) => setDetailEmployee(emp)}
             departmentFilter={filterDepartment}
+            statusTab={statusTab}
+            searchQuery={searchQuery}
           />
         </TabsContent>
 
@@ -454,6 +456,9 @@ export function EmployeeMonitoring() {
           <MonthlyMonitoringView
             onSelectEmployee={(emp) => setDetailEmployee(emp)}
             departmentFilter={filterDepartment}
+            statusTab={statusTab}
+            searchQuery={searchQuery}
+            selectedEmployee={selectedEmployee}
           />
         </TabsContent>
 
@@ -467,20 +472,37 @@ export function EmployeeMonitoring() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
-                    {teamSummaryData.employees.map((emp) => (
-                      <button
-                        key={emp._id}
-                        onClick={() => setSelectedEmployee(emp)}
-                        className={`w-full text-left p-3 rounded-xl transition-all ${
-                          selectedEmployee?._id === emp._id
-                            ? 'bg-primary/10 border border-primary font-bold'
-                            : 'bg-muted/40 hover:bg-muted border border-transparent'
-                        }`}
-                      >
-                        <p className="font-semibold text-sm truncate">{emp.name}</p>
-                        <p className="text-xs text-muted-foreground">{emp.email}</p>
-                      </button>
-                    ))}
+                    {teamSummaryData.employees
+                      .filter((emp) => {
+                        if (statusTab === 'active') return emp.stillExist === 1;
+                        if (statusTab === 'exited') return emp.stillExist === 0;
+                        return true;
+                      })
+                      .map((emp) => (
+                        <button
+                          key={emp._id}
+                          onClick={() => setSelectedEmployee(emp)}
+                          className={`w-full text-left p-3 rounded-xl transition-all ${
+                            selectedEmployee?._id === emp._id
+                              ? 'bg-primary/10 border border-primary font-bold'
+                              : 'bg-muted/40 hover:bg-muted border border-transparent'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1">
+                            <p className="font-semibold text-sm truncate">{emp.name}</p>
+                            {emp.stillExist === 0 ? (
+                              <Badge variant="outline" className="text-[10px] text-rose-400 border-rose-500/30 bg-rose-500/10 px-1.5 py-0 flex-shrink-0">
+                                Exited
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] text-emerald-400 border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0 flex-shrink-0">
+                                Active
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">{emp.email}</p>
+                        </button>
+                      ))}
                   </div>
                 </CardContent>
               </Card>
@@ -562,7 +584,7 @@ export function EmployeeMonitoring() {
         </TabsContent>
 
         <TabsContent value="bulk" className="mt-6">
-          <BulkMonitoringControls />
+          <BulkMonitoringControls departments={departments} />
         </TabsContent>
       </Tabs>
 

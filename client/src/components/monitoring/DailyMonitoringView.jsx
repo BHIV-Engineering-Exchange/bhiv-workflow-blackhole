@@ -22,7 +22,7 @@ import {
 import axios from 'axios';
 import { API_URL } from '@/lib/api';
 
-export function DailyMonitoringView({ onSelectEmployee, departmentFilter = 'all' }) {
+export function DailyMonitoringView({ onSelectEmployee, departmentFilter = 'all', statusTab = 'active', searchQuery: initialSearch = '' }) {
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split('T')[0];
@@ -39,18 +39,24 @@ export function DailyMonitoringView({ onSelectEmployee, departmentFilter = 'all'
     },
     employees: []
   });
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+
+  useEffect(() => {
+    if (initialSearch !== undefined) {
+      setSearchQuery(initialSearch);
+    }
+  }, [initialSearch]);
 
   useEffect(() => {
     fetchDailySummary();
-  }, [selectedDate, departmentFilter]);
+  }, [selectedDate, departmentFilter, statusTab]);
 
   const fetchDailySummary = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
       const response = await axios.get(
-        `${API_URL}/monitoring/daily-summary?date=${selectedDate}&department=${departmentFilter}`,
+        `${API_URL}/monitoring/daily-summary?date=${selectedDate}&department=${departmentFilter}&statusTab=${statusTab}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -67,11 +73,14 @@ export function DailyMonitoringView({ onSelectEmployee, departmentFilter = 'all'
     }
   };
 
-  const filteredEmployees = dailyData.employees.filter(
-    (emp) =>
+  const filteredEmployees = dailyData.employees.filter((emp) => {
+    if (statusTab === 'active' && emp.stillExist === 0) return false;
+    if (statusTab === 'exited' && emp.stillExist === 1) return false;
+    return (
       emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       emp.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+    );
+  });
 
   const getEfficiencyBadge = (efficiency) => {
     if (efficiency === 'High Efficiency') {
@@ -210,7 +219,14 @@ export function DailyMonitoringView({ onSelectEmployee, departmentFilter = 'all'
                   <tr key={emp.employeeId} className="hover:bg-muted/30 transition-colors">
                     <td className="p-4 font-medium">
                       <div>
-                        <p className="font-bold text-foreground">{emp.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-foreground">{emp.name}</p>
+                          {emp.stillExist === 0 && (
+                            <Badge variant="outline" className="text-[10px] text-rose-400 border-rose-500/30 bg-rose-500/10 px-1.5 py-0">
+                              Exited
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground">{emp.email}</p>
                       </div>
                     </td>

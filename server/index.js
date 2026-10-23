@@ -123,6 +123,7 @@
 
 
 const express = require("express");
+const compression = require("compression");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const http = require("http");
@@ -369,6 +370,9 @@ app.use((req, res, next) => {
   res.removeHeader('X-Frame-Options');
   next();
 });
+
+// Enable gzip/deflate compression for all HTTP responses
+app.use(compression());
 
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

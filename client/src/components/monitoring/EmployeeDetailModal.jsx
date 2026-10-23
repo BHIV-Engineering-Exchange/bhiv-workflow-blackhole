@@ -30,9 +30,9 @@ export function EmployeeDetailModal({ employee, onClose }) {
   const [loading, setLoading] = useState(true);
   const [activityLogs, setActivityLogs] = useState([]);
   const [metrics, setMetrics] = useState({
-    activeHours: employee?.activeHours || '0h 0m',
-    idleTime: employee?.idleTime || '0m',
-    keystrokes: employee?.keystrokesToday || 0,
+    activeHours: employee?.totalActiveHours || employee?.activeHours || '0h 0m',
+    idleTime: employee?.totalIdleTime || employee?.idleTime || '0m',
+    keystrokes: employee?.keystrokes !== undefined ? employee.keystrokes : (employee?.keystrokesToday || 0),
     mouseActivity: employee?.mouseActivity || 0,
     productivityScore: employee?.productivityScore || 0,
     productivityEfficiency: employee?.productivityEfficiency || 'No Logs Today',
@@ -72,7 +72,9 @@ export function EmployeeDetailModal({ employee, onClose }) {
         totalKeystrokes += log.keystroke_count || 0;
         totalMouseScore += log.mouse_activity_score || 0;
         let idleVal = log.idle_duration || 0;
-        if (idleVal > 10000) idleVal = idleVal / 1000;
+        if (idleVal > 10000) idleVal = Math.round(idleVal / 1000);
+        // Idle duration for a single 30s telemetry snapshot cannot exceed 30 seconds
+        idleVal = Math.min(30, Math.max(0, idleVal));
         totalIdleSec += idleVal;
         totalProdScore += log.productivity_score || 0;
 
@@ -94,7 +96,7 @@ export function EmployeeDetailModal({ employee, onClose }) {
       setTimelineData(processedTimeline);
 
       const logCount = logs.length;
-      const activeSec = Math.max(0, logCount * 30 - totalIdleSec);
+      const calculatedActiveSec = Math.max(0, logCount * 30 - totalIdleSec);
       const avgProd = logCount > 0 ? Math.round(totalProdScore / logCount) : (employee.productivityScore || 0);
       const avgMouse = logCount > 0 ? Math.round(totalMouseScore / logCount) : (employee.mouseActivity || 0);
 
@@ -108,13 +110,24 @@ export function EmployeeDetailModal({ employee, onClose }) {
       const latest = logs[0];
       const lastActiveDate = latest?.timestamp ? new Date(latest.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
 
+      const calculatedActiveHours = `${Math.floor(calculatedActiveSec / 3600)}h ${Math.floor((calculatedActiveSec % 3600) / 60)}m`;
+      const calculatedIdleTime = `${Math.floor(totalIdleSec / 60)}m`;
+
+      // Prioritize active hours from table summary if present
+      const finalActiveHours = employee.totalActiveHours || employee.activeHours || calculatedActiveHours;
+      const finalIdleTime = employee.totalIdleTime || employee.idleTime || calculatedIdleTime;
+      const finalKeystrokes = employee.keystrokes !== undefined ? employee.keystrokes : (employee.keystrokesToday !== undefined ? employee.keystrokesToday : (totalKeystrokes || 0));
+      const finalMouse = employee.mouseActivity !== undefined ? employee.mouseActivity : avgMouse;
+      const finalProd = employee.productivityScore !== undefined ? employee.productivityScore : avgProd;
+      const finalEfficiency = employee.productivityEfficiency || efficiency;
+
       setMetrics({
-        activeHours: employee.activeHours || `${Math.floor(activeSec / 3600)}h ${Math.floor((activeSec % 3600) / 60)}m`,
-        idleTime: employee.idleTime || `${Math.floor(totalIdleSec / 60)}m`,
-        keystrokes: employee.keystrokesToday !== undefined ? employee.keystrokesToday : (totalKeystrokes || 0),
-        mouseActivity: employee.mouseActivity !== undefined ? employee.mouseActivity : avgMouse,
-        productivityScore: employee.productivityScore !== undefined ? employee.productivityScore : avgProd,
-        productivityEfficiency: employee.productivityEfficiency || efficiency,
+        activeHours: finalActiveHours,
+        idleTime: finalIdleTime,
+        keystrokes: finalKeystrokes,
+        mouseActivity: finalMouse,
+        productivityScore: finalProd,
+        productivityEfficiency: finalEfficiency,
         lastActiveDate,
         currentActivity: employee.currentActivity || {
           appName: latest?.active_application?.name || (employee.stillExist === 1 ? 'Active Workspace' : 'System Exited'),

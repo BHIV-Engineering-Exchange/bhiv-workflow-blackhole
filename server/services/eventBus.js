@@ -20,20 +20,30 @@ let pubClient = null;
 let subClient = null;
 const localEmitter = new EventEmitter();
 let isRedisConnected = false;
+let redisDisabled = false;
 
 /**
  * Initialize Redis clients lazily and configure error/connect events.
  */
 function initClients() {
-  if (pubClient) return;
+  if (pubClient || redisDisabled) return;
 
   try {
     const config = {
       maxRetriesPerRequest: 1,
       retryStrategy(times) {
-        // Linear retry up to 2 seconds
-        return Math.min(times * 100, 2000);
+        if (times > 3) {
+          // Once max retries (3) are exceeded, stop reconnecting and operate quietly in localEmitter mode
+          console.warn("[eventBus] Redis connection failed after 3 attempts. Operating quietly in localEmitter mode.");
+          redisDisabled = true;
+          setImmediate(() => {
+            close();
+          });
+          return null; // Returning null tells ioredis to cease all reconnection attempts
+        }
+        return Math.min(times * 200, 1000);
       },
+      enableOfflineQueue: false,
     };
 
     pubClient = new Redis(REDIS_URL, config);
@@ -46,20 +56,26 @@ function initClients() {
 
     pubClient.on("error", (err) => {
       isRedisConnected = false;
-      console.warn("[eventBus] Redis Publisher error:", err.message);
+      if (!redisDisabled) {
+        console.warn("[eventBus] Redis Publisher error:", err.message);
+      }
     });
 
     subClient.on("connect", () => {
       console.log("[eventBus] Redis Subscriber connected");
+      if (subClient) {
+        subClient.subscribe(CHANNEL).catch((err) => {
+          if (!redisDisabled) {
+            console.error(`[eventBus] Failed to subscribe to ${CHANNEL}:`, err.message);
+          }
+        });
+      }
     });
 
     subClient.on("error", (err) => {
-      console.warn("[eventBus] Redis Subscriber error:", err.message);
-    });
-
-    // Subscribe to channel
-    subClient.subscribe(CHANNEL).catch((err) => {
-      console.error(`[eventBus] Failed to subscribe to ${CHANNEL}:`, err.message);
+      if (!redisDisabled) {
+        console.warn("[eventBus] Redis Subscriber error:", err.message);
+      }
     });
 
     subClient.on("message", (channel, message) => {
@@ -85,7 +101,9 @@ function initClients() {
  * @returns {Promise<{success: boolean, transport: string}>}
  */
 async function publish(type, payload) {
-  initClients();
+  if (!redisDisabled) {
+    initClients();
+  }
 
   const envelope = {
     type,
@@ -93,12 +111,14 @@ async function publish(type, payload) {
     timestamp: new Date().toISOString(),
   };
 
-  if (isRedisConnected && pubClient) {
+  if (isRedisConnected && pubClient && !redisDisabled) {
     try {
       await pubClient.publish(CHANNEL, JSON.stringify(envelope));
       return { success: true, transport: "redis" };
     } catch (err) {
-      console.warn("[eventBus] Redis publish failed, falling back locally:", err.message);
+      if (!redisDisabled) {
+        console.warn("[eventBus] Redis publish failed, falling back locally:", err.message);
+      }
     }
   }
 
@@ -114,7 +134,9 @@ async function publish(type, payload) {
  * @param {Function} callback - Event listener callback function
  */
 function subscribe(type, callback) {
-  initClients();
+  if (!redisDisabled) {
+    initClients();
+  }
   localEmitter.on(type, callback);
 }
 

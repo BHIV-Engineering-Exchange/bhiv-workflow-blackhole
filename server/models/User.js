@@ -100,6 +100,10 @@ const UserSchema = new mongoose.Schema({
   },
 })
 
+// Compound indexes for high-frequency queries
+UserSchema.index({ stillExist: 1, role: 1 })
+UserSchema.index({ department: 1, stillExist: 1 })
+
 // Update the updatedAt field before saving
 UserSchema.pre("save", function (next) {
   this.updatedAt = Date.now()
