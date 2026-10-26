@@ -1376,29 +1376,97 @@ router.post('/report/pdf/:employeeId', async (req, res) => {
   }
 });
 
-// Generate bulk reports
-router.post('/report/bulk', async (req, res) => {
+// Get aggregated team report summary & preview
+router.get('/reports/team/summary', async (req, res) => {
   try {
-    const { employeeIds, startDate, endDate } = req.body;
-
-    const reports = await reportGenerator.generateBulkReport(
-      employeeIds,
+    const { startDate, endDate, department } = req.query;
+    const teamData = await reportGenerator.gatherTeamReportData(
       startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-      endDate || new Date()
+      endDate || new Date(),
+      { department }
+    );
+    res.json({
+      success: true,
+      ...teamData
+    });
+  } catch (error) {
+    console.error('Error fetching team report summary:', error);
+    res.status(500).json({ error: 'Failed to fetch team report data' });
+  }
+});
+
+// Generate consolidated Team PDF report
+router.post('/report/team/pdf', async (req, res) => {
+  try {
+    const { startDate, endDate, department, employeeIds } = req.body;
+    const report = await reportGenerator.generateTeamReport(
+      startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      endDate || new Date(),
+      { department, employeeIds }
     );
 
     res.json({
       success: true,
-      reports: reports.map(report => ({
+      report: {
         filename: report.filename,
         size: report.size,
         generatedAt: report.generatedAt,
         downloadUrl: `/api/monitoring/download/${report.filename}`
-      }))
+      }
+    });
+  } catch (error) {
+    console.error('Error generating team PDF report:', error);
+    res.status(500).json({ error: 'Failed to generate team PDF report' });
+  }
+});
+
+// Generate bulk / team reports
+router.post('/report/bulk', async (req, res) => {
+  try {
+    const { employeeIds, startDate, endDate, department } = req.body;
+
+    const report = await reportGenerator.generateTeamReport(
+      startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      endDate || new Date(),
+      { employeeIds, department }
+    );
+
+    res.json({
+      success: true,
+      report: {
+        filename: report.filename,
+        size: report.size,
+        generatedAt: report.generatedAt,
+        downloadUrl: `/api/monitoring/download/${report.filename}`
+      }
     });
   } catch (error) {
     console.error('Error generating bulk reports:', error);
     res.status(500).json({ error: 'Failed to generate bulk reports' });
+  }
+});
+
+// Export consolidated team data to CSV
+router.post('/export/csv/team', async (req, res) => {
+  try {
+    const { startDate, endDate, department, employeeIds } = req.body;
+    const export_result = await reportGenerator.exportTeamCSV(
+      startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      endDate || new Date(),
+      { department, employeeIds }
+    );
+
+    res.json({
+      success: true,
+      export: {
+        filename: export_result.filename,
+        generatedAt: export_result.generatedAt,
+        downloadUrl: `/api/monitoring/download/${export_result.filename}`
+      }
+    });
+  } catch (error) {
+    console.error('Error exporting team CSV:', error);
+    res.status(500).json({ error: 'Failed to export team CSV' });
   }
 });
 
