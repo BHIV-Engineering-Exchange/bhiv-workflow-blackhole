@@ -28,39 +28,9 @@ const getBranchQuery = (req) => {
   return {};
 };
 
-// Deterministic telemetry generator for employees without live DB activity logs
+// Telemetry defaults for employees without live DB activity logs
 const getFallbackTelemetry = (emp, date = new Date()) => {
-  const empIdStr = emp._id ? emp._id.toString() : (emp.employeeId ? emp.employeeId.toString() : 'emp_default');
-  
-  // Format target date as YYYY-MM-DD
-  let dateStr = '';
-  if (date instanceof Date) {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    dateStr = `${y}-${m}-${d}`;
-  } else {
-    dateStr = String(date || '').split('T')[0];
-  }
-
-  const now = new Date();
-  const todayY = now.getFullYear();
-  const todayM = String(now.getMonth() + 1).padStart(2, '0');
-  const todayD = String(now.getDate()).padStart(2, '0');
-  const todayStr = `${todayY}-${todayM}-${todayD}`;
-
-  const isToday = dateStr === todayStr;
-  const isFuture = dateStr > todayStr;
-
-  const seedStr = `${empIdStr}_${dateStr}`;
-  let hash = 0;
-  for (let i = 0; i < seedStr.length; i++) {
-    hash = (hash << 5) - hash + seedStr.charCodeAt(i);
-    hash |= 0;
-  }
-  const posHash = Math.abs(hash);
-
-  const isExited = emp.stillExist === 0;
+  const isExited = emp && emp.stillExist === 0;
 
   if (isExited) {
     return {
@@ -74,237 +44,36 @@ const getFallbackTelemetry = (emp, date = new Date()) => {
       avgMouseActivity: 0,
       productivityEfficiency: 'Exited',
       currentActivity: {
-        appName: 'System Exited / Offline',
-        windowTitle: 'Account Inactive',
+        appName: 'Account Inactive (Exited)',
+        windowTitle: 'Exited / Offline',
         url: ''
       },
       lastActiveTimestamp: null
     };
   }
-
-  if (isFuture) {
-    return {
-      currentStatus: 'Offline',
-      avgProductivityScore: 0,
-      activeSeconds: 0,
-      activeHoursFormatted: '0h 0m',
-      totalIdleSeconds: 0,
-      idleTimeFormatted: '0m',
-      totalKeystrokes: 0,
-      avgMouseActivity: 0,
-      productivityEfficiency: 'Not Started',
-      currentActivity: {
-        appName: 'Shift Not Started',
-        windowTitle: 'Scheduled Workday',
-        url: ''
-      },
-      lastActiveTimestamp: null
-    };
-  }
-
-  // Active / Away / Idle status
-  const statusRoll = posHash % 100;
-  let currentStatus = 'Active';
-  if (statusRoll > 88) currentStatus = 'Away';
-  else if (statusRoll > 75) currentStatus = 'Idle';
-
-  const avgProductivityScore = 68 + (posHash % 27); // 68% - 94%
-  const avgMouseActivity = 65 + (posHash % 25); // 65% - 89%
-
-  let activeMinutes;
-  let totalIdleSeconds;
-  let totalKeystrokes;
-
-  if (isToday) {
-    // Current in-progress day: Work hours start at 10:00 AM (600 mins from midnight)
-    const currentMins = now.getHours() * 60 + now.getMinutes();
-    const workStartMins = 10 * 60; // 10:00 AM
-    const elapsedMinutes = Math.max(0, currentMins - workStartMins);
-
-    if (elapsedMinutes <= 5) {
-      activeMinutes = Math.min(elapsedMinutes, 5);
-      totalIdleSeconds = 0;
-      totalKeystrokes = 40 + (posHash % 60);
-      if (elapsedMinutes === 0) {
-        currentStatus = 'Idle';
-      }
-    } else {
-      // User active ~78% to 88% of elapsed time since 10:00 AM login
-      const activeRatio = 0.78 + ((posHash % 11) / 100);
-      activeMinutes = Math.round(elapsedMinutes * activeRatio);
-      // Cap at normal full-day max 450 minutes (7.5h)
-      activeMinutes = Math.min(activeMinutes, 450);
-
-      const idleMinutes = Math.max(2, elapsedMinutes - activeMinutes);
-      totalIdleSeconds = idleMinutes * 60;
-
-      // Keystrokes scale with elapsed hours (~450 - 850 / hour)
-      const hourlyKeystrokes = 450 + (posHash % 400);
-      totalKeystrokes = Math.round(hourlyKeystrokes * (elapsedMinutes / 60));
-    }
-  } else {
-    // Past completed workday
-    activeMinutes = 270 + (posHash % 180); // 4.5h - 7.5h
-    totalIdleSeconds = (12 + (posHash % 33)) * 60; // 12m - 45m
-    totalKeystrokes = 1950 + (posHash % 4100); // 1,950 - 6,050
-  }
-
-  const activeSeconds = activeMinutes * 60;
-
-  let productivityEfficiency = 'Low Efficiency';
-  if (avgProductivityScore >= 75) productivityEfficiency = 'High Efficiency';
-  else if (avgProductivityScore >= 50) productivityEfficiency = 'Moderate Efficiency';
-
-  const deptName = (emp.department?.name || emp.department || '').toLowerCase();
-  let appName = 'Visual Studio Code';
-  let windowTitle = 'src/components/monitoring/AIInsightsPanel.jsx - Niyantran';
-
-  if (deptName.includes('ai') || deptName.includes('ml')) {
-    const apps = [
-      { appName: 'Visual Studio Code', windowTitle: 'neural_network_train.py - PyTorch' },
-      { appName: 'Jupyter Notebook', windowTitle: 'model_evaluation.ipynb' },
-      { appName: 'Google Chrome', windowTitle: 'Hugging Face Datasets - Chrome' }
-    ];
-    const item = apps[posHash % apps.length];
-    appName = item.appName;
-    windowTitle = item.windowTitle;
-  } else if (deptName.includes('gaming') || deptName.includes('game')) {
-    const apps = [
-      { appName: 'Unity Editor', windowTitle: 'MainLevel.unity - Niyantran-Game' },
-      { appName: 'Unreal Engine 5', windowTitle: 'Character_Blueprint.uasset' },
-      { appName: 'Blender 3D', windowTitle: 'character_mesh_v2.blend' }
-    ];
-    const item = apps[posHash % apps.length];
-    appName = item.appName;
-    windowTitle = item.windowTitle;
-  } else if (deptName.includes('design') || deptName.includes('ui') || deptName.includes('ux')) {
-    const apps = [
-      { appName: 'Figma', windowTitle: 'Employee Monitoring Dashboard UI/UX' },
-      { appName: 'Adobe Illustrator', windowTitle: 'vector_branding_assets.ai' }
-    ];
-    const item = apps[posHash % apps.length];
-    appName = item.appName;
-    windowTitle = item.windowTitle;
-  } else if (deptName.includes('sales') || deptName.includes('market')) {
-    const apps = [
-      { appName: 'HubSpot CRM', windowTitle: 'Q3 Enterprise Client Pipeline' },
-      { appName: 'Google Sheets', windowTitle: 'Weekly Sales Revenue Tracking' }
-    ];
-    const item = apps[posHash % apps.length];
-    appName = item.appName;
-    windowTitle = item.windowTitle;
-  } else if (deptName.includes('hr') || deptName.includes('people')) {
-    const apps = [
-      { appName: 'Sampada Setu Portal', windowTitle: 'Employee Onboarding & Attendance' },
-      { appName: 'Google Docs', windowTitle: 'Company Policy 2026.docx' }
-    ];
-    const item = apps[posHash % apps.length];
-    appName = item.appName;
-    windowTitle = item.windowTitle;
-  }
-
-  const activeHoursFormatted = `${Math.floor(activeSeconds / 3600)}h ${Math.floor((activeSeconds % 3600) / 60)}m`;
-  const idleTimeFormatted = `${Math.floor(totalIdleSeconds / 60)}m`;
 
   return {
-    currentStatus,
-    avgProductivityScore,
-    activeSeconds,
-    activeHoursFormatted,
-    totalIdleSeconds,
-    idleTimeFormatted,
-    totalKeystrokes,
-    avgMouseActivity,
-    productivityEfficiency,
+    currentStatus: 'Away',
+    avgProductivityScore: 0,
+    activeSeconds: 0,
+    activeHoursFormatted: '0h 0m',
+    totalIdleSeconds: 0,
+    idleTimeFormatted: '0m',
+    totalKeystrokes: 0,
+    avgMouseActivity: 0,
+    productivityEfficiency: 'No Activity',
     currentActivity: {
-      appName,
-      windowTitle,
+      appName: 'No Active Session',
+      windowTitle: 'Away / Offline',
       url: ''
     },
-    lastActiveTimestamp: date
+    lastActiveTimestamp: null
   };
 };
 
-// Generates fallback activity log timeline items for 1-click Employee Detail Modal
-const generateFallbackActivityLogs = (emp, targetDate = new Date()) => {
-  const empIdStr = emp._id ? emp._id.toString() : 'emp_default';
-  let hash = 0;
-  for (let i = 0; i < empIdStr.length; i++) {
-    hash = (hash << 5) - hash + empIdStr.charCodeAt(i);
-    hash |= 0;
-  }
-  const posHash = Math.abs(hash);
-
-  if (emp.stillExist === 0) {
-    return [];
-  }
-
-  const deptName = (emp.department?.name || emp.department || '').toLowerCase();
-  let apps = [
-    { name: 'Visual Studio Code', title: 'src/components/App.jsx - Niyantran' },
-    { name: 'Google Chrome', title: 'GitHub - Pull Requests' },
-    { name: 'Slack', title: '#general - Team Updates' },
-    { name: 'Postman', title: 'API Documentation & Endpoints' },
-    { name: 'Terminal / PowerShell', title: 'npm run dev' }
-  ];
-
-  if (deptName.includes('ai') || deptName.includes('ml')) {
-    apps = [
-      { name: 'Visual Studio Code', title: 'neural_network_model.py - PyTorch' },
-      { name: 'Jupyter Notebook', title: 'data_preprocessing.ipynb' },
-      { name: 'Google Chrome', title: 'Hugging Face Datasets & Papers' },
-      { name: 'Terminal / Bash', title: 'python train.py --epochs 50' },
-      { name: 'Slack', title: '#ai-ml-research' }
-    ];
-  } else if (deptName.includes('gaming') || deptName.includes('game')) {
-    apps = [
-      { name: 'Unity Editor', title: 'MainScene.unity - Niyantran Game' },
-      { name: 'Unreal Engine 5', title: 'PlayerCharacter.uasset' },
-      { name: 'Blender 3D', title: '3d_hero_character.blend' },
-      { name: 'Visual Studio Code', title: 'PlayerController.cs' },
-      { name: 'Discord / Slack', title: '#game-dev-sync' }
-    ];
-  } else if (deptName.includes('design') || deptName.includes('ui')) {
-    apps = [
-      { name: 'Figma', title: 'Admin Monitoring Dashboard Redesign' },
-      { name: 'Adobe Illustrator', title: 'vector_icons_library.ai' },
-      { name: 'Google Chrome', title: 'Dribbble / Design Inspiration' },
-      { name: 'Slack', title: '#design-team' }
-    ];
-  }
-
-  const generatedLogs = [];
-  const baseTime = new Date(targetDate);
-  baseTime.setHours(9, 30, 0, 0);
-
-  const numLogs = 12 + (posHash % 8);
-  for (let i = 0; i < numLogs; i++) {
-    const logTime = new Date(baseTime.getTime() + i * 25 * 60 * 1000);
-    const app = apps[(i + posHash) % apps.length];
-    const isIdle = (i % 5 === 4);
-
-    generatedLogs.push({
-      _id: `fallback_${emp._id}_${i}`,
-      employee: {
-        _id: emp._id,
-        name: emp.name,
-        email: emp.email
-      },
-      timestamp: logTime,
-      active_application: {
-        name: app.name,
-        title: app.title,
-        url: app.name.includes('Chrome') ? 'https://github.com' : ''
-      },
-      keystroke_count: isIdle ? 0 : 120 + ((posHash + i * 37) % 250),
-      mouse_activity_score: isIdle ? 10 : 55 + ((posHash + i * 23) % 40),
-      idle_duration: isIdle ? 600 : (posHash % 30),
-      productivity_score: isIdle ? 30 : 70 + ((posHash + i * 19) % 25),
-      createdAt: logTime
-    });
-  }
-
-  return generatedLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+// Returns empty activity logs for employees without logs on target date
+const generateFallbackActivityLogs = () => {
+  return [];
 };
 
 // Start monitoring session for an employee
@@ -501,33 +270,26 @@ router.get('/employees/:id/activity', async (req, res) => {
       .lean();
     }
 
-    // Fallback 1: If no logs found for requested date or last 24h, fetch latest available activity logs across all time for this employee
-    if (!activities || activities.length === 0) {
-      activities = await EmployeeActivity.find({
+    // Find the latest historical activity log to provide true last active timestamp
+    let lastActiveLog = (activities && activities.length > 0) ? activities[0] : null;
+    if (!lastActiveLog) {
+      lastActiveLog = await EmployeeActivity.findOne({
         employee: employeeId
       })
       .sort({ timestamp: -1 })
-      .limit(100)
-      .populate('employee', 'name email')
+      .select('timestamp active_application')
       .lean();
-    }
-
-    // Fallback 2: If employee has 0 logs in MongoDB across all time, generate fallback activity logs
-    if (!activities || activities.length === 0) {
-      const User = require('../models/User');
-      const emp = await User.findById(employeeId).populate('department', 'name').lean();
-      if (emp) {
-        activities = generateFallbackActivityLogs(emp, date ? new Date(date) : new Date());
-      }
     }
 
     // Get real-time status
     const realtimeStatus = activityTracker.getActivityStatus(employeeId);
 
     res.json({
-      activities,
+      activities: activities || [],
       realtimeStatus,
-      totalCount: activities.length
+      totalCount: activities ? activities.length : 0,
+      lastActiveTimestamp: lastActiveLog?.timestamp || null,
+      lastActiveApp: lastActiveLog?.active_application || null
     });
   } catch (error) {
     console.error('Error fetching employee activity:', error);
@@ -1978,34 +1740,39 @@ router.get('/team-summary', async (req, res) => {
         }
       }
 
-      if (attendanceElapsedSec > 0) {
-        // Attendance record provides official elapsed work hours!
-        activeSeconds = Math.max(activeSeconds, attendanceElapsedSec - totalIdleSeconds);
-        // Ensure active duration does not exceed physical session length
+      if (attendanceElapsedSec > 0 && logsToProcess.length > 0) {
+        // Active computer hours cannot exceed the official physical attendance session
         activeSeconds = Math.min(activeSeconds, attendanceElapsedSec);
       }
 
-      let avgMouseActivity = logsToProcess.length > 0 ? Math.round(totalMouseScore / logsToProcess.length) : 0;
-      let avgProductivityScore = logsToProcess.length > 0 ? Math.round(totalProductivityScore / logsToProcess.length) : 0;
+      let avgMouseActivity = 0;
+      let avgProductivityScore = 0;
+      let productivityEfficiency = 'No Activity';
 
-      // If employee has 0 logs in MongoDB, use deterministic fallback telemetry
-      const fallback = getFallbackTelemetry(emp, new Date());
-
-      if (logsToProcess.length === 0) {
-        avgProductivityScore = fallback.avgProductivityScore;
-        activeSeconds = Math.max(fallback.activeSeconds, attendanceElapsedSec);
-        totalIdleSeconds = fallback.totalIdleSeconds;
-        totalKeystrokes = fallback.totalKeystrokes;
-        avgMouseActivity = fallback.avgMouseActivity;
+      if (logsToProcess.length > 0) {
+        avgMouseActivity = Math.round(totalMouseScore / logsToProcess.length);
+        avgProductivityScore = Math.round(totalProductivityScore / logsToProcess.length);
+        if (avgProductivityScore >= 75) {
+          productivityEfficiency = 'High Efficiency';
+        } else if (avgProductivityScore >= 50) {
+          productivityEfficiency = 'Moderate Efficiency';
+        } else {
+          productivityEfficiency = 'Low Efficiency';
+        }
+      } else {
+        // Zero logs today - strictly zero out all telemetry metrics
+        activeSeconds = 0;
+        totalIdleSeconds = 0;
+        totalKeystrokes = 0;
+        avgMouseActivity = 0;
+        avgProductivityScore = 0;
+        productivityEfficiency = emp.stillExist === 0 ? 'Exited' : 'No Activity';
       }
 
       // Current status calculation
-      let currentStatus = fallback.currentStatus;
+      let currentStatus = 'Away';
       if (emp.stillExist === 0) {
         currentStatus = 'Exited';
-      } else if (att && att.startDayTime && !att.endDayTime) {
-        // Officially clocked in and active on Work Hours Manager
-        currentStatus = 'Active';
       } else if (latestLog) {
         const timeSinceLastLogSec = (new Date() - new Date(latestLog.timestamp)) / 1000;
         if (timeSinceLastLogSec <= 300) {
@@ -2015,18 +1782,15 @@ router.get('/team-summary', async (req, res) => {
         } else {
           currentStatus = 'Away';
         }
-      }
-
-      // Productivity Efficiency calculation
-      let productivityEfficiency = 'Low Efficiency';
-      if (avgProductivityScore >= 75) {
-        productivityEfficiency = 'High Efficiency';
-      } else if (avgProductivityScore >= 50) {
-        productivityEfficiency = 'Moderate Efficiency';
+      } else if (att && att.startDayTime && !att.endDayTime) {
+        currentStatus = 'Idle';
+      } else {
+        currentStatus = 'Away';
       }
 
       const activeHoursFormatted = `${Math.floor(activeSeconds / 3600)}h ${Math.floor((activeSeconds % 3600) / 60)}m`;
       const idleTimeFormatted = `${Math.floor(totalIdleSeconds / 60)}m`;
+      const historicalLastLog = latestHistoricalLogByEmp.get(empIdStr);
 
       return {
         _id: emp._id,
@@ -2043,12 +1807,12 @@ router.get('/team-summary', async (req, res) => {
         keystrokesToday: totalKeystrokes,
         mouseActivity: avgMouseActivity,
         currentActivity: {
-          appName: latestLog?.active_application?.name || fallback.currentActivity.appName,
-          windowTitle: latestLog?.active_application?.title || fallback.currentActivity.windowTitle,
-          url: latestLog?.active_application?.url || fallback.currentActivity.url
+          appName: latestLog?.active_application?.name || (emp.stillExist === 0 ? 'Account Inactive (Exited)' : 'No Active Session'),
+          windowTitle: latestLog?.active_application?.title || (emp.stillExist === 0 ? 'Exited' : 'Away / Offline'),
+          url: latestLog?.active_application?.url || ''
         },
         productivityEfficiency,
-        lastActiveTimestamp: latestLog?.timestamp || fallback.lastActiveTimestamp
+        lastActiveTimestamp: latestLog?.timestamp || historicalLastLog?.timestamp || null
       };
     });
 
@@ -2223,41 +1987,39 @@ router.get('/daily-summary', async (req, res) => {
         }
       }
 
-      if (attendanceElapsedSec > 0) {
-        // Attendance record provides official work hours!
-        activeSeconds = Math.max(activeSeconds, attendanceElapsedSec - totalIdleSeconds);
+      if (attendanceElapsedSec > 0 && logCount > 0) {
+        // Active computer hours cannot exceed the official physical attendance session
         activeSeconds = Math.min(activeSeconds, attendanceElapsedSec);
       }
 
-      let avgMouseActivity = logCount > 0 ? Math.round(totalMouseScore / logCount) : 0;
-      let avgProductivityScore = logCount > 0 ? Math.round(totalProductivityScore / logCount) : 0;
+      let avgMouseActivity = 0;
+      let avgProductivityScore = 0;
+      let productivityEfficiency = 'No Activity';
 
       if (logCount > 0) {
+        avgMouseActivity = Math.round(totalMouseScore / logCount);
+        avgProductivityScore = Math.round(totalProductivityScore / logCount);
         totalTeamKeystrokes += totalKeystrokes;
         totalTeamActiveSeconds += activeSeconds;
         totalTeamIdleSeconds += totalIdleSeconds;
         teamProductivitySum += avgProductivityScore;
         activeEmployeeCount++;
+
+        if (avgProductivityScore >= 75) {
+          productivityEfficiency = 'High Efficiency';
+        } else if (avgProductivityScore >= 50) {
+          productivityEfficiency = 'Moderate Efficiency';
+        } else {
+          productivityEfficiency = 'Low Efficiency';
+        }
       } else {
-        const fallback = getFallbackTelemetry(emp, targetDate);
-        avgProductivityScore = fallback.avgProductivityScore;
-        activeSeconds = Math.max(fallback.activeSeconds, attendanceElapsedSec);
-        totalIdleSeconds = fallback.totalIdleSeconds;
-        totalKeystrokes = fallback.totalKeystrokes;
-        avgMouseActivity = fallback.avgMouseActivity;
-
-        totalTeamKeystrokes += totalKeystrokes;
-        totalTeamActiveSeconds += activeSeconds;
-        totalTeamIdleSeconds += totalIdleSeconds;
-        teamProductivitySum += avgProductivityScore;
-        activeEmployeeCount++;
-      }
-
-      let productivityEfficiency = 'Low Efficiency';
-      if (avgProductivityScore >= 75) {
-        productivityEfficiency = 'High Efficiency';
-      } else if (avgProductivityScore >= 50) {
-        productivityEfficiency = 'Moderate Efficiency';
+        // Zero logs today - strictly zero out all telemetry metrics
+        activeSeconds = 0;
+        totalIdleSeconds = 0;
+        totalKeystrokes = 0;
+        avgMouseActivity = 0;
+        avgProductivityScore = 0;
+        productivityEfficiency = emp.stillExist === 0 ? 'Exited' : 'No Activity';
       }
 
       const appDetails = Object.entries(appUsageMap)

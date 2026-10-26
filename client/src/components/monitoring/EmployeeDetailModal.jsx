@@ -110,41 +110,43 @@ export function EmployeeDetailModal({ employee, onClose }) {
 
       const logCount = dayLogs.length;
       const calculatedActiveSec = Math.max(0, logCount * 30 - totalIdleSec);
-      const avgProd = logCount > 0 ? Math.round(totalProdScore / logCount) : (employee.productivityScore || 0);
-      const avgMouse = logCount > 0 ? Math.round(totalMouseScore / logCount) : (employee.mouseActivity || 0);
+      const avgProd = logCount > 0 ? Math.round(totalProdScore / logCount) : 0;
+      const avgMouse = logCount > 0 ? Math.round(totalMouseScore / logCount) : 0;
 
-      let efficiency = 'No Logs Recorded';
-      if (logCount > 0 || (totalKeystrokes || employee.keystrokesToday) > 0) {
+      let efficiency = employee.stillExist === 0 ? 'Exited' : 'No Telemetry Today';
+      if (logCount > 0) {
         if (avgProd >= 75) efficiency = 'High Efficiency';
         else if (avgProd >= 50) efficiency = 'Moderate Efficiency';
         else efficiency = 'Low Efficiency';
       }
 
-      const latest = logs[0];
-      const lastActiveDate = latest?.timestamp ? new Date(latest.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
-
       const calculatedActiveHours = `${Math.floor(calculatedActiveSec / 3600)}h ${Math.floor((calculatedActiveSec % 3600) / 60)}m`;
       const calculatedIdleTime = `${Math.floor(totalIdleSec / 60)}m`;
 
-      // Active hours display:
-      // When dayLogs exist, calculatedActiveHours is verified directly from today's telemetry snapshots.
-      let finalActiveHours = calculatedActiveHours;
-      if (employee.activeHours && employee.activeHours !== '0h 0m') {
-        const match = employee.activeHours.match(/(?:(\d+)h)?\s*(?:(\d+)m)?/);
-        const empSec = match ? (parseInt(match[1] || 0) * 3600 + parseInt(match[2] || 0) * 60) : 0;
-        // Accept employee.activeHours (e.g. from attendance check-in) if it does not wildly conflict with verified logs
-        if (logCount === 0 || (empSec > 0 && Math.abs(empSec - calculatedActiveSec) < 7200)) {
-          finalActiveHours = employee.activeHours;
-        }
-      } else if (logCount === 0 && employee.totalActiveHours && employee.date) {
-        finalActiveHours = employee.totalActiveHours;
-      }
+      const finalActiveHours = logCount > 0 ? calculatedActiveHours : '0h 0m';
+      const finalIdleTime = logCount > 0 ? calculatedIdleTime : '0m';
+      const finalKeystrokes = logCount > 0 ? totalKeystrokes : 0;
+      const finalMouse = logCount > 0 ? avgMouse : 0;
+      const finalProd = logCount > 0 ? avgProd : 0;
+      const finalEfficiency = efficiency;
 
-      const finalIdleTime = employee.idleTime || employee.totalIdleTime || calculatedIdleTime;
-      const finalKeystrokes = totalKeystrokes > 0 ? totalKeystrokes : (employee.keystrokesToday !== undefined ? employee.keystrokesToday : (employee.keystrokes || 0));
-      const finalMouse = avgMouse > 0 ? avgMouse : (employee.mouseActivity !== undefined ? employee.mouseActivity : 0);
-      const finalProd = avgProd > 0 ? avgProd : (employee.productivityScore !== undefined ? employee.productivityScore : 0);
-      const finalEfficiency = employee.productivityEfficiency || efficiency;
+      const latest = dayLogs[0];
+      const lastActiveDate = response.data.lastActiveTimestamp
+        ? new Date(response.data.lastActiveTimestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+        : (latest?.timestamp ? new Date(latest.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : (employee.lastActiveTimestamp ? new Date(employee.lastActiveTimestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null));
+
+      let currentActivity = {
+        appName: employee.stillExist === 0 ? 'Account Inactive (Exited)' : 'No Active Session',
+        windowTitle: employee.stillExist === 0 ? 'Exited' : 'Away / Offline',
+        url: ''
+      };
+      if (logCount > 0 && latest?.active_application) {
+        currentActivity = {
+          appName: latest.active_application.name || 'Desktop Workspace',
+          windowTitle: latest.active_application.title || 'Session active',
+          url: latest.active_application.url || ''
+        };
+      }
 
       setMetrics({
         activeHours: finalActiveHours,
@@ -154,11 +156,7 @@ export function EmployeeDetailModal({ employee, onClose }) {
         productivityScore: finalProd,
         productivityEfficiency: finalEfficiency,
         lastActiveDate,
-        currentActivity: employee.currentActivity || {
-          appName: latest?.active_application?.name || (employee.stillExist === 1 ? 'Active Workspace' : 'System Exited'),
-          windowTitle: latest?.active_application?.title || 'Session active',
-          url: latest?.active_application?.url || ''
-        }
+        currentActivity
       });
     } catch (error) {
       console.error('Error fetching employee detailed monitoring:', error);
@@ -171,6 +169,7 @@ export function EmployeeDetailModal({ employee, onClose }) {
     if (eff === 'High Efficiency') return <Badge className="bg-emerald-600 text-white font-bold text-[10px]">⚡ High Efficiency</Badge>;
     if (eff === 'Moderate Efficiency') return <Badge className="bg-amber-600 text-white font-bold text-[10px]">⚖️ Moderate Efficiency</Badge>;
     if (eff === 'Low Efficiency') return <Badge className="bg-rose-600 text-white font-bold text-[10px]">🔻 Low Efficiency</Badge>;
+    if (eff === 'Exited') return <Badge variant="outline" className="text-rose-400 border-rose-500/30 bg-rose-500/10 font-bold text-[10px]">Exited</Badge>;
     return <Badge className="bg-zinc-800 text-zinc-300 border border-zinc-700 font-semibold text-[10px]">⏸️ No Telemetry Today</Badge>;
   };
 

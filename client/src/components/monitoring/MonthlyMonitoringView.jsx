@@ -311,7 +311,17 @@ export function MonthlyMonitoringView({
     return empMonthlyData.dailyBreakdown;
   }, [empMonthlyData.dailyBreakdown, dayFilter]);
 
-  const getEfficiencyBadge = (efficiency) => {
+  const getEfficiencyBadge = (efficiency, emp = null) => {
+    if (emp && (emp.stillExist === 0 || emp.currentStatus === 'Exited')) {
+      return <Badge className="bg-rose-500/15 text-rose-400 border border-rose-500/30 font-bold text-xs px-2.5 py-0.5">Account Exited</Badge>;
+    }
+    if (
+      emp &&
+      ((!emp.avgProductivityScore || emp.avgProductivityScore === 0) && (!emp.totalKeystrokes || emp.totalKeystrokes === 0))
+    ) {
+      return <Badge variant="outline" className="text-zinc-400 border-zinc-800 bg-zinc-900/40 font-medium text-xs px-2.5 py-0.5">💤 No Activity</Badge>;
+    }
+
     switch (efficiency) {
       case 'High Efficiency':
         return <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold text-xs px-2.5 py-0.5">⚡ High Efficiency</Badge>;
@@ -326,11 +336,13 @@ export function MonthlyMonitoringView({
       case 'Upcoming':
         return <Badge variant="outline" className="text-blue-400 border-blue-500/30 bg-blue-500/10 font-medium text-xs px-2.5 py-0.5">⏳ Upcoming</Badge>;
       case 'No Activity':
+      case 'No Logs Today':
+      case 'No Logs Recorded':
         return <Badge variant="outline" className="text-zinc-400 border-zinc-800 bg-zinc-900/40 font-medium text-xs px-2.5 py-0.5">💤 No Activity</Badge>;
       case 'Exited':
         return <Badge className="bg-rose-500/15 text-rose-400 border border-rose-500/30 font-bold text-xs px-2.5 py-0.5">Account Exited</Badge>;
       default:
-        return <Badge className="bg-rose-500/15 text-rose-400 border border-rose-500/30 font-bold text-xs px-2.5 py-0.5">🔻 Low Efficiency</Badge>;
+        return <Badge variant="outline" className="text-zinc-400 border-zinc-800 bg-zinc-900/40 font-medium text-xs px-2.5 py-0.5">💤 No Activity</Badge>;
     }
   };
 
@@ -392,9 +404,16 @@ export function MonthlyMonitoringView({
   }, [empMonthlyData.dailyBreakdown, empMonthlyData.employee, selectedEmp]);
 
   const activeEmployeeObj = empMonthlyData.employee || selectedEmp;
-  const verifiedEfficiency = calculatedMonthlyMetrics ? calculatedMonthlyMetrics.productivityEfficiency : (empMonthlyData.employee?.productivityEfficiency || activeEmployeeObj?.productivityEfficiency || 'Low Efficiency');
-  const verifiedScore = calculatedMonthlyMetrics ? calculatedMonthlyMetrics.avgProductivityScore : (empMonthlyData.employee?.avgProductivityScore ?? activeEmployeeObj?.avgProductivityScore ?? 0);
-  const verifiedWorkedDays = calculatedMonthlyMetrics ? calculatedMonthlyMetrics.workedDaysCount : (empMonthlyData.employee?.workedDaysCount ?? 0);
+  const isEmployeeExited = activeEmployeeObj?.stillExist === 0;
+  const verifiedEfficiency = calculatedMonthlyMetrics
+    ? calculatedMonthlyMetrics.productivityEfficiency
+    : (isEmployeeExited ? 'Exited' : (activeEmployeeObj?.productivityEfficiency || 'No Activity'));
+  const verifiedScore = calculatedMonthlyMetrics
+    ? calculatedMonthlyMetrics.avgProductivityScore
+    : (isEmployeeExited ? 0 : (activeEmployeeObj?.avgProductivityScore ?? 0));
+  const verifiedWorkedDays = calculatedMonthlyMetrics
+    ? calculatedMonthlyMetrics.workedDaysCount
+    : (empMonthlyData.employee?.workedDaysCount ?? 0);
 
   return (
     <div className="space-y-6">
@@ -721,7 +740,7 @@ export function MonthlyMonitoringView({
                   <div className="text-right">
                     <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Overall Efficiency</p>
                     <div className="mt-1">
-                      {getEfficiencyBadge(verifiedEfficiency)}
+                      {getEfficiencyBadge(verifiedEfficiency, activeEmployeeObj)}
                     </div>
                   </div>
                   <div className="h-10 w-px bg-border mx-2 hidden sm:block" />
@@ -1235,7 +1254,7 @@ export function MonthlyMonitoringView({
                           {(emp.totalKeystrokes || 0).toLocaleString()}
                         </td>
                         <td className="p-4">{emp.avgMouseActivity}%</td>
-                        <td className="p-4">{getEfficiencyBadge(emp.productivityEfficiency)}</td>
+                        <td className="p-4">{getEfficiencyBadge(emp.productivityEfficiency, emp)}</td>
                         <td className="p-4 text-right">
                           <Button
                             size="sm"

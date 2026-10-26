@@ -82,7 +82,18 @@ export function DailyMonitoringView({ onSelectEmployee, departmentFilter = 'all'
     );
   });
 
-  const getEfficiencyBadge = (efficiency) => {
+  const getEfficiencyBadge = (efficiency, emp = null) => {
+    if (emp && emp.stillExist === 0) {
+      return <Badge variant="outline" className="text-rose-400 border-rose-500/30 bg-rose-500/10 font-semibold text-[11px]">Exited</Badge>;
+    }
+    if (
+      efficiency === 'No Activity' ||
+      efficiency === 'No Logs Today' ||
+      efficiency === 'No Logs Recorded' ||
+      (emp && (!emp.productivityScore || emp.productivityScore === 0) && (!emp.keystrokes || emp.keystrokes === 0))
+    ) {
+      return <Badge variant="outline" className="text-zinc-400 border-zinc-700 bg-zinc-900/60 font-semibold text-[11px]">💤 No Activity</Badge>;
+    }
     if (efficiency === 'High Efficiency') {
       return <Badge className="bg-emerald-500 text-white font-semibold text-[11px]">⚡ High Efficiency</Badge>;
     } else if (efficiency === 'Moderate Efficiency') {
@@ -249,11 +260,11 @@ export function DailyMonitoringView({ onSelectEmployee, departmentFilter = 'all'
                             </Badge>
                           ))
                         ) : (
-                          <span className="text-xs text-muted-foreground">General Workspace</span>
+                          <span className="text-xs text-muted-foreground">Away / No Logs</span>
                         )}
                       </div>
                     </td>
-                    <td className="p-4">{getEfficiencyBadge(emp.productivityEfficiency)}</td>
+                    <td className="p-4">{getEfficiencyBadge(emp.productivityEfficiency, emp)}</td>
                     <td className="p-4 text-right">
                       <Button
                         size="sm"

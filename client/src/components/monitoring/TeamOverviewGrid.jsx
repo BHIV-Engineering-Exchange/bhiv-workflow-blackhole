@@ -68,8 +68,22 @@ export function TeamOverviewGrid({
   };
 
   const getEfficiencyBadge = (emp) => {
-    // If no telemetry logs recorded today yet
-    if ((!emp.productivityScore || emp.productivityScore === 0) && (!emp.keystrokesToday || emp.keystrokesToday === 0)) {
+    if (emp.stillExist === 0 || emp.currentStatus === 'Exited') {
+      return (
+        <Badge variant="outline" className="text-rose-400 border-rose-500/30 bg-rose-500/10 font-semibold text-[11px] px-2 py-0.5 shadow-sm">
+          Account Exited
+        </Badge>
+      );
+    }
+
+    // If employee is Away or has 0 active seconds and 0 keystrokes today
+    if (
+      emp.productivityEfficiency === 'No Activity' ||
+      emp.productivityEfficiency === 'No Logs Today' ||
+      emp.productivityEfficiency === 'No Logs Recorded' ||
+      ((!emp.activeSeconds || emp.activeSeconds === 0) && (!emp.keystrokesToday || emp.keystrokesToday === 0)) ||
+      (!emp.productivityScore || emp.productivityScore === 0)
+    ) {
       return (
         <Badge className="bg-zinc-800 text-zinc-300 border border-zinc-700 font-medium text-[11px] px-2 py-0.5 shadow-sm">
           ⏸️ No Logs Today

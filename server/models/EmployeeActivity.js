@@ -97,20 +97,27 @@ employeeActivitySchema.statics.getActivitySummary = async function(employeeId, s
 
 // Instance method to calculate productivity score
 employeeActivitySchema.methods.calculateProductivityScore = function() {
-  const keystrokeWeight = 0.3;
-  const mouseWeight = 0.3;
-  const idleWeight = 0.4;
-  
-  const keystrokeScore = Math.min(this.keystroke_count / 100, 1) * 100;
-  const mouseScore = this.mouse_activity_score;
-  const idleScore = Math.max(0, 100 - (this.idle_duration / 60)); // Penalize idle time
-  
+  const idleSec = this.idle_duration || 0;
+  const keys = this.keystroke_count || 0;
+  const mouse = this.mouse_activity_score || 0;
+
+  // If user had no keystrokes and minimal mouse movement or was idle for the snapshot, score is strictly 0
+  if ((keys === 0 && mouse < 10) || idleSec >= 30) {
+    this.productivity_score = 0;
+    return 0;
+  }
+
+  const keystrokeScore = Math.min(keys / 40, 1) * 100;
+  const mouseScore = Math.min(Math.max(mouse, 0), 100);
+  const idlePenalty = Math.min(100, (idleSec / 30) * 100);
+  const activeRatioScore = Math.max(0, 100 - idlePenalty);
+
   this.productivity_score = Math.round(
-    (keystrokeScore * keystrokeWeight) +
-    (mouseScore * mouseWeight) +
-    (idleScore * idleWeight)
+    (keystrokeScore * 0.35) +
+    (mouseScore * 0.35) +
+    (activeRatioScore * 0.3)
   );
-  
+
   return this.productivity_score;
 };
 
