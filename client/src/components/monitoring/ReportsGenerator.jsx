@@ -313,17 +313,33 @@ export function ReportsGenerator({ employee: propEmployee, employees = [], onSel
           { headers: { 'x-auth-token': token, Authorization: `Bearer ${token}` } }
         );
 
-        if (response.data && response.data.report && response.data.report.downloadUrl) {
-          const downloadUrl = `${API_URL.replace('/api', '')}${response.data.report.downloadUrl}`;
-          window.open(downloadUrl, '_blank');
+        const filename = response.data?.report?.filename;
+        if (filename) {
+          // Direct Blob Download: Bypasses PWA Service Worker navigation interception and React Router
+          const downloadEndpoint = `${API_URL}/monitoring/download/${filename}`;
+          const fileRes = await axios.get(downloadEndpoint, {
+            headers: { 'x-auth-token': token, Authorization: `Bearer ${token}` },
+            responseType: 'blob'
+          });
+
+          const blob = new Blob([fileRes.data], { type: 'application/pdf' });
+          const blobUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+
           toast({
-            title: 'PDF Report Ready',
-            description: 'PDF generated and opened for download.'
+            title: 'PDF Report Downloaded',
+            description: `Exported ${filename} successfully.`
           });
           return;
         }
       } catch (srvErr) {
-        console.warn('Server PDF service not available, launching print dialog:', srvErr.message);
+        console.warn('Server PDF service failed, falling back to print dialog:', srvErr.message);
       }
 
       // Print Dialog Fallback (Save as PDF)

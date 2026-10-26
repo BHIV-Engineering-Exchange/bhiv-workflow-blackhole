@@ -1432,28 +1432,28 @@ router.post('/export/csv/:employeeId', async (req, res) => {
 // Download generated files
 router.get('/download/:filename', async (req, res) => {
   try {
-    const { filename } = req.params;
-    const reportsDir = process.env.REPORTS_STORAGE_PATH || './uploads/reports';
-    const filepath = path.join(reportsDir, filename);
+    const safeFilename = path.basename(req.params.filename);
+    const reportsDir = path.resolve(process.env.REPORTS_STORAGE_PATH || './uploads/reports');
+    const filepath = path.join(reportsDir, safeFilename);
 
     // Check if file exists
     const fs = require('fs').promises;
     await fs.access(filepath);
 
     // Set appropriate headers
-    const ext = path.extname(filename).toLowerCase();
+    const ext = path.extname(safeFilename).toLowerCase();
     if (ext === '.pdf') {
       res.setHeader('Content-Type', 'application/pdf');
     } else if (ext === '.csv') {
       res.setHeader('Content-Type', 'text/csv');
     }
 
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.download(filepath);
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    return res.download(filepath, safeFilename);
 
   } catch (error) {
     console.error('Error downloading file:', error);
-    res.status(404).json({ error: 'File not found' });
+    return res.status(404).json({ error: 'File not found' });
   }
 });
 
