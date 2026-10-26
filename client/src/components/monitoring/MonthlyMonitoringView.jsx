@@ -312,30 +312,89 @@ export function MonthlyMonitoringView({
   }, [empMonthlyData.dailyBreakdown, dayFilter]);
 
   const getEfficiencyBadge = (efficiency) => {
-    if (efficiency === 'High Efficiency') {
-      return <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold text-xs px-2.5 py-0.5">⚡ High Efficiency</Badge>;
-    } else if (efficiency === 'Moderate Efficiency') {
-      return <Badge className="bg-amber-500/15 text-amber-400 border border-amber-500/30 font-bold text-xs px-2.5 py-0.5">⚖️ Moderate Efficiency</Badge>;
-    } else if (efficiency === 'Exited') {
-      return <Badge className="bg-rose-500/15 text-rose-400 border border-rose-500/30 font-bold text-xs px-2.5 py-0.5">Account Exited</Badge>;
+    switch (efficiency) {
+      case 'High Efficiency':
+        return <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold text-xs px-2.5 py-0.5">⚡ High Efficiency</Badge>;
+      case 'Moderate Efficiency':
+        return <Badge className="bg-amber-500/15 text-amber-400 border border-amber-500/30 font-bold text-xs px-2.5 py-0.5">⚖️ Moderate Efficiency</Badge>;
+      case 'Low Efficiency':
+        return <Badge className="bg-rose-500/15 text-rose-400 border border-rose-500/30 font-bold text-xs px-2.5 py-0.5">🔻 Low Efficiency</Badge>;
+      case 'Weekend Off':
+      case 'Weekend':
+      case 'Off':
+        return <Badge variant="outline" className="text-zinc-500 border-zinc-800 bg-zinc-900/60 font-medium text-xs px-2.5 py-0.5">☕ Weekend Off</Badge>;
+      case 'Upcoming':
+        return <Badge variant="outline" className="text-blue-400 border-blue-500/30 bg-blue-500/10 font-medium text-xs px-2.5 py-0.5">⏳ Upcoming</Badge>;
+      case 'No Activity':
+        return <Badge variant="outline" className="text-zinc-400 border-zinc-800 bg-zinc-900/40 font-medium text-xs px-2.5 py-0.5">💤 No Activity</Badge>;
+      case 'Exited':
+        return <Badge className="bg-rose-500/15 text-rose-400 border border-rose-500/30 font-bold text-xs px-2.5 py-0.5">Account Exited</Badge>;
+      default:
+        return <Badge className="bg-rose-500/15 text-rose-400 border border-rose-500/30 font-bold text-xs px-2.5 py-0.5">🔻 Low Efficiency</Badge>;
     }
-    return <Badge className="bg-rose-500/15 text-rose-400 border border-rose-500/30 font-bold text-xs px-2.5 py-0.5">🔻 Low Efficiency</Badge>;
   };
 
   const getDayStatusBadge = (status, activeSeconds) => {
     if (status === 'Exited') {
       return <Badge variant="outline" className="text-rose-400 border-rose-500/30 bg-rose-500/10 text-[10px]">Exited</Badge>;
     }
-    if (status === 'Weekend') {
+    if (status === 'Weekend' || status === 'Weekend Off') {
       return <Badge variant="outline" className="text-zinc-500 border-zinc-800 bg-zinc-900/60 text-[10px]">Weekend Off</Badge>;
+    }
+    if (status === 'Upcoming') {
+      return <Badge variant="outline" className="text-blue-400 border-blue-500/30 bg-blue-500/10 text-[10px]">Upcoming</Badge>;
     }
     if (activeSeconds > 0 || status === 'Worked' || status === 'Completed Workday') {
       return <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-[10px]">Workday Active</Badge>;
     }
-    return <Badge variant="outline" className="text-zinc-400 border-zinc-800 bg-zinc-900/40 text-[10px]">No Logs</Badge>;
+    return <Badge variant="outline" className="text-zinc-400 border-zinc-800 bg-zinc-900/40 text-[10px]">No Activity</Badge>;
   };
 
+  // Mathematical verification: calculate overall monthly efficiency directly from worked days
+  const calculatedMonthlyMetrics = useMemo(() => {
+    const daily = empMonthlyData.dailyBreakdown || [];
+    if (!daily || daily.length === 0) {
+      return null;
+    }
+
+    const isExited = (empMonthlyData.employee?.stillExist === 0) || (selectedEmp?.stillExist === 0);
+    if (isExited) {
+      return {
+        avgProductivityScore: 0,
+        productivityEfficiency: 'Exited',
+        workedDaysCount: 0
+      };
+    }
+
+    // Days where employee actually worked
+    const workedDays = daily.filter(d => (d.status === 'Worked' || d.status === 'Completed Workday' || d.activeSeconds > 0) && d.productivityScore > 0);
+
+    if (workedDays.length === 0) {
+      return {
+        avgProductivityScore: 0,
+        productivityEfficiency: 'No Activity',
+        workedDaysCount: 0
+      };
+    }
+
+    const sumProd = workedDays.reduce((acc, d) => acc + (d.productivityScore || 0), 0);
+    const avgProd = Math.round(sumProd / workedDays.length);
+
+    let efficiency = 'Low Efficiency';
+    if (avgProd >= 75) efficiency = 'High Efficiency';
+    else if (avgProd >= 50) efficiency = 'Moderate Efficiency';
+
+    return {
+      avgProductivityScore: avgProd,
+      productivityEfficiency: efficiency,
+      workedDaysCount: workedDays.length
+    };
+  }, [empMonthlyData.dailyBreakdown, empMonthlyData.employee, selectedEmp]);
+
   const activeEmployeeObj = empMonthlyData.employee || selectedEmp;
+  const verifiedEfficiency = calculatedMonthlyMetrics ? calculatedMonthlyMetrics.productivityEfficiency : (empMonthlyData.employee?.productivityEfficiency || activeEmployeeObj?.productivityEfficiency || 'Low Efficiency');
+  const verifiedScore = calculatedMonthlyMetrics ? calculatedMonthlyMetrics.avgProductivityScore : (empMonthlyData.employee?.avgProductivityScore ?? activeEmployeeObj?.avgProductivityScore ?? 0);
+  const verifiedWorkedDays = calculatedMonthlyMetrics ? calculatedMonthlyMetrics.workedDaysCount : (empMonthlyData.employee?.workedDaysCount ?? 0);
 
   return (
     <div className="space-y-6">
@@ -662,14 +721,14 @@ export function MonthlyMonitoringView({
                   <div className="text-right">
                     <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Overall Efficiency</p>
                     <div className="mt-1">
-                      {getEfficiencyBadge(empMonthlyData.employee?.productivityEfficiency || activeEmployeeObj.productivityEfficiency)}
+                      {getEfficiencyBadge(verifiedEfficiency)}
                     </div>
                   </div>
                   <div className="h-10 w-px bg-border mx-2 hidden sm:block" />
                   <div className="text-right hidden sm:block">
                     <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Attendance</p>
                     <p className="text-base font-black text-foreground mt-0.5">
-                      {empMonthlyData.employee?.workedDaysCount ?? 0} / {empMonthlyData.employee?.totalDaysInMonth ?? 30} Days
+                      {verifiedWorkedDays} / {empMonthlyData.employee?.totalDaysInMonth ?? 30} Days
                     </p>
                   </div>
                 </div>
@@ -707,10 +766,10 @@ export function MonthlyMonitoringView({
                 <TrendingUp className="h-4 w-4 text-blue-400" />
               </div>
               <h3 className="text-2xl font-extrabold mt-1 text-blue-500">
-                {empMonthlyData.employee?.avgProductivityScore ?? activeEmployeeObj?.avgProductivityScore ?? 0}%
+                {verifiedScore}%
               </h3>
               <Progress
-                value={empMonthlyData.employee?.avgProductivityScore ?? activeEmployeeObj?.avgProductivityScore ?? 0}
+                value={verifiedScore}
                 className="h-1.5 mt-2 bg-muted"
               />
             </Card>
@@ -743,7 +802,7 @@ export function MonthlyMonitoringView({
                 <Zap className="h-4 w-4 text-rose-400" />
               </div>
               <div className="mt-2">
-                {getEfficiencyBadge(empMonthlyData.employee?.productivityEfficiency || activeEmployeeObj?.productivityEfficiency)}
+                {getEfficiencyBadge(verifiedEfficiency)}
               </div>
               <p className="text-[11px] text-muted-foreground mt-1.5">Monthly Rating</p>
             </Card>

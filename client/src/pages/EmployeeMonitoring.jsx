@@ -61,12 +61,25 @@ export function EmployeeMonitoring() {
   const [filterDepartment, setFilterDepartment] = useState('all');
   const [departments, setDepartments] = useState([]);
 
-  // Live Summary State
-  const [teamSummaryData, setTeamSummaryData] = useState({
-    summary: { totalEmployees: 0, activeCount: 0, idleCount: 0, awayCount: 0, avgTeamProductivity: 0 },
-    employees: []
+  // Live Summary State with cached counts to eliminate 0-active / 0-exited flash
+  const [teamSummaryData, setTeamSummaryData] = useState(() => {
+    try {
+      const cached = sessionStorage.getItem('niyantran_monitoring_counts');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return {
+          counts: parsed,
+          summary: { totalEmployees: parsed.totalEmployees || 0, activeCount: parsed.activeCount || 0, idleCount: 0, awayCount: 0, avgTeamProductivity: 0 },
+          employees: []
+        };
+      }
+    } catch (e) {}
+    return {
+      summary: { totalEmployees: 0, activeCount: 0, idleCount: 0, awayCount: 0, avgTeamProductivity: 0 },
+      employees: []
+    };
   });
-  const [loadingTeamSummary, setLoadingTeamSummary] = useState(false);
+  const [loadingTeamSummary, setLoadingTeamSummary] = useState(true);
 
   // Employee Selection for 1-Click Detail View Modal
   const [detailEmployee, setDetailEmployee] = useState(null);
@@ -99,15 +112,29 @@ export function EmployeeMonitoring() {
     }
     try {
       const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
+      const selectedBranch = localStorage.getItem('selectedBranch') || localStorage.getItem('branch');
       const response = await axios.get(
         `${API_URL}/monitoring/team-summary?statusTab=${statusTab}&department=${filterDepartment}&search=${encodeURIComponent(searchQuery)}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        {
+          headers: {
+            'x-auth-token': token,
+            Authorization: `Bearer ${token}`,
+            ...(selectedBranch && selectedBranch !== 'all' ? { 'x-branch': selectedBranch } : {})
+          }
+        }
       );
 
       if (response.data.success) {
         const fetchedEmployees = response.data.employees || [];
+        const counts = response.data.counts || {};
+        try {
+          if (counts && typeof counts.activeCount === 'number') {
+            sessionStorage.setItem('niyantran_monitoring_counts', JSON.stringify(counts));
+          }
+        } catch (e) {}
+
         setTeamSummaryData({
-          counts: response.data.counts || {},
+          counts,
           summary: response.data.summary || {},
           employees: fetchedEmployees
         });
@@ -138,10 +165,12 @@ export function EmployeeMonitoring() {
   const fetchDepartments = async () => {
     try {
       const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
+      const selectedBranch = localStorage.getItem('selectedBranch') || localStorage.getItem('branch');
       const response = await axios.get(`${API_URL}/departments`, {
         headers: {
           'x-auth-token': token,
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
+          ...(selectedBranch && selectedBranch !== 'all' ? { 'x-branch': selectedBranch } : {})
         }
       });
 
@@ -216,9 +245,10 @@ export function EmployeeMonitoring() {
   });
 
   // Filter counts from global backend counts if available
-  const activeCount = teamSummaryData.counts?.activeCount ?? teamSummaryData.employees.filter((e) => e.stillExist === 1).length;
-  const exitedCount = teamSummaryData.counts?.exitedCount ?? teamSummaryData.employees.filter((e) => e.stillExist === 0).length;
-  const totalCount = teamSummaryData.counts?.totalEmployees ?? teamSummaryData.employees.length;
+  const hasLoadedCounts = teamSummaryData.counts && typeof teamSummaryData.counts.activeCount === 'number';
+  const activeCount = teamSummaryData.counts?.activeCount ?? (teamSummaryData.employees.length > 0 ? teamSummaryData.employees.filter((e) => e.stillExist === 1).length : null);
+  const exitedCount = teamSummaryData.counts?.exitedCount ?? (teamSummaryData.employees.length > 0 ? teamSummaryData.employees.filter((e) => e.stillExist === 0).length : null);
+  const totalCount = teamSummaryData.counts?.totalEmployees ?? (teamSummaryData.employees.length > 0 ? teamSummaryData.employees.length : null);
 
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6 space-y-6">
@@ -263,7 +293,7 @@ export function EmployeeMonitoring() {
             }`}
           >
             <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            Active Users ({activeCount})
+            Active Users {activeCount !== null ? `(${activeCount})` : (loadingTeamSummary ? '(...)' : '(0)')}
           </Button>
 
           <Button
@@ -276,7 +306,7 @@ export function EmployeeMonitoring() {
             }`}
           >
             <span className="h-2 w-2 rounded-full bg-rose-400"></span>
-            Exited Users ({exitedCount})
+            Exited Users {exitedCount !== null ? `(${exitedCount})` : (loadingTeamSummary ? '(...)' : '(0)')}
           </Button>
 
           <Button
@@ -289,7 +319,7 @@ export function EmployeeMonitoring() {
             }`}
           >
             <span className="h-2 w-2 rounded-full bg-blue-400"></span>
-            All Users ({totalCount})
+            All Users {totalCount !== null ? `(${totalCount})` : (loadingTeamSummary ? '(...)' : '(0)')}
           </Button>
         </div>
 
@@ -577,7 +607,11 @@ export function EmployeeMonitoring() {
         </TabsContent>
 
         <TabsContent value="reports" className="mt-6">
-          <ReportsGenerator employee={selectedEmployee || teamSummaryData.employees[0]} />
+          <ReportsGenerator
+            employee={selectedEmployee || teamSummaryData.employees[0]}
+            employees={teamSummaryData.employees}
+            onSelectEmployee={setSelectedEmployee}
+          />
         </TabsContent>
 
         <TabsContent value="whitelist" className="mt-6">

@@ -182,8 +182,32 @@ export function TeamOverviewGrid({
         </Card>
       </div>
 
-      {/* Grid or Empty State */}
-      {employees.length === 0 ? (
+      {/* Grid, Skeleton, or Empty State */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i} className="border-zinc-800 bg-zinc-950/80 animate-pulse overflow-hidden">
+              <div className="h-1.5 w-full bg-zinc-800" />
+              <CardHeader className="pb-3 pt-4 px-5 border-b border-zinc-900">
+                <div className="flex items-center gap-3">
+                  <div className="h-11 w-11 rounded-full bg-zinc-800/80 flex-shrink-0" />
+                  <div className="space-y-2 flex-1">
+                    <div className="h-4 bg-zinc-800/80 rounded w-3/4" />
+                    <div className="h-3 bg-zinc-800/50 rounded w-1/2" />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4 px-5 pt-4 pb-4">
+                <div className="h-14 bg-zinc-900/60 rounded-xl" />
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="h-12 bg-zinc-900/40 rounded-lg" />
+                  <div className="h-12 bg-zinc-900/40 rounded-lg" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : employees.length === 0 ? (
         <Card className="p-12 text-center border-dashed bg-zinc-950/80 border-zinc-800">
           <CardContent className="flex flex-col items-center justify-center space-y-3">
             <Users className="h-12 w-12 text-zinc-600" />

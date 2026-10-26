@@ -1,17 +1,19 @@
 const PDFDocument = require('pdfkit');
-const fs = require('fs').promises;
+const fs = require('fs');
+const fsPromises = fs.promises;
 const path = require('path');
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+const User = require('../models/User');
+const Department = require('../models/Department');
 const ScreenCapture = require('../models/ScreenCapture');
 const EmployeeActivity = require('../models/EmployeeActivity');
 const MonitoringAlert = require('../models/MonitoringAlert');
-const { KeystrokeAnalytics } = require('./keystrokeAnalytics');
 
 class ReportGenerator {
   constructor() {
     this.chartRenderer = new ChartJSNodeCanvas({ 
-      width: 800, 
-      height: 400,
+      width: 700, 
+      height: 280,
       backgroundColour: 'white'
     });
     this.reportsDir = process.env.REPORTS_STORAGE_PATH || './uploads/reports';
@@ -20,14 +22,14 @@ class ReportGenerator {
 
   async ensureReportsDirectory() {
     try {
-      await fs.mkdir(this.reportsDir, { recursive: true });
+      await fsPromises.mkdir(this.reportsDir, { recursive: true });
     } catch (error) {
       console.error('Error creating reports directory:', error);
     }
   }
 
   /**
-   * Generate comprehensive employee monitoring report
+   * Generate comprehensive employee monitoring report in PDF format
    */
   async generateEmployeeReport(employeeId, startDate, endDate, options = {}) {
     try {
@@ -36,44 +38,49 @@ class ReportGenerator {
       
       const doc = new PDFDocument({ 
         size: 'A4', 
-        margin: 50,
+        margin: 40,
         info: {
           Title: `Employee Monitoring Report - ${employee.name}`,
-          Author: 'CyberFlow Monitoring System',
+          Author: 'Niyantran Workflow Monitoring System',
           Subject: 'Employee Productivity and Activity Report',
-          Keywords: 'monitoring, productivity, analytics, employee'
+          Keywords: 'monitoring, productivity, analytics, niyantran'
         }
       });
 
-      // Generate report sections
-      await this.addReportHeader(doc, employee, startDate, endDate);
-      await this.addExecutiveSummary(doc, reportData);
-      await this.addProductivityAnalysis(doc, reportData);
-      await this.addKeystrokeAnalytics(doc, reportData);
-      await this.addActivityBreakdown(doc, reportData);
-      await this.addViolationsSection(doc, reportData);
-      await this.addChartsAndGraphs(doc, reportData);
-      await this.addRecommendations(doc, reportData);
-      
-      // Save report
       const filename = `employee_report_${employeeId}_${Date.now()}.pdf`;
       const filepath = path.join(this.reportsDir, filename);
-      
+
+      const writeStream = fs.createWriteStream(filepath);
+      doc.pipe(writeStream);
+
+      // PAGE 1: Header, Executive KPI Summary, and Daily Breakdown Table
+      await this.addReportHeader(doc, employee, startDate, endDate);
+      await this.addExecutiveSummary(doc, reportData);
+      await this.addDailyBreakdownTable(doc, reportData);
+
+      // PAGE 2: Top Applications, Activity Timeline, and Policy Alerts
+      doc.addPage();
+      await this.addApplicationUsageSection(doc, reportData);
+      await this.addViolationsSection(doc, reportData);
+      await this.addActivityTimelineSection(doc, reportData);
+
+      // PAGE 3: Visual Analytics Charts & Recommendations
+      doc.addPage();
+      await this.addChartsAndGraphs(doc, reportData);
+      await this.addRecommendations(doc, reportData);
+
+      doc.end();
+
       return new Promise((resolve, reject) => {
-        const stream = fs.createWriteStream(filepath);
-        doc.pipe(stream);
-        doc.end();
-        
-        stream.on('finish', () => {
+        writeStream.on('finish', () => {
           resolve({
             filename,
             filepath,
-            size: stream.bytesWritten,
+            size: writeStream.bytesWritten,
             generatedAt: new Date()
           });
         });
-        
-        stream.on('error', reject);
+        writeStream.on('error', reject);
       });
 
     } catch (error) {
@@ -83,572 +90,739 @@ class ReportGenerator {
   }
 
   /**
-   * Gather all data needed for the report
+   * Fetch all necessary data for the report
    */
   async gatherReportData(employeeId, startDate, endDate) {
-    const [
-      screenshots,
-      activities,
-      alerts,
-      keystrokeData,
-      productivitySummary
-    ] = await Promise.all([
-      this.getScreenshotData(employeeId, startDate, endDate),
-      this.getActivityData(employeeId, startDate, endDate),
-      this.getAlertsData(employeeId, startDate, endDate),
-      this.getKeystrokeData(employeeId, startDate, endDate),
-      this.getProductivitySummary(employeeId, startDate, endDate)
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    const [screenshots, activities, alerts] = await Promise.all([
+      ScreenCapture.find({
+        employee: employeeId,
+        timestamp: { $gte: start, $lte: end }
+      }).select('timestamp trigger_type is_violation').sort({ timestamp: -1 }).lean(),
+
+      EmployeeActivity.find({
+        employee: employeeId,
+        timestamp: { $gte: start, $lte: end }
+      }).select('timestamp keystroke_count mouse_activity_score idle_duration productivity_score active_application').sort({ timestamp: -1 }).lean(),
+
+      MonitoringAlert.find({
+        employee: employeeId,
+        timestamp: { $gte: start, $lte: end }
+      }).select('timestamp alert_type severity title description').sort({ timestamp: -1 }).lean()
     ]);
 
     return {
-      screenshots,
-      activities,
-      alerts,
-      keystrokeData,
-      productivitySummary,
+      screenshots: screenshots || [],
+      activities: activities || [],
+      alerts: alerts || [],
       period: { startDate, endDate }
     };
   }
 
-  /**
-   * Add report header with company branding
-   */
-  async addReportHeader(doc, employee, startDate, endDate) {
-    // Header background
-    doc.rect(0, 0, doc.page.width, 120)
-       .fill('#1a1a2e');
-
-    // Company logo area (placeholder)
-    doc.rect(50, 20, 80, 80)
-       .fill('#16213e');
-
-    // Title
-    doc.fillColor('white')
-       .fontSize(24)
-       .font('Helvetica-Bold')
-       .text('EMPLOYEE MONITORING REPORT', 150, 30);
-
-    // Subtitle
-    doc.fontSize(14)
-       .font('Helvetica')
-       .text('CyberFlow Intelligent Monitoring System', 150, 60);
-
-    // Employee info
-    doc.fontSize(12)
-       .text(`Employee: ${employee.name}`, 150, 85)
-       .text(`Department: ${employee.department || 'N/A'}`, 300, 85)
-       .text(`Report Period: ${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`, 150, 100);
-
-    doc.moveDown(3);
-    doc.fillColor('black');
+  async getEmployeeInfo(employeeId) {
+    const emp = await User.findById(employeeId).populate('department', 'name').lean();
+    if (!emp) {
+      return { name: 'Employee', email: '', department: 'General', stillExist: 1 };
+    }
+    return {
+      name: emp.name || 'Employee',
+      email: emp.email || '',
+      department: emp.department?.name || emp.department || 'General',
+      stillExist: emp.stillExist
+    };
   }
 
   /**
-   * Add executive summary section
+   * PAGE 1: Header Banner with crisp typography (No overlap, proper branding)
+   */
+  async addReportHeader(doc, employee, startDate, endDate) {
+    const pageWidth = doc.page.width; // 595 for A4
+
+    // Header Background Banner
+    doc.rect(0, 0, pageWidth, 95)
+       .fill('#0f172a'); // Deep slate
+
+    // Left Accent Bar
+    doc.rect(0, 0, 6, 95)
+       .fill('#3b82f6'); // Bright blue
+
+    // Title
+    doc.fillColor('#ffffff')
+       .fontSize(18)
+       .font('Helvetica-Bold')
+       .text('NIYANTRAN WORKFLOW', 40, 22);
+
+    doc.fillColor('#94a3b8')
+       .fontSize(10)
+       .font('Helvetica')
+       .text('Employee Telemetry & Activity Monitoring Report', 40, 44);
+
+    // Metadata Row
+    const deptName = typeof employee.department === 'object' ? (employee.department?.name || 'General') : (employee.department || 'General');
+    const startStr = new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const endStr = new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    doc.fontSize(9)
+       .fillColor('#e2e8f0')
+       .font('Helvetica-Bold')
+       .text(`Employee: `, 40, 68, { continued: true })
+       .font('Helvetica')
+       .text(`${employee.name} (${employee.email || 'N/A'})`, { continued: true })
+       .font('Helvetica-Bold')
+       .text(`   •   Department: `, { continued: true })
+       .font('Helvetica')
+       .text(`${deptName}`);
+
+    doc.fontSize(8.5)
+       .fillColor('#94a3b8')
+       .text(`Period: ${startStr} to ${endStr}   •   Status: ${employee.stillExist === 0 ? 'Exited Account' : 'Active Employee'}`, 40, 81);
+
+    // Set document cursor below banner
+    doc.y = 110;
+  }
+
+  /**
+   * PAGE 1: Executive KPI Cards (Row of 4 perfectly aligned cards)
    */
   async addExecutiveSummary(doc, reportData) {
-    doc.fontSize(18)
-       .font('Helvetica-Bold')
-       .fillColor('#1a1a2e')
-       .text('EXECUTIVE SUMMARY', 50, doc.y + 20);
-
-    doc.moveDown();
-    
     const summary = this.calculateExecutiveSummary(reportData);
-    
-    // Summary boxes
-    const boxWidth = 120;
-    const boxHeight = 80;
-    const startX = 50;
-    let currentX = startX;
+
+    doc.fontSize(12)
+       .font('Helvetica-Bold')
+       .fillColor('#0f172a')
+       .text('EXECUTIVE KPI SUMMARY', 40, doc.y);
+
+    const boxY = doc.y + 6;
+    const boxWidth = 117;
+    const boxHeight = 58;
+    const gap = 15;
+    const startX = 40;
 
     const summaryItems = [
-      { label: 'Productivity Score', value: `${summary.productivityScore}%`, color: this.getScoreColor(summary.productivityScore) },
-      { label: 'Active Hours', value: `${summary.activeHours}h`, color: '#4CAF50' },
-      { label: 'Violations', value: summary.violations, color: summary.violations > 0 ? '#f44336' : '#4CAF50' },
-      { label: 'Focus Score', value: `${summary.focusScore}%`, color: this.getScoreColor(summary.focusScore) }
+      {
+        label: 'Productivity Score',
+        value: `${summary.productivityScore}%`,
+        color: summary.productivityScore >= 75 ? '#10b981' : (summary.productivityScore >= 50 ? '#f59e0b' : '#ef4444')
+      },
+      {
+        label: 'Active Work Hours',
+        value: `${summary.activeHours}h`,
+        color: '#0284c7'
+      },
+      {
+        label: 'Total Keystrokes',
+        value: summary.totalKeystrokes.toLocaleString(),
+        color: '#8b5cf6'
+      },
+      {
+        label: 'Security Violations',
+        value: `${summary.violations}`,
+        color: summary.violations > 0 ? '#ef4444' : '#10b981'
+      }
     ];
 
     summaryItems.forEach((item, index) => {
-      // Box background
-      doc.rect(currentX, doc.y, boxWidth, boxHeight)
-         .fill('#f5f5f5')
-         .stroke('#ddd');
+      const currentX = startX + index * (boxWidth + gap);
+
+      // Card Background with smooth rounded borders
+      doc.roundedRect(currentX, boxY, boxWidth, boxHeight, 6)
+         .fillAndStroke('#f8fafc', '#e2e8f0');
 
       // Value
       doc.fillColor(item.color)
-         .fontSize(24)
+         .fontSize(18)
          .font('Helvetica-Bold')
-         .text(item.value, currentX + 10, doc.y + 15, { width: boxWidth - 20, align: 'center' });
+         .text(item.value, currentX, boxY + 12, { width: boxWidth, align: 'center' });
 
       // Label
-      doc.fillColor('#666')
-         .fontSize(10)
+      doc.fillColor('#64748b')
+         .fontSize(8.5)
          .font('Helvetica')
-         .text(item.label, currentX + 10, doc.y + 50, { width: boxWidth - 20, align: 'center' });
-
-      currentX += boxWidth + 20;
+         .text(item.label, currentX, boxY + 36, { width: boxWidth, align: 'center' });
     });
 
-    doc.moveDown(6);
-    doc.fillColor('black');
+    // Advance cursor safely
+    doc.y = boxY + boxHeight + 18;
   }
 
   /**
-   * Add productivity analysis section
+   * PAGE 1: Daily Breakdown Table
    */
-  async addProductivityAnalysis(doc, reportData) {
-    doc.addPage();
-    
-    doc.fontSize(18)
-       .font('Helvetica-Bold')
-       .fillColor('#1a1a2e')
-       .text('PRODUCTIVITY ANALYSIS', 50);
-
-    doc.moveDown();
-
-    // Productivity metrics
-    const productivity = reportData.productivitySummary;
-    
+  async addDailyBreakdownTable(doc, reportData) {
     doc.fontSize(12)
-       .font('Helvetica')
-       .fillColor('black')
-       .text(`Average Typing Speed: ${Math.round(productivity.avgTypingSpeed || 0)} WPM`, 50)
-       .text(`Typing Accuracy: ${Math.round(productivity.avgAccuracy || 0)}%`, 50)
-       .text(`Total Keystrokes: ${productivity.totalKeystrokes || 0}`, 50)
-       .text(`Active Typing Time: ${Math.round((productivity.totalActiveTime || 0) / 60)} minutes`, 50)
-       .text(`Idle Time: ${Math.round((productivity.totalIdleTime || 0) / 60)} minutes`, 50);
-
-    doc.moveDown();
-
-    doc.fontSize(10)
-        .font('Helvetica-Oblique')
-        .fillColor('#333')
-        .text(reportData.productivitySummary.productivity_reasoning, 70, doc.y, { width: 480 });
-
-    doc.moveDown(2);
-
-    // Activity breakdown
-    doc.fontSize(14)
        .font('Helvetica-Bold')
-       .text('Activity Breakdown:', 50);
+       .fillColor('#0f172a')
+       .text('DAILY PERFORMANCE BREAKDOWN', 40, doc.y);
 
-    doc.moveDown();
+    doc.moveDown(0.5);
 
-    const activityStats = this.calculateActivityStats(reportData.activities);
-    Object.entries(activityStats).forEach(([activity, count]) => {
-      doc.fontSize(10)
-         .font('Helvetica')
-         .text(`${activity}: ${count} sessions`, 70);
-    });
-  }
+    // Group activities by date
+    const dailyMap = {};
+    const start = new Date(reportData.period.startDate);
+    const end = new Date(reportData.period.endDate);
 
-  /**
-   * Add keystroke analytics section
-   */
-  async addKeystrokeAnalytics(doc, reportData) {
-    doc.moveDown(2);
-    
-    doc.fontSize(14)
-       .font('Helvetica-Bold')
-       .fillColor('#1a1a2e')
-       .text('KEYSTROKE ANALYTICS', 50);
-
-    doc.moveDown();
-
-    if (reportData.keystrokeData.length > 0) {
-      const keystrokeStats = this.analyzeKeystrokePatterns(reportData.keystrokeData);
-      
-      doc.fontSize(10)
-         .font('Helvetica')
-         .fillColor('black')
-         .text(`Most Active Application: ${keystrokeStats.mostActiveApp}`, 50)
-         .text(`Peak Performance Time: ${keystrokeStats.peakTime}`, 50)
-         .text(`Programming Activity: ${keystrokeStats.programmingPercentage}%`, 50)
-         .text(`Multitasking Detected: ${keystrokeStats.multitaskingCount} times`, 50);
-    } else {
-      doc.fontSize(10)
-         .font('Helvetica')
-         .fillColor('#666')
-         .text('No keystroke data available for this period.', 50);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dStr = d.toISOString().split('T')[0];
+      dailyMap[dStr] = {
+        date: dStr,
+        activitiesCount: 0,
+        keystrokes: 0,
+        mouseSum: 0,
+        activeSeconds: 0,
+        prodSum: 0,
+        topApps: {}
+      };
     }
-  }
 
-  /**
-   * Add activity breakdown section
-   */
-  async addActivityBreakdown(doc, reportData) {
-    doc.moveDown(2);
-    
-    doc.fontSize(14)
-       .font('Helvetica-Bold')
-       .fillColor('#1a1a2e')
-       .text('ACTIVITY BREAKDOWN', 50);
+    reportData.activities.forEach(act => {
+      const dStr = new Date(act.timestamp).toISOString().split('T')[0];
+      if (dailyMap[dStr]) {
+        dailyMap[dStr].activitiesCount++;
+        dailyMap[dStr].keystrokes += (act.keystroke_count || 0);
+        dailyMap[dStr].mouseSum += (act.mouse_activity_score || 0);
+        
+        const isActive = (act.keystroke_count || 0) > 0 || (act.mouse_activity_score || 0) >= 15;
+        let idle = 0;
+        if (!isActive) {
+          let raw = act.idle_duration || 0;
+          if (raw > 10000) raw = Math.round(raw / 1000);
+          idle = Math.min(30, raw > 0 ? raw : 30);
+        }
+        dailyMap[dStr].activeSeconds += Math.max(0, 30 - idle);
 
-    doc.moveDown();
+        if (act.productivity_score > 0) {
+          dailyMap[dStr].prodSum += act.productivity_score;
+        }
 
-    // Create activity timeline
-    const timeline = this.createActivityTimeline(reportData.activities);
-    
-    timeline.forEach(entry => {
-      doc.fontSize(9)
-         .font('Helvetica')
-         .fillColor('black')
-         .text(`${entry.time}: ${entry.activity}`, 50);
+        let appName = act.active_application?.name;
+        if (!appName || appName === 'Unknown' || appName === 'null') {
+          appName = isActive ? 'Desktop Workspace' : 'System Background';
+        }
+        dailyMap[dStr].topApps[appName] = (dailyMap[dStr].topApps[appName] || 0) + 1;
+      }
     });
+
+    const dailyRows = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Table Column Coordinates (Total width = 515)
+    const tableX = 40;
+    const tableWidth = 515;
+    let currentY = doc.y;
+
+    // Table Header
+    doc.rect(tableX, currentY, tableWidth, 22)
+       .fill('#1e293b');
+
+    doc.fillColor('#ffffff')
+       .fontSize(8.5)
+       .font('Helvetica-Bold');
+
+    doc.text('Date', tableX + 8, currentY + 6, { width: 75 });
+    doc.text('Activities', tableX + 85, currentY + 6, { width: 60, align: 'center' });
+    doc.text('Productivity', tableX + 150, currentY + 6, { width: 70, align: 'center' });
+    doc.text('Active Hours', tableX + 225, currentY + 6, { width: 65, align: 'center' });
+    doc.text('Keystrokes', tableX + 295, currentY + 6, { width: 65, align: 'center' });
+    doc.text('Mouse Score', tableX + 365, currentY + 6, { width: 65, align: 'center' });
+    doc.text('Efficiency', tableX + 435, currentY + 6, { width: 75, align: 'right' });
+
+    currentY += 22;
+
+    // Render table rows
+    dailyRows.forEach((row, idx) => {
+      const isZebra = idx % 2 === 1;
+      const rowHeight = 20;
+
+      // Background
+      doc.rect(tableX, currentY, tableWidth, rowHeight)
+         .fill(isZebra ? '#f8fafc' : '#ffffff');
+
+      // Thin bottom border
+      doc.rect(tableX, currentY + rowHeight - 1, tableWidth, 1)
+         .fill('#e2e8f0');
+
+      const count = row.activitiesCount;
+      const avgProd = count > 0 ? Math.round(row.prodSum / count) : 0;
+      const activeHours = (row.activeSeconds / 3600).toFixed(1);
+      const avgMouse = count > 0 ? Math.round(row.mouseSum / count) : 0;
+
+      let eff = 'No Activity';
+      let effColor = '#94a3b8';
+      if (count > 0) {
+        if (avgProd >= 75) {
+          eff = 'High Efficiency';
+          effColor = '#10b981';
+        } else if (avgProd >= 50) {
+          eff = 'Moderate';
+          effColor = '#f59e0b';
+        } else {
+          eff = 'Low Efficiency';
+          effColor = '#ef4444';
+        }
+      }
+
+      doc.fontSize(8).font('Helvetica');
+
+      // Date
+      doc.fillColor('#0f172a')
+         .text(row.date, tableX + 8, currentY + 5);
+
+      // Activities
+      doc.fillColor('#475569')
+         .text(count.toString(), tableX + 85, currentY + 5, { width: 60, align: 'center' });
+
+      // Productivity %
+      doc.fillColor(count > 0 ? effColor : '#94a3b8')
+         .font(count > 0 ? 'Helvetica-Bold' : 'Helvetica')
+         .text(count > 0 ? `${avgProd}%` : '-', tableX + 150, currentY + 5, { width: 70, align: 'center' });
+
+      // Active Hours
+      doc.fillColor('#0f172a')
+         .font('Helvetica')
+         .text(count > 0 ? `${activeHours}h` : '0h', tableX + 225, currentY + 5, { width: 65, align: 'center' });
+
+      // Keystrokes
+      doc.fillColor('#475569')
+         .text(row.keystrokes > 0 ? row.keystrokes.toLocaleString() : '-', tableX + 295, currentY + 5, { width: 65, align: 'center' });
+
+      // Mouse Score
+      doc.fillColor('#475569')
+         .text(count > 0 ? `${avgMouse}%` : '-', tableX + 365, currentY + 5, { width: 65, align: 'center' });
+
+      // Efficiency Rating
+      doc.fillColor(effColor)
+         .font('Helvetica-Bold')
+         .text(eff, tableX + 435, currentY + 5, { width: 75, align: 'right' });
+
+      currentY += rowHeight;
+    });
+
+    doc.y = currentY + 15;
   }
 
   /**
-   * Add violations section
+   * PAGE 2: Top Application Usage & Distribution
+   */
+  async addApplicationUsageSection(doc, reportData) {
+    const pageWidth = doc.page.width;
+
+    // Header on Page 2
+    doc.rect(0, 0, pageWidth, 45)
+       .fill('#0f172a');
+
+    doc.fillColor('#ffffff')
+       .fontSize(12)
+       .font('Helvetica-Bold')
+       .text('NIYANTRAN WORKFLOW - WORKSPACE & SECURITY AUDIT', 40, 16);
+
+    doc.y = 65;
+
+    doc.fontSize(13)
+       .font('Helvetica-Bold')
+       .fillColor('#0f172a')
+       .text('APPLICATION & WORKSPACE USAGE', 40, doc.y);
+
+    doc.moveDown(0.6);
+
+    const appStats = this.calculateActivityStats(reportData.activities);
+    const sortedApps = Object.entries(appStats).sort((a, b) => b[1] - a[1]);
+    const totalActs = reportData.activities.length || 1;
+
+    if (sortedApps.length === 0) {
+      doc.fontSize(9.5)
+         .font('Helvetica')
+         .fillColor('#64748b')
+         .text('No active application usage recorded in this period.', 40, doc.y);
+      doc.moveDown(1.5);
+      return;
+    }
+
+    const startX = 40;
+    let currentY = doc.y;
+
+    sortedApps.slice(0, 6).forEach(([appName, count]) => {
+      const pct = Math.round((count / totalActs) * 100);
+      const estMinutes = Math.round((count * 30) / 60);
+
+      doc.fontSize(9)
+         .font('Helvetica-Bold')
+         .fillColor('#1e293b')
+         .text(appName, startX, currentY, { width: 200 });
+
+      doc.font('Helvetica')
+         .fillColor('#64748b')
+         .text(`${count} sessions (~${estMinutes} mins)`, startX + 210, currentY, { width: 140 });
+
+      // Progress bar background
+      const barX = startX + 360;
+      const barWidth = 150;
+      doc.roundedRect(barX, currentY + 2, barWidth, 7, 3)
+         .fill('#e2e8f0');
+
+      // Filled progress
+      const fillW = Math.max(3, Math.round((pct / 100) * barWidth));
+      doc.roundedRect(barX, currentY + 2, fillW, 7, 3)
+         .fill('#3b82f6');
+
+      doc.fontSize(8)
+         .fillColor('#1e293b')
+         .font('Helvetica-Bold')
+         .text(`${pct}%`, barX + barWidth + 8, currentY);
+
+      currentY += 18;
+    });
+
+    doc.y = currentY + 15;
+  }
+
+  /**
+   * PAGE 2: Policy Violations & Security Alerts (No black boxes, 100% visible text)
    */
   async addViolationsSection(doc, reportData) {
-    doc.addPage();
-    
-    doc.fontSize(18)
+    doc.fontSize(13)
        .font('Helvetica-Bold')
-       .fillColor('#1a1a2e')
-       .text('POLICY VIOLATIONS & ALERTS', 50);
+       .fillColor('#0f172a')
+       .text('POLICY VIOLATIONS & SECURITY ALERTS', 40, doc.y);
 
-    doc.moveDown();
+    doc.moveDown(0.6);
 
-    if (reportData.alerts.length > 0) {
-      reportData.alerts.forEach(alert => {
-        // Alert box
-        const alertColor = this.getAlertColor(alert.severity);
-        
-        doc.rect(50, doc.y, 500, 60)
-           .fill(alertColor + '20')
-           .stroke(alertColor);
+    const alerts = reportData.alerts || [];
 
-        doc.fillColor(alertColor)
-           .fontSize(12)
-           .font('Helvetica-Bold')
-           .text(alert.title, 60, doc.y + 10);
+    if (alerts.length === 0) {
+      // Clean checkmark card
+      const boxY = doc.y;
+      doc.roundedRect(40, boxY, 515, 36, 6)
+         .fillAndStroke('#f0fdf4', '#bbf7d0');
 
-        doc.fillColor('black')
-           .fontSize(10)
-           .font('Helvetica')
-           .text(alert.description, 60, doc.y + 25, { width: 480 });
-
-        doc.fontSize(8)
-           .fillColor('#666')
-           .text(`${new Date(alert.timestamp).toLocaleString()} | Severity: ${alert.severity}`, 60, doc.y + 45);
-
-        doc.moveDown(4);
-      });
-    } else {
-      doc.fontSize(12)
-         .font('Helvetica')
-         .fillColor('#4CAF50')
-         .text('✓ No policy violations detected during this period.', 50);
-    }
-  }
-
-  /**
-   * Add charts and graphs
-   */
-  async addChartsAndGraphs(doc, reportData) {
-    doc.addPage();
-    
-    doc.fontSize(18)
-       .font('Helvetica-Bold')
-       .fillColor('#1a1a2e')
-       .text('ANALYTICS & CHARTS', 50);
-
-    doc.moveDown();
-
-    try {
-      // Generate productivity chart
-      const productivityChart = await this.generateProductivityChart(reportData);
-      if (productivityChart) {
-        doc.image(productivityChart, 50, doc.y, { width: 500 });
-        doc.moveDown(15);
-      }
-
-      // Generate activity distribution chart
-      const activityChart = await this.generateActivityChart(reportData);
-      if (activityChart) {
-        doc.image(activityChart, 50, doc.y, { width: 500 });
-      }
-    } catch (error) {
-      console.error('Error generating charts:', error);
-      doc.fontSize(10)
-         .fillColor('#666')
-         .text('Charts could not be generated for this report.', 50);
-    }
-  }
-
-  /**
-   * Add recommendations section
-   */
-  async addRecommendations(doc, reportData) {
-    doc.addPage();
-    
-    doc.fontSize(18)
-       .font('Helvetica-Bold')
-       .fillColor('#1a1a2e')
-       .text('RECOMMENDATIONS', 50);
-
-    doc.moveDown();
-
-    const recommendations = this.generateRecommendations(reportData);
-    
-    recommendations.forEach((recommendation, index) => {
-      doc.fontSize(12)
+      doc.fillColor('#15803d')
+         .fontSize(9.5)
          .font('Helvetica-Bold')
-         .fillColor('#1a1a2e')
-         .text(`${index + 1}. ${recommendation.title}`, 50);
+         .text('✓ No policy violations or security alerts detected during this period.', 55, boxY + 11);
 
-      doc.fontSize(10)
+      doc.y = boxY + 48;
+      return;
+    }
+
+    const boxWidth = 515;
+    const boxHeight = 50;
+
+    alerts.slice(0, 4).forEach((alert) => {
+      const boxY = doc.y;
+      const isHigh = alert.severity === 'high';
+      const isMed = alert.severity === 'medium';
+
+      const bg = isHigh ? '#fef2f2' : (isMed ? '#fffbeb' : '#f8fafc');
+      const border = isHigh ? '#fca5a5' : (isMed ? '#fde68a' : '#cbd5e1');
+      const titleColor = isHigh ? '#b91c1c' : (isMed ? '#b45309' : '#1e40af');
+
+      // Card Background (Light pastel with clean border)
+      doc.roundedRect(40, boxY, boxWidth, boxHeight, 6)
+         .fillAndStroke(bg, border);
+
+      // Title
+      doc.fillColor(titleColor)
+         .fontSize(10)
+         .font('Helvetica-Bold')
+         .text(alert.title || 'Security Notification', 52, boxY + 8, { width: boxWidth - 24 });
+
+      // Description (Crisp charcoal text)
+      doc.fillColor('#1e293b')
+         .fontSize(8.5)
          .font('Helvetica')
-         .fillColor('black')
-         .text(recommendation.description, 70, doc.y, { width: 480 });
+         .text(alert.description || 'Automated policy rule triggered', 52, boxY + 22, { width: boxWidth - 24, lineBreak: false });
 
-      doc.moveDown(1.5);
+      // Severity and Timestamp
+      const tsStr = new Date(alert.timestamp).toLocaleString();
+      doc.fillColor('#64748b')
+         .fontSize(7.5)
+         .text(`${tsStr}  •  Severity: ${String(alert.severity || 'low').toUpperCase()}`, 52, boxY + 35);
+
+      doc.y = boxY + boxHeight + 8;
     });
 
-    // Footer
-    doc.moveDown(3);
-    doc.fontSize(8)
-       .fillColor('#666')
-       .text(`Report generated on ${new Date().toLocaleString()} by CyberFlow Monitoring System`, 50, doc.page.height - 50);
+    doc.moveDown(0.8);
   }
 
   /**
-   * Generate productivity chart
+   * PAGE 2: Activity Timeline (Recent Sessions)
    */
-  async generateProductivityChart(reportData) {
-    try {
-      const chartConfig = {
-        type: 'line',
-        data: {
-          labels: this.getTimeLabels(reportData.period),
-          datasets: [{
-            label: 'Productivity Score',
-            data: this.getProductivityData(reportData),
-            borderColor: '#4CAF50',
-            backgroundColor: '#4CAF5020',
-            tension: 0.4
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            title: {
-              display: true,
-              text: 'Productivity Trend Over Time'
-            }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              max: 100
-            }
-          }
-        }
-      };
+  async addActivityTimelineSection(doc, reportData) {
+    doc.fontSize(13)
+       .font('Helvetica-Bold')
+       .fillColor('#0f172a')
+       .text('RECENT ACTIVITY TIMELINE', 40, doc.y);
 
-      return await this.chartRenderer.renderToBuffer(chartConfig);
-    } catch (error) {
-      console.error('Error generating productivity chart:', error);
-      return null;
+    doc.moveDown(0.5);
+
+    const timeline = this.createActivityTimeline(reportData.activities);
+
+    if (timeline.length === 0) {
+      doc.fontSize(9)
+         .font('Helvetica')
+         .fillColor('#64748b')
+         .text('No activity timeline recorded for this period.', 40, doc.y);
+      return;
     }
+
+    const startX = 40;
+    let currentY = doc.y;
+
+    timeline.slice(0, 10).forEach(entry => {
+      // Timeline bullet
+      doc.circle(startX + 4, currentY + 5, 2.5)
+         .fill('#3b82f6');
+
+      // Time
+      doc.fontSize(8)
+         .font('Helvetica-Bold')
+         .fillColor('#0f172a')
+         .text(entry.time, startX + 14, currentY, { width: 80 });
+
+      // Activity Description
+      doc.font('Helvetica')
+         .fillColor('#334155')
+         .text(entry.activity, startX + 100, currentY, { width: 400 });
+
+      currentY += 16;
+    });
+
+    doc.y = currentY + 10;
   }
 
   /**
-   * Generate activity distribution chart
+   * PAGE 3: Visual Analytics Charts
    */
-  async generateActivityChart(reportData) {
+  async addChartsAndGraphs(doc, reportData) {
+    const pageWidth = doc.page.width;
+
+    // Header on Page 3
+    doc.rect(0, 0, pageWidth, 45)
+       .fill('#0f172a');
+
+    doc.fillColor('#ffffff')
+       .fontSize(12)
+       .font('Helvetica-Bold')
+       .text('NIYANTRAN WORKFLOW - VISUAL ANALYTICS & INSIGHTS', 40, 16);
+
+    doc.y = 65;
+
+    doc.fontSize(13)
+       .font('Helvetica-Bold')
+       .fillColor('#0f172a')
+       .text('PRODUCTIVITY TREND ANALYSIS', 40, doc.y);
+
+    doc.moveDown(0.5);
+
     try {
-      const activityStats = this.calculateActivityStats(reportData.activities);
-      
-      const chartConfig = {
-        type: 'doughnut',
-        data: {
-          labels: Object.keys(activityStats),
-          datasets: [{
-            data: Object.values(activityStats),
-            backgroundColor: [
-              '#FF6384',
-              '#36A2EB',
-              '#FFCE56',
-              '#4BC0C0',
-              '#9966FF',
-              '#FF9F40'
-            ]
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            title: {
-              display: true,
-              text: 'Activity Distribution'
-            }
-          }
-        }
-      };
-
-      return await this.chartRenderer.renderToBuffer(chartConfig);
+      const productivityChart = await this.generateProductivityChart(reportData);
+      if (productivityChart) {
+        const chartY = doc.y;
+        doc.image(productivityChart, 40, chartY, { width: 515, height: 180 });
+        doc.y = chartY + 200;
+      }
     } catch (error) {
-      console.error('Error generating activity chart:', error);
-      return null;
+      console.warn('Chart render fallback:', error.message);
     }
+
+    doc.moveDown(0.8);
   }
 
   /**
-   * Helper methods for data processing
+   * PAGE 3: Recommendations & Official Document Footer
    */
-  async getEmployeeInfo(employeeId) {
-    const User = require('../models/User');
-    return await User.findById(employeeId).select('name email department role');
+  async addRecommendations(doc, reportData) {
+    doc.fontSize(13)
+       .font('Helvetica-Bold')
+       .fillColor('#0f172a')
+       .text('PERFORMANCE RECOMMENDATIONS', 40, doc.y);
+
+    doc.moveDown(0.6);
+
+    const recommendations = this.generateRecommendations(reportData);
+
+    recommendations.forEach((item, index) => {
+      doc.fontSize(9.5)
+         .font('Helvetica-Bold')
+         .fillColor('#0f172a')
+         .text(`${index + 1}. ${item.title}`, 45, doc.y);
+
+      doc.fontSize(8.5)
+         .font('Helvetica')
+         .fillColor('#475569')
+         .text(item.description, 60, doc.y, { width: 490 });
+
+      doc.moveDown(0.6);
+    });
+
+    // Official Confidentiality Footer (Positioned within page bounds, preventing accidental extra page)
+    const footerY = Math.min(doc.y + 25, 770);
+    doc.rect(40, footerY, 515, 1)
+       .fill('#e2e8f0');
+
+    doc.fontSize(7.5)
+       .font('Helvetica')
+       .fillColor('#94a3b8')
+       .text(`Generated on ${new Date().toLocaleString()}  •  Niyantran Workflow Monitoring System  •  Confidential`, 40, footerY + 8, { align: 'center', width: 515, lineBreak: false });
   }
 
-  async getScreenshotData(employeeId, startDate, endDate) {
-    return await ScreenCapture.find({
-      employee: employeeId,
-      timestamp: { $gte: new Date(startDate), $lte: new Date(endDate) }
-    }).sort({ timestamp: -1 });
-  }
-
-  async getActivityData(employeeId, startDate, endDate) {
-    return await EmployeeActivity.find({
-      employee: employeeId,
-      timestamp: { $gte: new Date(startDate), $lte: new Date(endDate) }
-    }).sort({ timestamp: -1 });
-  }
-
-  async getAlertsData(employeeId, startDate, endDate) {
-    return await MonitoringAlert.find({
-      employee: employeeId,
-      timestamp: { $gte: new Date(startDate), $lte: new Date(endDate) }
-    }).sort({ timestamp: -1 });
-  }
-
-  async getKeystrokeData(employeeId, startDate, endDate) {
-    return await KeystrokeAnalytics.find({
-      employee: employeeId,
-      timestamp: { $gte: new Date(startDate), $lte: new Date(endDate) }
-    }).sort({ timestamp: -1 });
-  }
-
-  async getProductivitySummary(employeeId, startDate, endDate) {
-    const keystrokeService = require('./keystrokeAnalytics').KeystrokeAnalyticsService;
-    return await keystrokeService.prototype.getProductivitySummary(employeeId, startDate, endDate);
-  }
-
+  /**
+   * Data calculation helpers
+   */
   calculateExecutiveSummary(reportData) {
-    const productivity = reportData.productivitySummary;
+    const activities = reportData.activities || [];
+    let totalKeys = 0;
+    let totalMouse = 0;
+    let totalActiveSec = 0;
+    let totalProd = 0;
+    let prodCount = 0;
+
+    activities.forEach(act => {
+      totalKeys += (act.keystroke_count || 0);
+      totalMouse += (act.mouse_activity_score || 0);
+      if (act.productivity_score > 0) {
+        totalProd += act.productivity_score;
+        prodCount++;
+      }
+
+      const isActive = (act.keystroke_count || 0) > 0 || (act.mouse_activity_score || 0) >= 15;
+      let idle = 0;
+      if (!isActive) {
+        let raw = act.idle_duration || 0;
+        if (raw > 10000) raw = Math.round(raw / 1000);
+        idle = Math.min(30, raw > 0 ? raw : 30);
+      }
+      totalActiveSec += Math.max(0, 30 - idle);
+    });
+
+    const avgProd = prodCount > 0 ? Math.round(totalProd / prodCount) : 0;
+    const activeHours = Math.round((totalActiveSec / 3600) * 10) / 10;
+    const avgMouse = activities.length > 0 ? Math.round(totalMouse / activities.length) : 0;
+
     return {
-      productivityScore: Math.round(productivity.avgProductivityScore || 0),
-      activeHours: Math.round((productivity.totalActiveTime || 0) / 3600),
-      violations: reportData.alerts.length,
-      focusScore: Math.round(productivity.avgFocusScore || 0)
+      productivityScore: avgProd,
+      activeHours,
+      activeSeconds: totalActiveSec,
+      totalKeystrokes: totalKeys,
+      avgMouseActivity: avgMouse,
+      violations: reportData.alerts?.length || 0,
+      focusScore: avgProd > 0 ? Math.min(100, Math.round((avgProd * 0.7) + (avgMouse * 0.3))) : 0
     };
   }
 
   calculateActivityStats(activities) {
     const stats = {};
-    activities.forEach(activity => {
-      const type = activity.activity_type || 'Unknown';
-      stats[type] = (stats[type] || 0) + 1;
+    (activities || []).forEach(act => {
+      let appName = act.active_application?.name;
+      if (!appName || appName === 'Unknown' || appName === 'null') {
+        const isActive = (act.keystroke_count || 0) > 0 || (act.mouse_activity_score || 0) >= 15;
+        appName = isActive ? 'Active Desktop Workspace' : 'System Background';
+      }
+      stats[appName] = (stats[appName] || 0) + 1;
     });
     return stats;
   }
 
-  analyzeKeystrokePatterns(keystrokeData) {
-    if (keystrokeData.length === 0) {
-      return {
-        mostActiveApp: 'N/A',
-        peakTime: 'N/A',
-        programmingPercentage: 0,
-        multitaskingCount: 0
-      };
-    }
-
-    const apps = {};
-    let programmingCount = 0;
-    let multitaskingCount = 0;
-
-    keystrokeData.forEach(data => {
-      if (data.application_name) {
-        apps[data.application_name] = (apps[data.application_name] || 0) + 1;
-      }
-      
-      if (data.content_analysis?.estimated_content_type === 'code') {
-        programmingCount++;
-      }
-      
-      if (data.pattern_analysis?.multitasking_detected) {
-        multitaskingCount++;
-      }
-    });
-
-    const mostActiveApp = Object.keys(apps).reduce((a, b) => apps[a] > apps[b] ? a : b, 'N/A');
-    const programmingPercentage = Math.round((programmingCount / keystrokeData.length) * 100);
-
-    return {
-      mostActiveApp,
-      peakTime: '10:00 AM - 11:00 AM', // This could be calculated from actual data
-      programmingPercentage,
-      multitaskingCount
-    };
-  }
-
   createActivityTimeline(activities) {
-    return activities.slice(0, 20).map(activity => ({
-      time: new Date(activity.timestamp).toLocaleTimeString(),
-      activity: activity.activity_type || 'Unknown Activity'
-    }));
+    return (activities || []).slice(0, 15).map(act => {
+      let appName = act.active_application?.name;
+      if (!appName || appName === 'Unknown' || appName === 'null') {
+        const isActive = (act.keystroke_count || 0) > 0 || (act.mouse_activity_score || 0) >= 15;
+        appName = isActive ? 'Active Desktop Workspace' : 'System Background';
+      }
+      const title = act.active_application?.title ? ` - ${act.active_application.title}` : '';
+      const prod = act.productivity_score ? ` (Score: ${act.productivity_score}%)` : '';
+      const timeStr = new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      return {
+        time: timeStr,
+        activity: `${appName}${title}${prod}`
+      };
+    });
   }
 
   generateRecommendations(reportData) {
-    const recommendations = [];
     const summary = this.calculateExecutiveSummary(reportData);
+    const recs = [];
 
-    if (summary.productivityScore < 70) {
-      recommendations.push({
-        title: 'Improve Productivity',
-        description: 'Consider implementing time management techniques and reducing distractions during work hours.'
+    if (summary.productivityScore < 60) {
+      recs.push({
+        title: 'Structured Work Blocks',
+        description: 'Implement focused 45-minute working intervals with targeted deliverables to boost consistency.'
+      });
+    } else {
+      recs.push({
+        title: 'Maintain Productive Cadence',
+        description: 'Activity rhythms demonstrate strong workflow discipline. Continue regular task execution habits.'
       });
     }
 
-    if (summary.violations > 5) {
-      recommendations.push({
-        title: 'Address Policy Violations',
-        description: 'Review company policies with the employee and provide additional training on acceptable use.'
+    if (summary.violations > 0) {
+      recs.push({
+        title: 'Review System Alerts & Idle Thresholds',
+        description: 'Resolve recurring idle timeouts by ensuring work sessions are properly concluded prior to breaks.'
       });
     }
 
-    if (summary.focusScore < 60) {
-      recommendations.push({
-        title: 'Enhance Focus',
-        description: 'Reduce application switching and implement focused work sessions with regular breaks.'
-      });
-    }
+    recs.push({
+      title: 'Ergonomic & Activity Balance',
+      description: 'Maintain steady mouse and keyboard inputs while ensuring short screen breaks during intensive coding.'
+    });
 
-    if (recommendations.length === 0) {
-      recommendations.push({
-        title: 'Maintain Current Performance',
-        description: 'Employee is performing well. Continue current practices and consider them for mentoring others.'
-      });
-    }
-
-    return recommendations;
+    return recs;
   }
 
-  getScoreColor(score) {
-    if (score >= 80) return '#4CAF50';
-    if (score >= 60) return '#FF9800';
-    return '#f44336';
-  }
+  /**
+   * Chart generation with actual telemetry
+   */
+  async generateProductivityChart(reportData) {
+    try {
+      const labels = this.getTimeLabels(reportData.period);
+      const data = this.getProductivityData(reportData);
 
-  getAlertColor(severity) {
-    switch (severity) {
-      case 'high': return '#f44336';
-      case 'medium': return '#FF9800';
-      case 'low': return '#FFC107';
-      default: return '#9E9E9E';
+      const chartConfig = {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Daily Productivity Score (%)',
+            data,
+            borderColor: '#2563eb',
+            backgroundColor: 'rgba(37, 99, 235, 0.1)',
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2,
+            pointBackgroundColor: '#2563eb',
+            pointRadius: 4
+          }]
+        },
+        options: {
+          responsive: false,
+          animation: false,
+          plugins: {
+            legend: {
+              display: true,
+              labels: { font: { size: 10 } }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100,
+              ticks: { font: { size: 9 }, stepSize: 20 }
+            },
+            x: {
+              ticks: { font: { size: 8 } }
+            }
+          }
+        }
+      };
+
+      return await this.chartRenderer.renderToBuffer(chartConfig);
+    } catch (error) {
+      console.warn('Error generating productivity chart buffer:', error.message);
+      return null;
     }
   }
 
@@ -656,116 +830,87 @@ class ReportGenerator {
     const labels = [];
     const start = new Date(period.startDate);
     const end = new Date(period.endDate);
-    
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      labels.push(d.toLocaleDateString());
+      labels.push(`${d.getMonth() + 1}/${d.getDate()}`);
     }
-    
     return labels;
   }
 
   getProductivityData(reportData) {
-    // This would be calculated from actual daily productivity scores
-    // For now, returning sample data
-    return [75, 82, 68, 90, 85, 78, 88];
-  }
-
-  /**
-   * Generate bulk report for multiple employees
-   */
-  async generateBulkReport(employeeIds, startDate, endDate) {
-    const reports = [];
-    
-    for (const employeeId of employeeIds) {
-      try {
-        const report = await this.generateEmployeeReport(employeeId, startDate, endDate);
-        reports.push(report);
-      } catch (error) {
-        console.error(`Error generating report for employee ${employeeId}:`, error);
+    const dailyMap = {};
+    (reportData.activities || []).forEach(act => {
+      const dStr = new Date(act.timestamp).toISOString().split('T')[0];
+      if (!dailyMap[dStr]) dailyMap[dStr] = { sum: 0, count: 0 };
+      if (act.productivity_score > 0) {
+        dailyMap[dStr].sum += act.productivity_score;
+        dailyMap[dStr].count++;
       }
+    });
+
+    const start = new Date(reportData.period.startDate);
+    const end = new Date(reportData.period.endDate);
+    const scores = [];
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dStr = d.toISOString().split('T')[0];
+      const day = dailyMap[dStr];
+      scores.push(day && day.count > 0 ? Math.round(day.sum / day.count) : 0);
     }
-    
-    return reports;
+
+    return scores;
   }
 
   /**
-   * Export data to CSV format
+   * Comprehensive CSV Export method
    */
   async exportToCSV(employeeId, startDate, endDate, dataType = 'all') {
     try {
+      const employee = await this.getEmployeeInfo(employeeId);
       const reportData = await this.gatherReportData(employeeId, startDate, endDate);
-      let csvContent = '';
-      
-      switch (dataType) {
-        case 'activities':
-          csvContent = this.generateActivitiesCSV(reportData.activities);
-          break;
-        case 'keystrokes':
-          csvContent = this.generateKeystrokesCSV(reportData.keystrokeData);
-          break;
-        case 'alerts':
-          csvContent = this.generateAlertsCSV(reportData.alerts);
-          break;
-        default:
-          csvContent = this.generateFullCSV(reportData);
+      const summary = this.calculateExecutiveSummary(reportData);
+
+      const startStr = new Date(startDate).toISOString().split('T')[0];
+      const endStr = new Date(endDate).toISOString().split('T')[0];
+
+      let csv = 'NIYANTRAN WORKFLOW - EMPLOYEE PERFORMANCE REPORT\n';
+      csv += `Employee Name,${employee.name}\n`;
+      csv += `Email,${employee.email}\n`;
+      csv += `Department,${employee.department}\n`;
+      csv += `Status,${employee.stillExist === 0 ? 'Exited' : 'Active'}\n`;
+      csv += `Period,${startStr} to ${endStr}\n`;
+      csv += `Generated At,${new Date().toISOString()}\n\n`;
+
+      csv += 'EXECUTIVE KPI SUMMARY\n';
+      csv += 'Total Activities,Average Productivity Score (%),Active Hours,Total Keystrokes,Total Alerts\n';
+      csv += `${reportData.activities.length},${summary.productivityScore}%,${summary.activeHours}h,${summary.totalKeystrokes},${summary.violations}\n\n`;
+
+      csv += 'DETAILED ACTIVITY LOGS\n';
+      csv += 'Timestamp,Application,Window Title,Productivity Score (%),Idle Duration (s),Keystrokes,Mouse Score (%)\n';
+
+      if (reportData.activities.length > 0) {
+        reportData.activities.forEach(act => {
+          const ts = act.timestamp ? new Date(act.timestamp).toISOString() : '';
+          const app = (act.active_application?.name || 'Workspace').replace(/"/g, '""');
+          const title = (act.active_application?.title || '').replace(/"/g, '""');
+          csv += `"${ts}","${app}","${title}",${act.productivity_score || 0},${act.idle_duration || 0},${act.keystroke_count || 0},${act.mouse_activity_score || 0}\n`;
+        });
+      } else {
+        csv += 'No activity logs recorded in this period\n';
       }
-      
-      const filename = `${dataType}_export_${employeeId}_${Date.now()}.csv`;
+
+      const filename = `employee_export_${employeeId}_${Date.now()}.csv`;
       const filepath = path.join(this.reportsDir, filename);
-      
-      await fs.writeFile(filepath, csvContent);
-      
+      await fsPromises.writeFile(filepath, '\uFEFF' + csv, 'utf8');
+
       return {
         filename,
         filepath,
         generatedAt: new Date()
       };
     } catch (error) {
-      console.error('Error exporting to CSV:', error);
+      console.error('Error in exportToCSV:', error);
       throw error;
     }
-  }
-
-  generateActivitiesCSV(activities) {
-    const headers = 'Timestamp,Activity Type,Application,Duration,Productivity Score\n';
-    const rows = activities.map(activity => 
-      `${activity.timestamp},${activity.activity_type || ''},${activity.application_name || ''},${activity.duration || 0},${activity.productivity_score || 0}`
-    ).join('\n');
-    
-    return headers + rows;
-  }
-
-  generateKeystrokesCSV(keystrokeData) {
-    const headers = 'Timestamp,Application,Keystrokes,Typing Speed,Accuracy,Productivity Score\n';
-    const rows = keystrokeData.map(data => 
-      `${data.timestamp},${data.application_name || ''},${data.keystroke_data?.total_keystrokes || 0},${data.keystroke_data?.typing_speed_wpm || 0},${data.keystroke_data?.typing_accuracy || 0},${data.productivity_metrics?.productivity_score || 0}`
-    ).join('\n');
-    
-    return headers + rows;
-  }
-
-  generateAlertsCSV(alerts) {
-    const headers = 'Timestamp,Type,Severity,Title,Description\n';
-    const rows = alerts.map(alert => 
-      `${alert.timestamp},${alert.alert_type},${alert.severity},"${alert.title}","${alert.description}"`
-    ).join('\n');
-    
-    return headers + rows;
-  }
-
-  generateFullCSV(reportData) {
-    // Combine all data types into a comprehensive CSV
-    let csv = 'Data Type,Timestamp,Details\n';
-    
-    reportData.activities.forEach(activity => {
-      csv += `Activity,${activity.timestamp},"${activity.activity_type || 'Unknown'}"\n`;
-    });
-    
-    reportData.alerts.forEach(alert => {
-      csv += `Alert,${alert.timestamp},"${alert.title}"\n`;
-    });
-    
-    return csv;
   }
 }
 

@@ -904,60 +904,6 @@ router.post('/whitelist', async (req, res) => {
   }
 });
 
-// Get monitoring reports
-router.get('/reports/:employeeId', async (req, res) => {
-  try {
-    const { employeeId } = req.params;
-    const { startDate, endDate } = req.query;
-
-    if (!startDate || !endDate) {
-      return res.status(400).json({ error: 'Start date and end date are required' });
-    }
-
-    // Get activity summary
-    const activitySummary = await activityTracker.getActivitySummary(employeeId, startDate, endDate);
-    
-    // Get daily metrics
-    const dailyMetrics = [];
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    
-    for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
-      const dateStr = date.toISOString().split('T')[0];
-      const metrics = await activityTracker.calculateDailyMetrics(employeeId, dateStr);
-      dailyMetrics.push({
-        date: dateStr,
-        ...metrics
-      });
-    }
-
-    // Get alert statistics
-    const alertStats = await MonitoringAlert.getAlertStats(employeeId, startDate, endDate);
-    
-    // Get screenshot summary
-    const screenshots = await ScreenCapture.getCapturesByDateRange(employeeId, startDate, endDate);
-    
-    res.json({
-      employeeId,
-      reportPeriod: { startDate, endDate },
-      activitySummary,
-      dailyMetrics,
-      alertStats,
-      screenshots: {
-        total: screenshots.length,
-        flagged: screenshots.filter(s => s.is_flagged).length,
-        byTrigger: screenshots.reduce((acc, s) => {
-          acc[s.capture_trigger] = (acc[s.capture_trigger] || 0) + 1;
-          return acc;
-        }, {})
-      }
-    });
-  } catch (error) {
-    console.error('Error generating report:', error);
-    res.status(500).json({ error: 'Failed to generate report' });
-  }
-});
-
 // Get real-time monitoring status
 router.get('/status/:employeeId', async (req, res) => {
   try {
@@ -1220,6 +1166,185 @@ router.get('/productivity/:employeeId', async (req, res) => {
   } catch (error) {
     console.error('Error fetching productivity summary:', error);
     res.status(500).json({ error: 'Failed to fetch productivity summary' });
+  }
+});
+
+// GET /api/monitoring/reports/:employeeId
+// Comprehensive report data generator for ReportGenerator component
+router.get('/reports/:employeeId', async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { startDate, endDate, reportType = 'summary' } = req.query;
+
+    const employee = await User.findById(employeeId).populate('department', 'name').lean();
+    if (!employee) {
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+
+    const start = startDate ? new Date(startDate) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    start.setHours(0, 0, 0, 0);
+
+    const end = endDate ? new Date(endDate) : new Date();
+    end.setHours(23, 59, 59, 999);
+
+    const [activities, screenshots, alerts, attendances] = await Promise.all([
+      EmployeeActivity.find({
+        employee: employeeId,
+        timestamp: { $gte: start, $lte: end }
+      }).select('timestamp keystroke_count mouse_activity_score idle_duration productivity_score active_application').sort({ timestamp: 1 }).lean(),
+      ScreenCapture.find({
+        employee: employeeId,
+        timestamp: { $gte: start, $lte: end }
+      }).select('timestamp trigger_type is_violation').lean(),
+      MonitoringAlert.find({
+        employee: employeeId,
+        timestamp: { $gte: start, $lte: end }
+      }).select('timestamp alert_type severity description').lean(),
+      (async () => {
+        try {
+          const Attendance = require('../models/Attendance');
+          return await Attendance.find({
+            user: employeeId,
+            $or: [
+              { date: { $gte: start, $lte: end } },
+              { startDayTime: { $gte: start, $lte: end } }
+            ]
+          }).lean();
+        } catch (e) {
+          return [];
+        }
+      })()
+    ]);
+
+    // Build day map across date range
+    const dailyMetricsMap = {};
+    const curr = new Date(start);
+    while (curr <= end) {
+      const y = curr.getFullYear();
+      const m = String(curr.getMonth() + 1).padStart(2, '0');
+      const d = String(curr.getDate()).padStart(2, '0');
+      const dateKey = `${y}-${m}-${d}`;
+      dailyMetricsMap[dateKey] = {
+        date: dateKey,
+        totalActivities: 0,
+        keystrokeSum: 0,
+        mouseScoreSum: 0,
+        productivitySum: 0,
+        idleSeconds: 0,
+        activeSeconds: 0
+      };
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    // Populate activity data into daily map
+    activities.forEach(act => {
+      if (!act || !act.timestamp) return;
+      let dateKey = '';
+      try {
+        dateKey = act.timestamp instanceof Date ? act.timestamp.toISOString().split('T')[0] : new Date(act.timestamp).toISOString().split('T')[0];
+      } catch (e) {
+        return;
+      }
+      if (dailyMetricsMap[dateKey]) {
+        const item = dailyMetricsMap[dateKey];
+        item.totalActivities++;
+        item.keystrokeSum += (act.keystroke_count || 0);
+        item.mouseScoreSum += (act.mouse_activity_score || 0);
+        item.productivitySum += (act.productivity_score || 0);
+
+        const isActive = (act.keystroke_count || 0) > 0 || (act.mouse_activity_score || 0) >= 15;
+        let idle = 0;
+        if (!isActive) {
+          let raw = act.idle_duration || 0;
+          if (raw > 10000) raw = Math.round(raw / 1000);
+          idle = Math.min(30, raw > 0 ? raw : 30);
+        }
+        item.idleSeconds += idle;
+        item.activeSeconds += Math.max(0, 30 - idle);
+      }
+    });
+
+    // Merge official attendance if available
+    attendances.forEach(att => {
+      const dateKey = att.date ? new Date(att.date).toISOString().split('T')[0] : (att.startDayTime ? new Date(att.startDayTime).toISOString().split('T')[0] : null);
+      if (dateKey && dailyMetricsMap[dateKey]) {
+        const item = dailyMetricsMap[dateKey];
+        if (att.hoursWorked > 0) {
+          item.activeSeconds = Math.max(item.activeSeconds, Math.round(att.hoursWorked * 3600));
+        }
+      }
+    });
+
+    const dailyMetrics = Object.values(dailyMetricsMap).map(day => {
+      const avgProd = day.totalActivities > 0 ? Math.round(day.productivitySum / day.totalActivities) : 0;
+      const avgMouse = day.totalActivities > 0 ? Math.round(day.mouseScoreSum / day.totalActivities) : 0;
+      const activeH = Math.round((day.activeSeconds / 3600) * 10) / 10;
+      return {
+        date: day.date,
+        totalActivities: day.totalActivities,
+        avgProductivityScore: avgProd,
+        activeHours: activeH,
+        totalKeystroke: day.keystrokeSum,
+        avgMouseActivity: avgMouse
+      };
+    });
+
+    // Screenshot statistics
+    const byTrigger = {};
+    let flaggedScreenshots = 0;
+    screenshots.forEach(sc => {
+      const trigger = sc.trigger_type || 'periodic';
+      byTrigger[trigger] = (byTrigger[trigger] || 0) + 1;
+      if (sc.is_violation) flaggedScreenshots++;
+    });
+
+    // Alert statistics
+    const alertMap = {};
+    alerts.forEach(al => {
+      const type = al.alert_type || al.severity || 'general_alert';
+      alertMap[type] = (alertMap[type] || 0) + 1;
+    });
+    const alertStats = Object.entries(alertMap).map(([type, totalCount]) => ({
+      _id: type,
+      totalCount
+    }));
+
+    // Overall summary
+    const daysWithActivities = dailyMetrics.filter(d => d.totalActivities > 0);
+    const avgScore = daysWithActivities.length > 0
+      ? Math.round(daysWithActivities.reduce((acc, d) => acc + d.avgProductivityScore, 0) / daysWithActivities.length)
+      : 0;
+
+    res.json({
+      success: true,
+      employee: {
+        _id: employee._id,
+        name: employee.name,
+        email: employee.email,
+        department: employee.department?.name || 'General',
+        stillExist: employee.stillExist
+      },
+      period: {
+        startDate: start.toISOString().split('T')[0],
+        endDate: end.toISOString().split('T')[0]
+      },
+      summary: {
+        totalActivities: activities.length,
+        avgProductivityScore: avgScore,
+        totalScreenshots: screenshots.length,
+        totalAlerts: alerts.length
+      },
+      dailyMetrics,
+      screenshots: {
+        total: screenshots.length,
+        flagged: flaggedScreenshots,
+        byTrigger
+      },
+      alertStats
+    });
+  } catch (error) {
+    console.error('Error fetching employee report:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch employee report' });
   }
 });
 
@@ -2288,24 +2413,28 @@ router.get('/monthly-summary', async (req, res) => {
       let keystrokes = emp.totalKeystrokes;
 
       if (emp.logCount === 0) {
-        const fallback = getFallbackTelemetry({ _id: emp.employeeId, department: emp.department, stillExist: 1 }, startOfMonth);
-        avgProd = fallback.avgProductivityScore;
-        activeSec = fallback.activeSeconds * 22;
-        idleSec = fallback.totalIdleSeconds * 22;
-        keystrokes = fallback.totalKeystrokes * 22;
-        avgMouse = fallback.avgMouseActivity;
+        avgProd = 0;
+        activeSec = 0;
+        idleSec = 0;
+        keystrokes = 0;
+        avgMouse = 0;
       }
 
-      totalTeamActiveSec += activeSec;
-      totalTeamIdleSec += idleSec;
-      totalTeamKeystrokes += keystrokes;
-      totalTeamMouseScore += avgMouse;
-      totalTeamProdSum += avgProd;
-      activeEmpCount++;
+      if (emp.logCount > 0) {
+        totalTeamActiveSec += activeSec;
+        totalTeamIdleSec += idleSec;
+        totalTeamKeystrokes += keystrokes;
+        totalTeamMouseScore += avgMouse;
+        totalTeamProdSum += avgProd;
+        activeEmpCount++;
+      }
 
-      let efficiency = 'Low Efficiency';
-      if (avgProd >= 75) efficiency = 'High Efficiency';
-      else if (avgProd >= 50) efficiency = 'Moderate Efficiency';
+      let efficiency = 'No Activity';
+      if (emp.logCount > 0) {
+        if (avgProd >= 75) efficiency = 'High Efficiency';
+        else if (avgProd >= 50) efficiency = 'Moderate Efficiency';
+        else efficiency = 'Low Efficiency';
+      }
 
       return {
         employeeId: emp.employeeId,
@@ -2325,9 +2454,12 @@ router.get('/monthly-summary', async (req, res) => {
     });
 
     const overallAvgProductivity = activeEmpCount > 0 ? Math.round(totalTeamProdSum / activeEmpCount) : 0;
-    let overallProductivityEfficiency = 'Low Efficiency';
-    if (overallAvgProductivity >= 75) overallProductivityEfficiency = 'High Efficiency';
-    else if (overallAvgProductivity >= 50) overallProductivityEfficiency = 'Moderate Efficiency';
+    let overallProductivityEfficiency = 'No Activity';
+    if (activeEmpCount > 0) {
+      if (overallAvgProductivity >= 75) overallProductivityEfficiency = 'High Efficiency';
+      else if (overallAvgProductivity >= 50) overallProductivityEfficiency = 'Moderate Efficiency';
+      else overallProductivityEfficiency = 'Low Efficiency';
+    }
 
     res.json({
       success: true,
@@ -2444,6 +2576,9 @@ router.get('/monthly-employee-breakdown', async (req, res) => {
     let totalMonthlyProdSum = 0;
     let workedDaysCount = 0;
 
+    const todayDate = new Date();
+    todayDate.setHours(23, 59, 59, 999);
+
     const dailyBreakdown = Object.values(dailyMap).map(day => {
       const dateObj = new Date(year, monthIdx, day.day);
 
@@ -2481,7 +2616,27 @@ router.get('/monthly-employee-breakdown', async (req, res) => {
           keystrokes: 0,
           mouseActivity: 0,
           topApp: 'Weekend Off',
-          productivityEfficiency: 'Off'
+          productivityEfficiency: 'Weekend Off'
+        };
+      }
+
+      const isFutureDate = dateObj > todayDate;
+      if (isFutureDate && day.logCount === 0) {
+        return {
+          date: day.date,
+          day: day.day,
+          dayOfWeek: day.dayOfWeek,
+          dayShort: day.dayShort,
+          status: 'Upcoming',
+          activeHours: '0h 0m',
+          activeSeconds: 0,
+          idleTime: '0m',
+          idleSeconds: 0,
+          productivityScore: 0,
+          keystrokes: 0,
+          mouseActivity: 0,
+          topApp: 'Shift Not Started',
+          productivityEfficiency: 'Upcoming'
         };
       }
 
@@ -2504,28 +2659,30 @@ router.get('/monthly-employee-breakdown', async (req, res) => {
         if (topApps.length > 0) {
           topApp = topApps[0][0];
         }
+
+        totalMonthlyActiveSec += activeSec;
+        totalMonthlyIdleSec += idleSec;
+        totalMonthlyKeystrokes += keystrokes;
+        totalMonthlyMouseSum += avgMouse;
+        totalMonthlyProdSum += avgProd;
+        workedDaysCount++;
       } else {
-        // Weekday without tracking logs - generate realistic weekday telemetry
-        const fallback = getFallbackTelemetry(employee, dateObj);
-        activeSec = fallback.activeSeconds;
-        idleSec = fallback.totalIdleSeconds;
-        avgProd = fallback.avgProductivityScore;
-        avgMouse = fallback.avgMouseActivity;
-        keystrokes = fallback.totalKeystrokes;
-        topApp = fallback.currentActivity.appName || 'General Workspace';
-        status = 'Normal Workday';
+        // Weekday in the past with no recorded activity logs
+        status = 'No Activity';
+        activeSec = 0;
+        idleSec = 0;
+        avgProd = 0;
+        avgMouse = 0;
+        keystrokes = 0;
+        topApp = 'No Activity Logged';
       }
 
-      totalMonthlyActiveSec += activeSec;
-      totalMonthlyIdleSec += idleSec;
-      totalMonthlyKeystrokes += keystrokes;
-      totalMonthlyMouseSum += avgMouse;
-      totalMonthlyProdSum += avgProd;
-      workedDaysCount++;
-
-      let efficiency = 'Low Efficiency';
-      if (avgProd >= 75) efficiency = 'High Efficiency';
-      else if (avgProd >= 50) efficiency = 'Moderate Efficiency';
+      let efficiency = 'No Activity';
+      if (day.logCount > 0) {
+        if (avgProd >= 75) efficiency = 'High Efficiency';
+        else if (avgProd >= 50) efficiency = 'Moderate Efficiency';
+        else efficiency = 'Low Efficiency';
+      }
 
       return {
         date: day.date,
@@ -2548,10 +2705,12 @@ router.get('/monthly-employee-breakdown', async (req, res) => {
     const avgMonthlyProd = workedDaysCount > 0 ? Math.round(totalMonthlyProdSum / workedDaysCount) : 0;
     const avgMonthlyMouse = workedDaysCount > 0 ? Math.round(totalMonthlyMouseSum / workedDaysCount) : 0;
 
-    let overallEfficiency = 'Low Efficiency';
+    let overallEfficiency = 'No Activity';
     if (isExited) overallEfficiency = 'Exited';
+    else if (workedDaysCount === 0) overallEfficiency = 'No Activity';
     else if (avgMonthlyProd >= 75) overallEfficiency = 'High Efficiency';
     else if (avgMonthlyProd >= 50) overallEfficiency = 'Moderate Efficiency';
+    else overallEfficiency = 'Low Efficiency';
 
     res.json({
       success: true,

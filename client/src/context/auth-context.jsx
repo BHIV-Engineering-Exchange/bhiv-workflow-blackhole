@@ -24,7 +24,7 @@ const getApiUrl = () => {
       return 'https://blackholeworkflow.onrender.com/api';
     } else if (host === 'localhost' || host === '127.0.0.1') {
       console.log('🏠 Using localhost backend API');
-      return 'http://localhost:5001/api';
+      return 'http://localhost:5000/api';
     } else {
       console.log('🏠 Using same-origin API');
       return `${window.location.origin}/api`;
@@ -32,7 +32,7 @@ const getApiUrl = () => {
   }
   
   console.warn('⚠️ No API URL configured, using default localhost');
-  return 'http://localhost:5001/api';
+  return 'http://localhost:5000/api';
 };
 
 const API_URL = getApiUrl();
