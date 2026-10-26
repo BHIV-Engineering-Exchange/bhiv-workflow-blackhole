@@ -912,6 +912,514 @@ class ReportGenerator {
       throw error;
     }
   }
+
+  /**
+   * TEAM REPORT: Gather aggregated telemetry for all members
+   */
+  async gatherTeamReportData(startDate, endDate, options = {}) {
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    let userQuery = { role: { $nin: ['admin', 'Admin'] } };
+    if (!options.includeExited) {
+      userQuery.stillExist = 1; // Strictly only active users
+    }
+    if (options.department && options.department !== 'all') {
+      userQuery.department = options.department;
+    }
+    if (Array.isArray(options.employeeIds) && options.employeeIds.length > 0) {
+      userQuery._id = { $in: options.employeeIds };
+    }
+
+    const employees = await User.find(userQuery)
+      .select('name email department stillExist role')
+      .populate('department', 'name')
+      .lean();
+
+    const empIds = employees.map(e => e._id);
+
+    const [activities, alerts] = await Promise.all([
+      EmployeeActivity.find({
+        employee: { $in: empIds },
+        timestamp: { $gte: start, $lte: end }
+      }).select('employee timestamp keystroke_count mouse_activity_score idle_duration productivity_score active_application').sort({ timestamp: -1 }).lean(),
+
+      MonitoringAlert.find({
+        employee: { $in: empIds },
+        timestamp: { $gte: start, $lte: end }
+      }).select('employee timestamp alert_type severity title description').sort({ timestamp: -1 }).lean()
+    ]);
+
+    const empMap = new Map();
+    employees.forEach(emp => {
+      const idStr = emp._id.toString();
+      empMap.set(idStr, {
+        id: idStr,
+        name: emp.name || 'Employee',
+        email: emp.email || '',
+        department: typeof emp.department === 'object' ? (emp.department?.name || 'General') : (emp.department || 'General'),
+        stillExist: emp.stillExist,
+        totalActivities: 0,
+        keystrokes: 0,
+        mouseSum: 0,
+        activeSeconds: 0,
+        prodSum: 0,
+        prodCount: 0,
+        dailyDates: new Set(),
+        alertsCount: 0,
+        topApps: {}
+      });
+    });
+
+    const teamApps = {};
+    const dailyTeamMap = {};
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dStr = d.toISOString().split('T')[0];
+      dailyTeamMap[dStr] = { sum: 0, count: 0 };
+    }
+
+    activities.forEach(act => {
+      const idStr = act.employee?.toString();
+      const isActive = (act.keystroke_count || 0) > 0 || (act.mouse_activity_score || 0) >= 15;
+      let idle = 0;
+      if (!isActive) {
+        let raw = act.idle_duration || 0;
+        if (raw > 10000) raw = Math.round(raw / 1000);
+        idle = Math.min(30, raw > 0 ? raw : 30);
+      }
+      const actSec = Math.max(0, 30 - idle);
+
+      let appName = act.active_application?.name;
+      if (!appName || appName === 'Unknown' || appName === 'null') {
+        appName = isActive ? 'Desktop Workspace' : 'System Background';
+      }
+      teamApps[appName] = (teamApps[appName] || 0) + 1;
+
+      const dStr = act.timestamp ? new Date(act.timestamp).toISOString().split('T')[0] : null;
+      if (dStr && dailyTeamMap[dStr] && act.productivity_score > 0) {
+        dailyTeamMap[dStr].sum += act.productivity_score;
+        dailyTeamMap[dStr].count++;
+      }
+
+      if (empMap.has(idStr)) {
+        const item = empMap.get(idStr);
+        item.totalActivities++;
+        item.keystrokes += (act.keystroke_count || 0);
+        item.mouseSum += (act.mouse_activity_score || 0);
+        item.activeSeconds += actSec;
+        if (act.productivity_score > 0) {
+          item.prodSum += act.productivity_score;
+          item.prodCount++;
+        }
+        if (dStr) item.dailyDates.add(dStr);
+        item.topApps[appName] = (item.topApps[appName] || 0) + 1;
+      }
+    });
+
+    const alertStats = {};
+    alerts.forEach(al => {
+      const idStr = al.employee?.toString();
+      if (empMap.has(idStr)) {
+        empMap.get(idStr).alertsCount++;
+      }
+      const type = al.alert_type || al.severity || 'general_alert';
+      alertStats[type] = (alertStats[type] || 0) + 1;
+    });
+
+    const members = Array.from(empMap.values()).map(m => {
+      const avgProd = m.prodCount > 0 ? Math.round(m.prodSum / m.prodCount) : 0;
+      const activeHours = Math.round((m.activeSeconds / 3600) * 10) / 10;
+      const avgMouse = m.totalActivities > 0 ? Math.round(m.mouseSum / m.totalActivities) : 0;
+      const workedDays = m.dailyDates.size;
+      
+      let efficiency = 'No Activity';
+      let effColor = '#94a3b8';
+      if (m.totalActivities > 0) {
+        if (avgProd >= 75) {
+          efficiency = 'High Efficiency';
+          effColor = '#10b981';
+        } else if (avgProd >= 50) {
+          efficiency = 'Moderate';
+          effColor = '#f59e0b';
+        } else {
+          efficiency = 'Low';
+          effColor = '#ef4444';
+        }
+      }
+
+      return {
+        id: m.id,
+        name: m.name,
+        email: m.email,
+        department: m.department,
+        stillExist: m.stillExist,
+        totalActivities: m.totalActivities,
+        workedDays,
+        avgProductivity: avgProd,
+        activeHours,
+        totalKeystrokes: m.keystrokes,
+        avgMouse,
+        alertsCount: m.alertsCount,
+        efficiency,
+        effColor
+      };
+    });
+
+    members.sort((a, b) => b.totalActivities - a.totalActivities);
+
+    const activeMembers = members.filter(m => m.totalActivities > 0);
+    const teamAvgProd = activeMembers.length > 0
+      ? Math.round(activeMembers.reduce((sum, m) => sum + m.avgProductivity, 0) / activeMembers.length)
+      : 0;
+    const teamTotalHours = Math.round(members.reduce((sum, m) => sum + m.activeHours, 0) * 10) / 10;
+    const teamTotalKeystrokes = members.reduce((sum, m) => sum + m.totalKeystrokes, 0);
+    const teamTotalAlerts = alerts.length;
+    const teamTotalActivities = activities.length;
+
+    return {
+      period: { startDate, endDate },
+      totalEmployees: employees.length,
+      activeMembersCount: activeMembers.length,
+      teamSummary: {
+        teamAvgProductivity: teamAvgProd,
+        teamTotalHours,
+        teamTotalKeystrokes,
+        teamTotalAlerts,
+        teamTotalActivities
+      },
+      members,
+      teamApps,
+      alertStats,
+      dailyTeamScores: Object.entries(dailyTeamMap).map(([date, d]) => ({
+        date,
+        score: d.count > 0 ? Math.round(d.sum / d.count) : 0
+      })).sort((a, b) => a.date.localeCompare(b.date))
+    };
+  }
+
+  /**
+   * TEAM REPORT: Consolidated All-Members PDF
+   */
+  async generateTeamReport(startDate, endDate, options = {}) {
+    try {
+      const data = await this.gatherTeamReportData(startDate, endDate, options);
+      const doc = new PDFDocument({
+        size: 'A4',
+        margin: 40,
+        info: {
+          Title: 'Consolidated Team Performance Report',
+          Author: 'Niyantran Workflow Monitoring System',
+          Subject: 'All Members Performance & Telemetry Audit'
+        }
+      });
+
+      const filename = `team_report_${Date.now()}.pdf`;
+      const filepath = path.join(this.reportsDir, filename);
+      const writeStream = fs.createWriteStream(filepath);
+      doc.pipe(writeStream);
+
+      const pageWidth = doc.page.width;
+      const sDate = new Date(startDate);
+      const eDate = new Date(endDate);
+      const isSameDay = sDate.toDateString() === eDate.toDateString();
+      const sDay = String(sDate.getDate()).padStart(2, '0');
+      const sMonth = String(sDate.getMonth() + 1).padStart(2, '0');
+      const eDay = String(eDate.getDate()).padStart(2, '0');
+      const eMonth = String(eDate.getMonth() + 1).padStart(2, '0');
+      const dateDisplay = isSameDay ? `${sDay}/${sMonth}` : `${sDay}/${sMonth} - ${eDay}/${eMonth}`;
+      const periodLabel = isSameDay ? `Date: ${sDay}/${sMonth}/${sDate.getFullYear()}` : `Period: ${sDay}/${sMonth}/${sDate.getFullYear()} to ${eDay}/${eMonth}/${eDate.getFullYear()}`;
+
+      // ==================== PAGE 1 ====================
+      // Header Banner
+      doc.rect(0, 0, pageWidth, 95).fill('#0f172a');
+      doc.rect(0, 0, 6, 95).fill('#6366f1'); // Indigo/purple accent for team report
+
+      doc.fillColor('#ffffff').fontSize(18).font('Helvetica-Bold').text('NIYANTRAN WORKFLOW', 40, 22);
+      doc.fillColor('#94a3b8').fontSize(10).font('Helvetica').text('Consolidated Team Performance & Telemetry Report', 40, 44);
+
+      doc.fontSize(9).fillColor('#e2e8f0').font('Helvetica-Bold')
+         .text('Report Scope: ', 40, 68, { continued: true })
+         .font('Helvetica').text(`Active Workforce (${data.totalEmployees} Active Members)   •   ${periodLabel}`);
+
+      doc.fontSize(8.5).fillColor('#94a3b8')
+         .text(`Generated on ${new Date().toLocaleString()}   •   Scope: Active Employees Only`, 40, 81);
+
+      doc.y = 110;
+
+      // Executive KPI Cards
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#0f172a').text('TEAM EXECUTIVE KPI SUMMARY', 40, doc.y);
+
+      const boxY = doc.y + 6;
+      const boxWidth = 117;
+      const boxHeight = 58;
+      const gap = 15;
+      const startX = 40;
+
+      const kpiItems = [
+        {
+          label: 'Team Avg Productivity',
+          value: `${data.teamSummary.teamAvgProductivity}%`,
+          color: data.teamSummary.teamAvgProductivity >= 75 ? '#10b981' : (data.teamSummary.teamAvgProductivity >= 50 ? '#f59e0b' : '#ef4444')
+        },
+        {
+          label: 'Total Active Hours',
+          value: `${data.teamSummary.teamTotalHours}h`,
+          color: '#0284c7'
+        },
+        {
+          label: 'Total Keystrokes',
+          value: data.teamSummary.teamTotalKeystrokes.toLocaleString(),
+          color: '#8b5cf6'
+        },
+        {
+          label: 'Total Security Alerts',
+          value: `${data.teamSummary.teamTotalAlerts}`,
+          color: data.teamSummary.teamTotalAlerts > 0 ? '#ef4444' : '#10b981'
+        }
+      ];
+
+      kpiItems.forEach((item, index) => {
+        const currentX = startX + index * (boxWidth + gap);
+        doc.roundedRect(currentX, boxY, boxWidth, boxHeight, 6).fillAndStroke('#f8fafc', '#e2e8f0');
+        doc.fillColor(item.color).fontSize(18).font('Helvetica-Bold').text(item.value, currentX, boxY + 12, { width: boxWidth, align: 'center' });
+        doc.fillColor('#64748b').fontSize(8.5).font('Helvetica').text(item.label, currentX, boxY + 36, { width: boxWidth, align: 'center' });
+      });
+
+      doc.y = boxY + boxHeight + 18;
+
+      // All Members Roster Table (8 Exact Columns from Handwritten Specification)
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#0f172a').text('ALL MEMBERS PERFORMANCE ROSTER', 40, doc.y);
+      doc.moveDown(0.5);
+
+      const tableX = 40;
+      const tableWidth = 515;
+      let currentY = doc.y;
+
+      // Table Header Function: Name | Date | Activities | Productivity | Active Hour | Key Strokes | Mouse Score | Efficiency
+      const printTableHeader = (yPos) => {
+        doc.rect(tableX, yPos, tableWidth, 22).fill('#1e293b');
+        doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold');
+        doc.text('Name', tableX + 8, yPos + 6, { width: 110 });
+        doc.text('Date', tableX + 120, yPos + 6, { width: 55, align: 'center' });
+        doc.text('Activities', tableX + 180, yPos + 6, { width: 48, align: 'center' });
+        doc.text('Productivity', tableX + 232, yPos + 6, { width: 58, align: 'center' });
+        doc.text('Active Hour', tableX + 294, yPos + 6, { width: 52, align: 'center' });
+        doc.text('Key Strokes', tableX + 350, yPos + 6, { width: 54, align: 'center' });
+        doc.text('Mouse Score', tableX + 408, yPos + 6, { width: 55, align: 'center' });
+        doc.text('Efficiency', tableX + 465, yPos + 6, { width: 45, align: 'right' });
+        return yPos + 22;
+      };
+
+      currentY = printTableHeader(currentY);
+
+      data.members.forEach((m, idx) => {
+        if (currentY > 750) {
+          doc.addPage();
+          doc.rect(0, 0, pageWidth, 40).fill('#0f172a');
+          doc.fillColor('#ffffff').fontSize(10).font('Helvetica-Bold').text('NIYANTRAN WORKFLOW - ALL MEMBERS ROSTER (CONTINUED)', 40, 14);
+          currentY = printTableHeader(55);
+        }
+
+        const isZebra = idx % 2 === 1;
+        const rowHeight = 20;
+
+        doc.rect(tableX, currentY, tableWidth, rowHeight).fill(isZebra ? '#f8fafc' : '#ffffff');
+        doc.rect(tableX, currentY + rowHeight - 1, tableWidth, 1).fill('#e2e8f0');
+
+        doc.fontSize(7.5).font('Helvetica');
+
+        // 1. Name
+        doc.fillColor('#0f172a').font('Helvetica-Bold').text(m.name, tableX + 8, currentY + 5, { width: 110, ellipsis: true });
+
+        // 2. Date (Respected Date e.g. 24/10 or range 24/10 - 26/10)
+        doc.fillColor('#475569').font('Helvetica').text(dateDisplay, tableX + 120, currentY + 5, { width: 55, align: 'center' });
+
+        // 3. Activities
+        doc.fillColor('#475569').text(m.totalActivities > 0 ? m.totalActivities.toString() : '-', tableX + 180, currentY + 5, { width: 48, align: 'center' });
+
+        // 4. Productivity
+        doc.fillColor(m.totalActivities > 0 ? m.effColor : '#94a3b8').font(m.totalActivities > 0 ? 'Helvetica-Bold' : 'Helvetica')
+           .text(m.totalActivities > 0 ? `${m.avgProductivity}%` : '-', tableX + 232, currentY + 5, { width: 58, align: 'center' });
+
+        // 5. Active Hour
+        doc.fillColor('#0f172a').font('Helvetica').text(m.totalActivities > 0 ? `${m.activeHours}h` : '-', tableX + 294, currentY + 5, { width: 52, align: 'center' });
+
+        // 6. Key Strokes
+        doc.fillColor('#475569').text(m.totalKeystrokes > 0 ? m.totalKeystrokes.toLocaleString() : '-', tableX + 350, currentY + 5, { width: 54, align: 'center' });
+
+        // 7. Mouse Score
+        doc.fillColor('#475569').text(m.totalActivities > 0 ? `${m.avgMouse}%` : '-', tableX + 408, currentY + 5, { width: 55, align: 'center' });
+
+        // 8. Efficiency Rating
+        doc.fillColor(m.effColor).font('Helvetica-Bold').text(m.efficiency === 'No Activity' ? '-' : m.efficiency, tableX + 465, currentY + 5, { width: 45, align: 'right' });
+
+        currentY += rowHeight;
+      });
+
+      // ==================== PAGE 2: APPLICATION USAGE & AUDIT ====================
+      doc.addPage();
+      doc.rect(0, 0, pageWidth, 45).fill('#0f172a');
+      doc.fillColor('#ffffff').fontSize(12).font('Helvetica-Bold').text('NIYANTRAN WORKFLOW - TEAM SOFTWARE & WORKSPACE AUDIT', 40, 16);
+
+      doc.y = 65;
+      doc.fontSize(13).font('Helvetica-Bold').fillColor('#0f172a').text('TOP APPLICATIONS USED ACROSS TEAM', 40, doc.y);
+      doc.moveDown(0.6);
+
+      const sortedTeamApps = Object.entries(data.teamApps || {}).sort((a, b) => b[1] - a[1]);
+      const totalTeamActs = data.teamSummary.teamTotalActivities || 1;
+
+      if (sortedTeamApps.length === 0) {
+        doc.fontSize(9.5).font('Helvetica').fillColor('#64748b').text('No application activity recorded across the team in this period.', 40, doc.y);
+        doc.moveDown(1);
+      } else {
+        let appY = doc.y;
+        sortedTeamApps.slice(0, 6).forEach(([appName, count]) => {
+          const pct = Math.round((count / totalTeamActs) * 100);
+          const estHours = Math.round((count * 30 / 3600) * 10) / 10;
+
+          doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text(appName, 40, appY, { width: 200, ellipsis: true });
+          doc.font('Helvetica').fillColor('#64748b').text(`${count} sessions (~${estHours}h total)`, 245, appY, { width: 140 });
+
+          const barX = 390;
+          const barWidth = 120;
+          doc.roundedRect(barX, appY + 2, barWidth, 7, 3).fill('#e2e8f0');
+          const fillW = Math.max(3, Math.round((pct / 100) * barWidth));
+          doc.roundedRect(barX, appY + 2, fillW, 7, 3).fill('#6366f1');
+
+          doc.fontSize(8).fillColor('#1e293b').font('Helvetica-Bold').text(`${pct}%`, barX + barWidth + 6, appY);
+          appY += 18;
+        });
+        doc.y = appY + 12;
+      }
+
+      // Team Security & Alerts Breakdown
+      doc.fontSize(13).font('Helvetica-Bold').fillColor('#0f172a').text('TEAM SECURITY ALERTS & NOTIFICATIONS', 40, doc.y);
+      doc.moveDown(0.6);
+
+      const alertEntries = Object.entries(data.alertStats || {});
+      if (alertEntries.length === 0) {
+        const boxY = doc.y;
+        doc.roundedRect(40, boxY, 515, 34, 6).fillAndStroke('#f0fdf4', '#bbf7d0');
+        doc.fillColor('#15803d').fontSize(9.5).font('Helvetica-Bold')
+           .text('✓ Zero security violations or policy warnings triggered across the entire team.', 55, boxY + 10);
+        doc.y = boxY + 44;
+      } else {
+        let alertY = doc.y;
+        alertEntries.forEach(([alertType, count]) => {
+          doc.roundedRect(40, alertY, 515, 26, 4).fillAndStroke('#fffbeb', '#fde68a');
+          doc.fillColor('#b45309').fontSize(9).font('Helvetica-Bold')
+             .text(`Alert Type: ${alertType}`, 52, alertY + 7, { width: 260 });
+          doc.fillColor('#1e293b').font('Helvetica')
+             .text(`Total Events: ${count} across team`, 320, alertY + 7, { width: 220, align: 'right' });
+          alertY += 31;
+        });
+        doc.y = alertY + 10;
+      }
+
+      // Executive Recommendations for the Team
+      doc.fontSize(13).font('Helvetica-Bold').fillColor('#0f172a').text('EXECUTIVE WORKFORCE RECOMMENDATIONS', 40, doc.y);
+      doc.moveDown(0.5);
+
+      const teamRecs = [
+        {
+          title: 'Workforce Capacity & Balance',
+          desc: `Average team productivity sits at ${data.teamSummary.teamAvgProductivity}%. Maintain balanced task assignments across active staff to prevent individual fatigue.`
+        },
+        {
+          title: 'Idle Threshold Calibration',
+          desc: `${data.teamSummary.teamTotalAlerts} security notifications were logged. Standardize clock-out procedures for team breaks to eliminate unnecessary idle warnings.`
+        },
+        {
+          title: 'Continuous Review',
+          desc: 'Audit inactive or low-engagement accounts to verify access rights and optimize team license distribution.'
+        }
+      ];
+
+      teamRecs.forEach((rec, idx) => {
+        doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#0f172a').text(`${idx + 1}. ${rec.title}`, 45, doc.y);
+        doc.fontSize(8.5).font('Helvetica').fillColor('#475569').text(rec.desc, 60, doc.y, { width: 490 });
+        doc.moveDown(0.5);
+      });
+
+      // Footer
+      const footerY = Math.min(doc.y + 20, 770);
+      doc.rect(40, footerY, 515, 1).fill('#e2e8f0');
+      doc.fontSize(7.5).font('Helvetica').fillColor('#94a3b8')
+         .text(`Generated on ${new Date().toLocaleString()}  •  Niyantran Workflow Monitoring System  •  Confidential Team Report`, 40, footerY + 8, { align: 'center', width: 515, lineBreak: false });
+
+      doc.end();
+
+      return new Promise((resolve, reject) => {
+        writeStream.on('finish', () => {
+          resolve({
+            filename,
+            filepath,
+            size: writeStream.bytesWritten,
+            generatedAt: new Date()
+          });
+        });
+        writeStream.on('error', reject);
+      });
+
+    } catch (error) {
+      console.error('Error in generateTeamReport:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Bulk Report alias
+   */
+  async generateBulkReport(employeeIds, startDate, endDate, options = {}) {
+    return this.generateTeamReport(startDate, endDate, { ...options, employeeIds });
+  }
+
+  /**
+   * TEAM CSV EXPORT
+   */
+  async exportTeamCSV(startDate, endDate, options = {}) {
+    try {
+      const data = await this.gatherTeamReportData(startDate, endDate, options);
+      const sDate = new Date(startDate);
+      const eDate = new Date(endDate);
+      const isSameDay = sDate.toDateString() === eDate.toDateString();
+      const sDay = String(sDate.getDate()).padStart(2, '0');
+      const sMonth = String(sDate.getMonth() + 1).padStart(2, '0');
+      const eDay = String(eDate.getDate()).padStart(2, '0');
+      const eMonth = String(eDate.getMonth() + 1).padStart(2, '0');
+      const dateDisplay = isSameDay ? `${sDay}/${sMonth}` : `${sDay}/${sMonth} - ${eDay}/${eMonth}`;
+
+      // Exact 8 Columns matching handwritten specification:
+      // Name, Date, Activities, Productivity, Active Hour, Key Strokes, Mouse Score, Efficiency
+      let csv = 'Name,Date,Activities,Productivity,Active Hour,Key Strokes,Mouse Score,Efficiency\n';
+
+      data.members.forEach(m => {
+        const name = (m.name || 'Employee').replace(/"/g, '""');
+        const acts = m.totalActivities > 0 ? m.totalActivities : '-';
+        const prod = m.totalActivities > 0 ? `${m.avgProductivity}%` : '-';
+        const hours = m.totalActivities > 0 ? `${m.activeHours}h` : '-';
+        const keys = m.totalKeystrokes > 0 ? m.totalKeystrokes : '-';
+        const mouse = m.totalActivities > 0 ? `${m.avgMouse}%` : '-';
+        const eff = m.efficiency === 'No Activity' ? '-' : m.efficiency;
+        csv += `"${name}","${dateDisplay}",${acts},"${prod}","${hours}","${keys}","${mouse}","${eff}"\n`;
+      });
+
+      const filename = `team_export_${Date.now()}.csv`;
+      const filepath = path.join(this.reportsDir, filename);
+      await fsPromises.writeFile(filepath, '\uFEFF' + csv, 'utf8');
+
+      return {
+        filename,
+        filepath,
+        generatedAt: new Date()
+      };
+    } catch (error) {
+      console.error('Error in exportTeamCSV:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new ReportGenerator();

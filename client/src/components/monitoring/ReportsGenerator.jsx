@@ -62,17 +62,22 @@ export function ReportsGenerator({
 
   // Date and report config
   const [reportData, setReportData] = useState(null);
-  const [startDate, setStartDate] = useState(subDays(new Date(), 7));
+  const [timeframePreset, setTimeframePreset] = useState('daily');
+  const [startDate, setStartDate] = useState(new Date());
   const [endDate, setEndDate] = useState(new Date());
   const [reportType, setReportType] = useState('summary');
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const { toast } = useToast();
 
-  // Sync incoming employees prop
+  // Sync incoming employees prop (strictly active users)
   useEffect(() => {
     if (employees && employees.length > 0) {
-      setInternalEmployees(employees);
+      const activeOnly = employees.filter(e => e.stillExist !== 0);
+      setInternalEmployees(activeOnly);
+      if (!selectedEmp && activeOnly.length > 0) {
+        setSelectedEmp(activeOnly[0]);
+      }
     } else {
       fetchFallbackEmployees();
     }
@@ -80,7 +85,7 @@ export function ReportsGenerator({
 
   // Sync selected employee when propEmployee changes
   useEffect(() => {
-    if (propEmployee) {
+    if (propEmployee && propEmployee.stillExist !== 0) {
       setSelectedEmp(propEmployee);
     } else if (!selectedEmp && internalEmployees.length > 0) {
       setSelectedEmp(internalEmployees[0]);
@@ -94,12 +99,12 @@ export function ReportsGenerator({
     }
   }, [parentSearchQuery]);
 
-  // Fallback fetch if employees prop was not provided
+  // Fallback fetch if employees prop was not provided (strictly active users)
   const fetchFallbackEmployees = async () => {
     try {
       const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
       const branch = localStorage.getItem('selectedBranch') || localStorage.getItem('branch');
-      const response = await axios.get(`${API_URL}/monitoring/team-summary?statusTab=all`, {
+      const response = await axios.get(`${API_URL}/monitoring/team-summary?statusTab=active`, {
         headers: {
           'x-auth-token': token,
           Authorization: `Bearer ${token}`,
@@ -107,9 +112,10 @@ export function ReportsGenerator({
         }
       });
       if (response.data && response.data.employees) {
-        setInternalEmployees(response.data.employees);
-        if (!selectedEmp && response.data.employees.length > 0) {
-          setSelectedEmp(response.data.employees[0]);
+        const activeOnly = response.data.employees.filter(e => e.stillExist !== 0);
+        setInternalEmployees(activeOnly);
+        if (!selectedEmp && activeOnly.length > 0) {
+          setSelectedEmp(activeOnly[0]);
         }
       }
     } catch (err) {
@@ -218,31 +224,58 @@ export function ReportsGenerator({
     }
   };
 
+  const handleTimeframeModeChange = (mode) => {
+    setTimeframePreset(mode);
+    const now = new Date();
+    if (mode === 'daily') {
+      setStartDate(now);
+      setEndDate(now);
+    } else if (mode === 'weekly') {
+      setStartDate(subDays(now, 7));
+      setEndDate(now);
+    } else if (mode === 'monthly') {
+      setStartDate(startOfMonth(now));
+      setEndDate(endOfMonth(now));
+    }
+  };
+
+  const handleSelectDailyDate = (date) => {
+    if (!date) return;
+    setStartDate(date);
+    setEndDate(date);
+  };
+
   const setQuickDateRange = (range) => {
     const now = new Date();
     switch (range) {
       case 'today':
+        setTimeframePreset('daily');
         setStartDate(now);
         setEndDate(now);
         break;
       case 'yesterday':
+        setTimeframePreset('daily');
         const yesterday = subDays(now, 1);
         setStartDate(yesterday);
         setEndDate(yesterday);
         break;
       case 'week':
+        setTimeframePreset('weekly');
         setStartDate(startOfWeek(now, { weekStartsOn: 1 }));
         setEndDate(endOfWeek(now, { weekStartsOn: 1 }));
         break;
       case 'month':
+        setTimeframePreset('monthly');
         setStartDate(startOfMonth(now));
         setEndDate(endOfMonth(now));
         break;
       case 'last7days':
+        setTimeframePreset('weekly');
         setStartDate(subDays(now, 7));
         setEndDate(now);
         break;
       case 'last30days':
+        setTimeframePreset('monthly');
         setStartDate(subDays(now, 30));
         setEndDate(now);
         break;
@@ -498,49 +531,39 @@ export function ReportsGenerator({
   const exportTeamToCSV = async () => {
     setGenerating(true);
     try {
-      const startStr = format(startDate, 'yyyy-MM-dd');
-      const endStr = format(endDate, 'yyyy-MM-dd');
+      const sDate = new Date(startDate);
+      const eDate = new Date(endDate);
+      const isSame = sDate.toDateString() === eDate.toDateString();
+      const sDay = String(sDate.getDate()).padStart(2, '0');
+      const sMonth = String(sDate.getMonth() + 1).padStart(2, '0');
+      const eDay = String(eDate.getDate()).padStart(2, '0');
+      const eMonth = String(eDate.getMonth() + 1).padStart(2, '0');
+      const dateDisplay = isSame ? `${sDay}/${sMonth}` : `${sDay}/${sMonth} - ${eDay}/${eMonth}`;
       const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
 
       const members = teamReportData?.members || [];
-      const summary = teamReportData?.teamSummary || {};
 
-      let csv = 'NIYANTRAN WORKFLOW - CONSOLIDATED TEAM PERFORMANCE REPORT\n';
-      csv += 'Report Scope,ALL MEMBERS / TEAM CONSOLIDATED\n';
-      csv += `Date Range,${startStr} to ${endStr}\n`;
-      csv += `Total Roster Employees,${teamReportData?.totalEmployees || members.length}\n`;
-      csv += `Active Contributing Members,${teamReportData?.activeMembersCount || 0}\n`;
-      csv += `Department Filter,${selectedDepartment === 'all' ? 'All Departments' : selectedDepartment}\n`;
-      csv += `Generated On,${format(new Date(), 'yyyy-MM-dd HH:mm:ss')}\n\n`;
-
-      csv += 'TEAM EXECUTIVE KPI SUMMARY\n';
-      csv += 'Total Activities,Team Average Productivity (%),Total Team Work Hours (h),Total Combined Keystrokes,Total Security Alerts\n';
-      csv += `${summary.teamTotalActivities || 0},${summary.teamAvgProductivity || 0}%,${summary.teamTotalHours || 0}h,${summary.teamTotalKeystrokes || 0},${summary.teamTotalAlerts || 0}\n\n`;
-
-      csv += 'ALL MEMBERS PERFORMANCE ROSTER\n';
-      csv += 'Employee Name,Email,Department,Status,Total Activities,Worked Days,Avg Productivity (%),Active Hours (h),Total Keystrokes,Avg Mouse (%),Security Alerts,Efficiency Rating\n';
+      // Exact 8 columns matching handwritten specification:
+      // Name, Date, Activities, Productivity, Active Hour, Key Strokes, Mouse Score, Efficiency
+      let csv = 'Name,Date,Activities,Productivity,Active Hour,Key Strokes,Mouse Score,Efficiency\n';
 
       members.forEach(m => {
         const name = (m.name || 'Employee').replace(/"/g, '""');
-        const email = (m.email || '').replace(/"/g, '""');
-        const dept = (m.department || 'General').replace(/"/g, '""');
-        const status = m.stillExist === 0 ? 'Exited' : 'Active';
-        csv += `"${name}","${email}","${dept}",${status},${m.totalActivities},${m.workedDays},${m.avgProductivity}%,${m.activeHours}h,${m.totalKeystrokes},${m.avgMouse}%,${m.alertsCount},"${m.efficiency}"\n`;
+        const acts = m.totalActivities > 0 ? m.totalActivities : '-';
+        const prod = m.totalActivities > 0 ? `${m.avgProductivity}%` : '-';
+        const hours = m.totalActivities > 0 ? `${m.activeHours}h` : '-';
+        const keys = m.totalKeystrokes > 0 ? m.totalKeystrokes : '-';
+        const mouse = m.totalActivities > 0 ? `${m.avgMouse}%` : '-';
+        const eff = m.efficiency === 'No Activity' ? '-' : m.efficiency;
+        csv += `"${name}","${dateDisplay}",${acts},"${prod}","${hours}","${keys}","${mouse}","${eff}"\n`;
       });
-
-      if (teamReportData?.alertStats && Object.keys(teamReportData.alertStats).length > 0) {
-        csv += '\nTEAM ALERTS SUMMARY BY CATEGORY\n';
-        csv += 'Alert Category,Occurrences Across Team\n';
-        Object.entries(teamReportData.alertStats).forEach(([cat, cnt]) => {
-          csv += `"${cat}",${cnt}\n`;
-        });
-      }
 
       const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `niyantran_team_report_${startStr}_to_${endStr}.csv`;
+      const fileDateSuffix = isSame ? `${format(sDate, 'yyyy-MM-dd')}` : `${format(sDate, 'yyyy-MM-dd')}_to_${format(eDate, 'yyyy-MM-dd')}`;
+      link.download = `niyantran_team_report_${fileDateSuffix}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -548,7 +571,7 @@ export function ReportsGenerator({
 
       toast({
         title: 'Team CSV Exported',
-        description: `Exported consolidated team data for ${members.length} members.`
+        description: `Exported consolidated team data for ${members.length} active members.`
       });
 
       // Background server CSV trigger
@@ -782,74 +805,201 @@ export function ReportsGenerator({
             </div>
           )}
 
-          {/* DATE RANGE CONTROLS (SHARED ACROSS BOTH MODES) */}
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Date Range:</span>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-36 justify-start text-left font-normal text-xs h-9 rounded-xl">
-                    <CalendarIcon className="mr-2 h-3.5 w-3.5 text-primary" />
-                    {format(startDate, 'MMM dd, yyyy')}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={startDate}
-                    onSelect={(d) => d && setStartDate(d)}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+          {/* TIMEFRAME & DATE CONTROLS (DAILY, WEEKLY, MONTHLY, CUSTOM) */}
+          <div className="p-3.5 rounded-2xl bg-muted/30 border border-border space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-1.5 p-1 bg-background/80 border border-border rounded-xl">
+                <Button
+                  type="button"
+                  variant={timeframePreset === 'daily' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => handleTimeframeModeChange('daily')}
+                  className={`text-xs h-7 px-3 rounded-lg font-bold transition-all ${
+                    timeframePreset === 'daily'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Daily (Respected Date)
+                </Button>
+                <Button
+                  type="button"
+                  variant={timeframePreset === 'weekly' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => handleTimeframeModeChange('weekly')}
+                  className={`text-xs h-7 px-3 rounded-lg font-bold transition-all ${
+                    timeframePreset === 'weekly'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Weekly
+                </Button>
+                <Button
+                  type="button"
+                  variant={timeframePreset === 'monthly' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => handleTimeframeModeChange('monthly')}
+                  className={`text-xs h-7 px-3 rounded-lg font-bold transition-all ${
+                    timeframePreset === 'monthly'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Monthly
+                </Button>
+                <Button
+                  type="button"
+                  variant={timeframePreset === 'custom' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setTimeframePreset('custom')}
+                  className={`text-xs h-7 px-3 rounded-lg font-bold transition-all ${
+                    timeframePreset === 'custom'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Custom
+                </Button>
+              </div>
 
-              <span className="text-xs text-muted-foreground font-semibold">to</span>
-
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-36 justify-start text-left font-normal text-xs h-9 rounded-xl">
-                    <CalendarIcon className="mr-2 h-3.5 w-3.5 text-primary" />
-                    {format(endDate, 'MMM dd, yyyy')}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={endDate}
-                    onSelect={(d) => d && setEndDate(d)}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              {/* Quick Preset Buttons according to active timeframe */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {timeframePreset === 'daily' && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setQuickDateRange('today')}
+                      className="text-xs h-7 px-2.5 rounded-lg bg-background border-border hover:bg-muted font-medium"
+                    >
+                      Today
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setQuickDateRange('yesterday')}
+                      className="text-xs h-7 px-2.5 rounded-lg bg-background border-border hover:bg-muted font-medium"
+                    >
+                      Yesterday
+                    </Button>
+                  </>
+                )}
+                {timeframePreset === 'weekly' && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setQuickDateRange('last7days')}
+                      className="text-xs h-7 px-2.5 rounded-lg bg-background border-border hover:bg-muted font-medium"
+                    >
+                      Last 7 Days
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setQuickDateRange('week')}
+                      className="text-xs h-7 px-2.5 rounded-lg bg-background border-border hover:bg-muted font-medium"
+                    >
+                      This Week
+                    </Button>
+                  </>
+                )}
+                {timeframePreset === 'monthly' && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setQuickDateRange('last30days')}
+                      className="text-xs h-7 px-2.5 rounded-lg bg-background border-border hover:bg-muted font-medium"
+                    >
+                      Last 30 Days
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setQuickDateRange('month')}
+                      className="text-xs h-7 px-2.5 rounded-lg bg-background border-border hover:bg-muted font-medium"
+                    >
+                      This Month
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
 
-            {/* Quick Date Presets */}
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { label: 'Today', value: 'today' },
-                { label: 'Yesterday', value: 'yesterday' },
-                { label: 'This Week', value: 'week' },
-                { label: 'This Month', value: 'month' },
-                { label: 'Last 7 Days', value: 'last7days' },
-                { label: 'Last 30 Days', value: 'last30days' }
-              ].map((range) => (
-                <Button
-                  key={range.value}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setQuickDateRange(range.value)}
-                  className="text-xs h-7 px-2.5 rounded-lg bg-muted/40 hover:bg-muted"
-                >
-                  {range.label}
-                </Button>
-              ))}
+            {/* Date Pickers */}
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              {timeframePreset === 'daily' ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-foreground">Respected Date:</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-48 justify-start text-left font-bold text-xs h-9 rounded-xl bg-background border-border shadow-sm">
+                        <CalendarIcon className="mr-2 h-3.5 w-3.5 text-primary" />
+                        {format(startDate, 'dd/MM/yyyy')} ({format(startDate, 'EEE')})
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={startDate}
+                        onSelect={handleSelectDailyDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <span className="text-[11px] text-muted-foreground">
+                    (Click to change respected date)
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-foreground">Date Range:</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-36 justify-start text-left font-normal text-xs h-9 rounded-xl bg-background border-border">
+                        <CalendarIcon className="mr-2 h-3.5 w-3.5 text-primary" />
+                        {format(startDate, 'MMM dd, yyyy')}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={startDate}
+                        onSelect={(d) => d && setStartDate(d)}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  <span className="text-xs text-muted-foreground font-semibold">to</span>
+
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-36 justify-start text-left font-normal text-xs h-9 rounded-xl bg-background border-border">
+                        <CalendarIcon className="mr-2 h-3.5 w-3.5 text-primary" />
+                        {format(endDate, 'MMM dd, yyyy')}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={endDate}
+                        onSelect={(d) => d && setEndDate(d)}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
             </div>
           </div>
 
           {/* EXPORT BUTTONS BAR */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-bold text-foreground">Export File:</span>
+              <span className="text-xs font-bold text-foreground">Export:</span>
 
               {reportMode === 'individual' ? (
                 <>
@@ -885,7 +1035,7 @@ export function ReportsGenerator({
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 rounded-xl shadow-sm"
                   >
                     <FileSpreadsheet className="h-4 w-4 mr-1.5" />
-                    {generating ? 'Exporting Team CSV...' : 'Download Team Excel (CSV)'}
+                    {generating ? 'Exporting...' : 'Download Excel (Sabka Data)'}
                   </Button>
 
                   <Button
@@ -896,14 +1046,21 @@ export function ReportsGenerator({
                     className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs h-9 rounded-xl shadow-sm"
                   >
                     <FileText className="h-4 w-4 mr-1.5" />
-                    {generating ? 'Generating Team PDF...' : 'Download Team PDF Report'}
+                    {generating ? 'Generating PDF...' : 'Download PDF (Sabka Data)'}
                   </Button>
                 </>
               )}
             </div>
 
-            <div className="text-xs text-muted-foreground font-medium">
-              Period: {format(startDate, 'dd MMM yyyy')} - {format(endDate, 'dd MMM yyyy')}
+            <div className="text-xs text-muted-foreground font-semibold flex items-center gap-2">
+              <Badge variant="outline" className="text-[10px] text-emerald-400 border-emerald-500/30 bg-emerald-500/10">
+                Active Users Only
+              </Badge>
+              <span>
+                {format(startDate, 'yyyy-MM-dd') === format(endDate, 'yyyy-MM-dd')
+                  ? `Date: ${format(startDate, 'dd/MM/yyyy')}`
+                  : `Period: ${format(startDate, 'dd/MM/yyyy')} - ${format(endDate, 'dd/MM/yyyy')}`}
+              </span>
             </div>
           </div>
         </CardContent>
@@ -1152,14 +1309,13 @@ export function ReportsGenerator({
                 <table className="w-full text-xs text-left">
                   <thead className="bg-muted/50 border-b border-border text-muted-foreground uppercase font-bold text-[11px]">
                     <tr>
-                      <th className="p-3.5">Employee</th>
-                      <th className="p-3.5">Department</th>
-                      <th className="p-3.5 text-center">Status</th>
-                      <th className="p-3.5 text-center">Days</th>
-                      <th className="p-3.5 text-center">Prod %</th>
-                      <th className="p-3.5 text-center">Hours</th>
-                      <th className="p-3.5 text-center">Keystrokes</th>
-                      <th className="p-3.5 text-center">Alerts</th>
+                      <th className="p-3.5">Name</th>
+                      <th className="p-3.5 text-center">Date</th>
+                      <th className="p-3.5 text-center">Activities</th>
+                      <th className="p-3.5 text-center">Productivity</th>
+                      <th className="p-3.5 text-center">Active Hour</th>
+                      <th className="p-3.5 text-center">Key Strokes</th>
+                      <th className="p-3.5 text-center">Mouse Score</th>
                       <th className="p-3.5 text-center">Efficiency</th>
                       <th className="p-3.5 text-right">Action</th>
                     </tr>
@@ -1167,80 +1323,103 @@ export function ReportsGenerator({
                   <tbody className="divide-y divide-border">
                     {filteredTeamMembers.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="p-8 text-center text-muted-foreground">
-                          No team members match "{teamTableSearch}"
+                        <td colSpan={9} className="p-8 text-center text-muted-foreground">
+                          No active team members match "{teamTableSearch}"
                         </td>
                       </tr>
                     ) : (
-                      filteredTeamMembers.map((m) => (
-                        <tr key={m.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="p-3.5">
-                            <div className="font-bold text-foreground">{m.name}</div>
-                            <div className="text-[10px] text-muted-foreground truncate max-w-[180px]">{m.email}</div>
-                          </td>
-                          <td className="p-3.5 text-muted-foreground font-medium">{m.department}</td>
-                          <td className="p-3.5 text-center">
-                            {m.stillExist === 0 ? (
-                              <Badge variant="outline" className="text-[10px] text-rose-400 border-rose-500/30 bg-rose-500/10">
-                                Exited
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-[10px] text-emerald-400 border-emerald-500/30 bg-emerald-500/10">
-                                Active
-                              </Badge>
-                            )}
-                          </td>
-                          <td className="p-3.5 text-center text-muted-foreground font-semibold">{m.workedDays}</td>
-                          <td className={`p-3.5 text-center font-bold ${getProductivityColor(m.avgProductivity)}`}>
-                            {m.totalActivities > 0 ? `${m.avgProductivity}%` : '-'}
-                          </td>
-                          <td className="p-3.5 text-center text-foreground font-bold">{m.activeHours}h</td>
-                          <td className="p-3.5 text-center text-muted-foreground font-medium">
-                            {m.totalKeystrokes > 0 ? m.totalKeystrokes.toLocaleString() : '-'}
-                          </td>
-                          <td className="p-3.5 text-center">
-                            {m.alertsCount > 0 ? (
-                              <Badge variant="outline" className="text-[10px] font-bold text-rose-400 border-rose-500/30 bg-rose-500/10">
-                                {m.alertsCount}
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </td>
-                          <td className="p-3.5 text-center">
-                            <Badge
-                              variant="outline"
-                              className={`text-[10px] font-bold ${
-                                m.efficiency === 'High Efficiency'
-                                  ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-                                  : m.efficiency === 'Moderate'
-                                  ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
-                                  : m.efficiency === 'Low'
-                                  ? 'text-rose-400 bg-rose-500/10 border-rose-500/30'
-                                  : 'text-zinc-400 bg-zinc-500/10 border-zinc-500/30'
-                              }`}
-                            >
-                              {m.efficiency}
-                            </Badge>
-                          </td>
-                          <td className="p-3.5 text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                const found = internalEmployees.find(e => (e._id || e.employeeId) === m.id);
-                                if (found) {
-                                  handleSelectEmployee(found);
-                                  setReportMode('individual');
-                                }
-                              }}
-                              className="text-[11px] h-7 px-2.5 text-primary hover:text-primary font-bold hover:bg-primary/10 rounded-lg"
-                            >
-                              View Report <ChevronRight className="h-3 w-3 ml-1" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))
+                      filteredTeamMembers.map((m) => {
+                        const sDate = new Date(startDate);
+                        const eDate = new Date(endDate);
+                        const isSame = sDate.toDateString() === eDate.toDateString();
+                        const sDay = String(sDate.getDate()).padStart(2, '0');
+                        const sMonth = String(sDate.getMonth() + 1).padStart(2, '0');
+                        const eDay = String(eDate.getDate()).padStart(2, '0');
+                        const eMonth = String(eDate.getMonth() + 1).padStart(2, '0');
+                        const dateText = isSame ? `${sDay}/${sMonth}` : `${sDay}/${sMonth} - ${eDay}/${eMonth}`;
+
+                        return (
+                          <tr key={m.id} className="hover:bg-muted/30 transition-colors">
+                            {/* 1. Name */}
+                            <td className="p-3.5">
+                              <div className="font-bold text-foreground">{m.name}</div>
+                              <div className="text-[10px] text-muted-foreground truncate max-w-[180px]">
+                                {m.department || 'General'}
+                              </div>
+                            </td>
+
+                            {/* 2. Date */}
+                            <td className="p-3.5 text-center font-bold text-muted-foreground">
+                              {dateText}
+                            </td>
+
+                            {/* 3. Activities */}
+                            <td className="p-3.5 text-center font-semibold text-foreground">
+                              {m.totalActivities > 0 ? m.totalActivities : '-'}
+                            </td>
+
+                            {/* 4. Productivity */}
+                            <td className={`p-3.5 text-center font-bold ${getProductivityColor(m.avgProductivity)}`}>
+                              {m.totalActivities > 0 ? `${m.avgProductivity}%` : '-'}
+                            </td>
+
+                            {/* 5. Active Hour */}
+                            <td className="p-3.5 text-center text-foreground font-bold">
+                              {m.totalActivities > 0 ? `${m.activeHours}h` : '-'}
+                            </td>
+
+                            {/* 6. Key Strokes */}
+                            <td className="p-3.5 text-center text-muted-foreground font-medium">
+                              {m.totalKeystrokes > 0 ? m.totalKeystrokes.toLocaleString() : '-'}
+                            </td>
+
+                            {/* 7. Mouse Score */}
+                            <td className="p-3.5 text-center text-muted-foreground font-medium">
+                              {m.totalActivities > 0 ? `${m.avgMouse}%` : '-'}
+                            </td>
+
+                            {/* 8. Efficiency */}
+                            <td className="p-3.5 text-center">
+                              {m.totalActivities > 0 ? (
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] font-bold ${
+                                    m.efficiency === 'High Efficiency'
+                                      ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                                      : m.efficiency === 'Moderate'
+                                      ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                                      : m.efficiency === 'Low'
+                                      ? 'text-rose-400 bg-rose-500/10 border-rose-500/30'
+                                      : 'text-zinc-400 bg-zinc-500/10 border-zinc-500/30'
+                                  }`}
+                                >
+                                  {m.efficiency}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
+
+                            {/* Action */}
+                            <td className="p-3.5 text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  const found = internalEmployees.find(e => (e._id || e.employeeId) === m.id);
+                                  if (found) {
+                                    handleSelectEmployee(found);
+                                    setReportMode('individual');
+                                  }
+                                }}
+                                className="text-[11px] h-7 px-2.5 text-primary hover:text-primary font-bold hover:bg-primary/10 rounded-lg"
+                              >
+                                View Report <ChevronRight className="h-3 w-3 ml-1" />
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

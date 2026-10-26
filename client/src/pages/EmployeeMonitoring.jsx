@@ -611,6 +611,9 @@ export function EmployeeMonitoring() {
             employee={selectedEmployee || teamSummaryData.employees[0]}
             employees={teamSummaryData.employees}
             onSelectEmployee={setSelectedEmployee}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            departments={departments}
           />
         </TabsContent>
 
