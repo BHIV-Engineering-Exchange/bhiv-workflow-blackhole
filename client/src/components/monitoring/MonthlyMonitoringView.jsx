@@ -393,8 +393,8 @@ export function MonthlyMonitoringView({
     const avgProd = Math.round(sumProd / workedDays.length);
 
     let efficiency = 'Low Efficiency';
-    if (avgProd >= 75) efficiency = 'High Efficiency';
-    else if (avgProd >= 50) efficiency = 'Moderate Efficiency';
+    if (avgProd >= 60) efficiency = 'High Efficiency';
+    else if (avgProd >= 40) efficiency = 'Moderate Efficiency';
 
     return {
       avgProductivityScore: avgProd,

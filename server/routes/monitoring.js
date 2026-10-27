@@ -1038,11 +1038,11 @@ router.get('/reports/:employeeId', async (req, res) => {
           sec = Math.round(att.hoursWorked * 3600);
         } else if (att.startDayTime) {
           const isToday = getLocalDateStr(new Date()) === dateKey;
-          const endSession = att.endDayTime ? new Date(att.endDayTime) : (isToday ? new Date() : new Date(att.startDayTime));
+          const endSession = att.endDayTime ? new Date(att.endDayTime) : (isToday ? new Date() : end);
           sec = Math.max(0, Math.floor((endSession - new Date(att.startDayTime)) / 1000));
         }
-        if (sec > 0 && item.totalActivities > 0) {
-          item.activeSeconds = Math.min(item.activeSeconds, sec);
+        if (sec > 0) {
+          item.activeSeconds = Math.max(item.activeSeconds, sec);
         }
       }
     });
@@ -1769,9 +1769,9 @@ router.get('/team-summary', async (req, res) => {
       if (logsToProcess.length > 0) {
         avgMouseActivity = Math.round(totalMouseScore / logsToProcess.length);
         avgProductivityScore = Math.round(totalProductivityScore / logsToProcess.length);
-        if (avgProductivityScore >= 75) {
+        if (avgProductivityScore >= 60) {
           productivityEfficiency = 'High Efficiency';
-        } else if (avgProductivityScore >= 50) {
+        } else if (avgProductivityScore >= 40) {
           productivityEfficiency = 'Moderate Efficiency';
         } else {
           productivityEfficiency = 'Low Efficiency';
@@ -2022,9 +2022,9 @@ router.get('/daily-summary', async (req, res) => {
         teamProductivitySum += avgProductivityScore;
         activeEmployeeCount++;
 
-        if (avgProductivityScore >= 75) {
+        if (avgProductivityScore >= 60) {
           productivityEfficiency = 'High Efficiency';
-        } else if (avgProductivityScore >= 50) {
+        } else if (avgProductivityScore >= 40) {
           productivityEfficiency = 'Moderate Efficiency';
         } else {
           productivityEfficiency = 'Low Efficiency';
@@ -2067,8 +2067,8 @@ router.get('/daily-summary', async (req, res) => {
       : 0;
 
     let overallEfficiency = 'Low Efficiency';
-    if (avgTeamProductivity >= 75) overallEfficiency = 'High Efficiency';
-    else if (avgTeamProductivity >= 50) overallEfficiency = 'Moderate Efficiency';
+    if (avgTeamProductivity >= 60) overallEfficiency = 'High Efficiency';
+    else if (avgTeamProductivity >= 40) overallEfficiency = 'Moderate Efficiency';
 
     const responseDateStr = date || `${startOfDay.getFullYear()}-${String(startOfDay.getMonth() + 1).padStart(2, '0')}-${String(startOfDay.getDate()).padStart(2, '0')}`;
     res.json({
@@ -2278,8 +2278,8 @@ router.get('/monthly-summary', async (req, res) => {
 
       let efficiency = 'No Activity';
       if (emp.logCount > 0) {
-        if (avgProd >= 75) efficiency = 'High Efficiency';
-        else if (avgProd >= 50) efficiency = 'Moderate Efficiency';
+        if (avgProd >= 60) efficiency = 'High Efficiency';
+        else if (avgProd >= 40) efficiency = 'Moderate Efficiency';
         else efficiency = 'Low Efficiency';
       }
 
@@ -2303,8 +2303,8 @@ router.get('/monthly-summary', async (req, res) => {
     const overallAvgProductivity = activeEmpCount > 0 ? Math.round(totalTeamProdSum / activeEmpCount) : 0;
     let overallProductivityEfficiency = 'No Activity';
     if (activeEmpCount > 0) {
-      if (overallAvgProductivity >= 75) overallProductivityEfficiency = 'High Efficiency';
-      else if (overallAvgProductivity >= 50) overallProductivityEfficiency = 'Moderate Efficiency';
+      if (overallAvgProductivity >= 60) overallProductivityEfficiency = 'High Efficiency';
+      else if (overallAvgProductivity >= 40) overallProductivityEfficiency = 'Moderate Efficiency';
       else overallProductivityEfficiency = 'Low Efficiency';
     }
 
@@ -2526,8 +2526,8 @@ router.get('/monthly-employee-breakdown', async (req, res) => {
 
       let efficiency = 'No Activity';
       if (day.logCount > 0) {
-        if (avgProd >= 75) efficiency = 'High Efficiency';
-        else if (avgProd >= 50) efficiency = 'Moderate Efficiency';
+        if (avgProd >= 60) efficiency = 'High Efficiency';
+        else if (avgProd >= 40) efficiency = 'Moderate Efficiency';
         else efficiency = 'Low Efficiency';
       }
 
@@ -2555,8 +2555,8 @@ router.get('/monthly-employee-breakdown', async (req, res) => {
     let overallEfficiency = 'No Activity';
     if (isExited) overallEfficiency = 'Exited';
     else if (workedDaysCount === 0) overallEfficiency = 'No Activity';
-    else if (avgMonthlyProd >= 75) overallEfficiency = 'High Efficiency';
-    else if (avgMonthlyProd >= 50) overallEfficiency = 'Moderate Efficiency';
+    else if (avgMonthlyProd >= 60) overallEfficiency = 'High Efficiency';
+    else if (avgMonthlyProd >= 40) overallEfficiency = 'Moderate Efficiency';
     else overallEfficiency = 'Low Efficiency';
 
     res.json({

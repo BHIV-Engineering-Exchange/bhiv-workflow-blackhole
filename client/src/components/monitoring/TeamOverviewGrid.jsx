@@ -91,13 +91,13 @@ export function TeamOverviewGrid({
       );
     }
 
-    if (emp.productivityEfficiency === 'High Efficiency' || emp.productivityScore >= 75) {
+    if (emp.productivityEfficiency === 'High Efficiency' || emp.productivityScore >= 60) {
       return (
         <Badge className="bg-emerald-600 text-white font-bold text-[11px] px-2 py-0.5 shadow-sm border border-emerald-400/30">
           ⚡ High Efficiency
         </Badge>
       );
-    } else if (emp.productivityEfficiency === 'Moderate Efficiency' || emp.productivityScore >= 50) {
+    } else if (emp.productivityEfficiency === 'Moderate Efficiency' || emp.productivityScore >= 40) {
       return (
         <Badge className="bg-amber-600 text-white font-bold text-[11px] px-2 py-0.5 shadow-sm border border-amber-400/30">
           ⚖️ Moderate Efficiency
@@ -113,8 +113,8 @@ export function TeamOverviewGrid({
 
   const getScoreColor = (score, keystrokes) => {
     if (!score && !keystrokes) return 'text-zinc-400';
-    if (score >= 75) return 'text-emerald-400';
-    if (score >= 50) return 'text-amber-400';
+    if (score >= 60) return 'text-emerald-400';
+    if (score >= 40) return 'text-amber-400';
     return 'text-rose-400';
   };
 

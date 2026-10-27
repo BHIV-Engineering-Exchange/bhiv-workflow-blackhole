@@ -357,10 +357,10 @@ export function ReportsGenerator({
       if (reportData?.dailyMetrics && reportData.dailyMetrics.length > 0) {
         reportData.dailyMetrics.forEach(day => {
           let eff = 'Low Efficiency';
-          if (day.avgProductivityScore >= 75) eff = 'High Efficiency';
-          else if (day.avgProductivityScore >= 50) eff = 'Moderate Efficiency';
+          if (day.avgProductivityScore >= 60) eff = 'High Efficiency';
+          else if (day.avgProductivityScore >= 40) eff = 'Moderate Efficiency';
 
-          const activeText = (day.totalActivities > 0 && (day.activeSeconds > 0 || day.activeHours > 0))
+          const activeText = (day.totalActivities > 0 || day.activeSeconds > 0 || day.activeHours > 0)
             ? (day.activeHoursFormatted || `${day.activeHours}h`)
             : '-';
           csv += `"${day.date}",${day.totalActivities > 0 ? day.totalActivities : '-'},"${day.totalActivities > 0 ? `${day.avgProductivityScore}%` : '-'}","${activeText}",${day.totalKeystroke > 0 ? day.totalKeystroke : '-'},"${day.totalActivities > 0 ? `${day.avgMouseActivity}%` : '-'}","${day.totalActivities > 0 ? eff : '-'}"\n`;
@@ -603,7 +603,7 @@ export function ReportsGenerator({
         const name = (m.name || 'Employee').replace(/"/g, '""');
         const acts = m.totalActivities > 0 ? m.totalActivities : '-';
         const prod = m.totalActivities > 0 ? `${m.avgProductivity}%` : '-';
-        const hours = (m.totalActivities > 0 && m.activeSeconds > 0) ? (m.activeHoursFormatted || `${m.activeHours}h`) : '-';
+        const hours = (m.totalActivities > 0 || m.activeSeconds > 0) ? (m.activeHoursFormatted || `${m.activeHours}h`) : '-';
         const keys = m.totalKeystrokes > 0 ? m.totalKeystrokes : '-';
         const mouse = m.totalActivities > 0 ? `${m.avgMouse}%` : '-';
         const eff = m.efficiency === 'No Activity' ? '-' : m.efficiency;
@@ -645,8 +645,8 @@ export function ReportsGenerator({
   };
 
   const getProductivityColor = (score) => {
-    if (score >= 75) return 'text-emerald-500';
-    if (score >= 50) return 'text-amber-500';
+    if (score >= 60) return 'text-emerald-500';
+    if (score >= 40) return 'text-amber-500';
     return 'text-rose-500';
   };
 
@@ -1088,7 +1088,7 @@ export function ReportsGenerator({
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 rounded-xl shadow-sm"
                   >
                     <FileSpreadsheet className="h-4 w-4 mr-1.5" />
-                    {generating ? 'Exporting...' : 'Download Excel (Sabka Data)'}
+                    {generating ? 'Exporting...' : 'Download Excel'}
                   </Button>
 
                   <Button
@@ -1099,7 +1099,7 @@ export function ReportsGenerator({
                     className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs h-9 rounded-xl shadow-sm"
                   >
                     <FileText className="h-4 w-4 mr-1.5" />
-                    {generating ? 'Generating PDF...' : 'Download PDF (Sabka Data)'}
+                    {generating ? 'Generating PDF...' : 'Download PDF'}
                   </Button>
                 </>
               )}
@@ -1209,10 +1209,10 @@ export function ReportsGenerator({
                       {reportData.dailyMetrics.map((day) => {
                         let eff = 'Low Efficiency';
                         let effColor = 'text-rose-400 bg-rose-500/10 border-rose-500/30';
-                        if (day.avgProductivityScore >= 75) {
+                        if (day.avgProductivityScore >= 60) {
                           eff = 'High Efficiency';
                           effColor = 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
-                        } else if (day.avgProductivityScore >= 50) {
+                        } else if (day.avgProductivityScore >= 40) {
                           eff = 'Moderate Efficiency';
                           effColor = 'text-amber-400 bg-amber-500/10 border-amber-500/30';
                         }
@@ -1224,7 +1224,7 @@ export function ReportsGenerator({
                             <td className={`p-3.5 text-center font-bold ${getProductivityColor(day.avgProductivityScore)}`}>
                               {day.avgProductivityScore}%
                             </td>
-                            <td className="p-3.5 text-center text-foreground font-bold">{day.totalActivities > 0 ? (day.activeHoursFormatted || `${day.activeHours}h`) : '-'}</td>
+                            <td className="p-3.5 text-center text-foreground font-bold">{(day.totalActivities > 0 || day.activeSeconds > 0) ? (day.activeHoursFormatted || `${day.activeHours}h`) : '-'}</td>
                             <td className="p-3.5 text-center text-muted-foreground font-medium">
                               {(day.totalKeystroke || 0).toLocaleString()}
                             </td>
@@ -1418,7 +1418,7 @@ export function ReportsGenerator({
 
                             {/* 5. Active Hour */}
                             <td className="p-3.5 text-center text-foreground font-bold">
-                              {(m.totalActivities > 0 && m.activeSeconds > 0) ? (m.activeHoursFormatted || `${m.activeHours}h`) : '-'}
+                              {(m.totalActivities > 0 || m.activeSeconds > 0) ? (m.activeHoursFormatted || `${m.activeHours}h`) : '-'}
                             </td>
 
                             {/* 6. Key Strokes */}

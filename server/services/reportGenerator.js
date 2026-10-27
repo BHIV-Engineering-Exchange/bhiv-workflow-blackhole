@@ -258,7 +258,7 @@ class ReportGenerator {
       {
         label: 'Productivity Score',
         value: `${summary.productivityScore}%`,
-        color: summary.productivityScore >= 75 ? '#10b981' : (summary.productivityScore >= 50 ? '#f59e0b' : '#ef4444')
+        color: summary.productivityScore >= 60 ? '#10b981' : (summary.productivityScore >= 40 ? '#f59e0b' : '#ef4444')
       },
       {
         label: 'Active Work Hours',
@@ -366,11 +366,11 @@ class ReportGenerator {
           sec = Math.round(att.hoursWorked * 3600);
         } else if (att.startDayTime) {
           const isToday = getLocalDateString(new Date()) === dStr;
-          const endSession = att.endDayTime ? new Date(att.endDayTime) : (isToday ? new Date() : new Date(att.startDayTime));
+          const endSession = att.endDayTime ? new Date(att.endDayTime) : (isToday ? new Date() : end);
           sec = Math.max(0, Math.floor((endSession - new Date(att.startDayTime)) / 1000));
         }
-        if (sec > 0 && dailyMap[dStr].activitiesCount > 0) {
-          dailyMap[dStr].activeSeconds = Math.min(dailyMap[dStr].activeSeconds, sec);
+        if (sec > 0) {
+          dailyMap[dStr].activeSeconds = Math.max(dailyMap[dStr].activeSeconds, sec);
         }
       }
     });
@@ -415,16 +415,16 @@ class ReportGenerator {
 
       const count = row.activitiesCount;
       const avgProd = count > 0 ? Math.round(row.prodSum / count) : 0;
-      const activeHoursStr = (count > 0 && row.activeSeconds > 0) ? formatActiveTime(row.activeSeconds) : '-';
+      const activeHoursStr = (count > 0 || row.activeSeconds > 0) ? formatActiveTime(row.activeSeconds) : '-';
       const avgMouse = count > 0 ? Math.round(row.mouseSum / count) : 0;
 
       let eff = 'No Activity';
       let effColor = '#94a3b8';
       if (count > 0) {
-        if (avgProd >= 75) {
+        if (avgProd >= 60) {
           eff = 'High Efficiency';
           effColor = '#10b981';
-        } else if (avgProd >= 50) {
+        } else if (avgProd >= 40) {
           eff = 'Moderate';
           effColor = '#f59e0b';
         } else {
@@ -779,10 +779,8 @@ class ReportGenerator {
       }
     });
 
-    if (activities.length > 0 && totalAttSec > 0) {
-      totalActiveSec = Math.min(totalActiveSec, totalAttSec);
-    } else if (activities.length === 0) {
-      totalActiveSec = 0;
+    if (totalAttSec > 0) {
+      totalActiveSec = Math.max(totalActiveSec, totalAttSec);
     }
 
     const avgProd = prodCount > 0 ? Math.round(totalProd / prodCount) : 0;
@@ -1240,7 +1238,7 @@ class ReportGenerator {
         sec = Math.round(att.hoursWorked * 3600);
       } else if (att.startDayTime) {
         const isToday = att.startDayTime && new Date(att.startDayTime).toDateString() === new Date().toDateString();
-        const endSession = att.endDayTime ? new Date(att.endDayTime) : (isToday ? new Date() : new Date(att.startDayTime));
+        const endSession = att.endDayTime ? new Date(att.endDayTime) : (isToday ? new Date() : end);
         sec = Math.max(0, Math.floor((endSession - new Date(att.startDayTime)) / 1000));
       }
       empAttendanceSecMap.set(uId, (empAttendanceSecMap.get(uId) || 0) + sec);
@@ -1290,12 +1288,7 @@ class ReportGenerator {
       const workedDays = workedDaysMap.get(idStr) || 0;
 
       const attSec = empAttendanceSecMap.get(idStr) || 0;
-      let effectiveActiveSec = s.activeSeconds;
-      if (s.totalActivities > 0 && attSec > 0) {
-        effectiveActiveSec = Math.min(effectiveActiveSec, attSec);
-      } else if (s.totalActivities === 0) {
-        effectiveActiveSec = 0;
-      }
+      let effectiveActiveSec = Math.max(s.activeSeconds, attSec);
 
       const avgProd = s.prodCount > 0 ? Math.round(s.prodSum / s.prodCount) : 0;
       const activeHoursDecimal = Math.round((effectiveActiveSec / 3600) * 10) / 10;
@@ -1305,10 +1298,10 @@ class ReportGenerator {
       let efficiency = 'No Activity';
       let effColor = '#94a3b8';
       if (s.totalActivities > 0 && effectiveActiveSec > 0) {
-        if (avgProd >= 75) {
+        if (avgProd >= 60) {
           efficiency = 'High Efficiency';
           effColor = '#10b981';
-        } else if (avgProd >= 50) {
+        } else if (avgProd >= 40) {
           efficiency = 'Moderate';
           effColor = '#f59e0b';
         } else {
@@ -1435,7 +1428,7 @@ class ReportGenerator {
         {
           label: 'Team Avg Productivity',
           value: `${data.teamSummary.teamAvgProductivity}%`,
-          color: data.teamSummary.teamAvgProductivity >= 75 ? '#10b981' : (data.teamSummary.teamAvgProductivity >= 50 ? '#f59e0b' : '#ef4444')
+          color: data.teamSummary.teamAvgProductivity >= 60 ? '#10b981' : (data.teamSummary.teamAvgProductivity >= 40 ? '#f59e0b' : '#ef4444')
         },
         {
           label: 'Total Active Hours',
@@ -1518,7 +1511,7 @@ class ReportGenerator {
            .text(m.totalActivities > 0 ? `${m.avgProductivity}%` : '-', tableX + 232, currentY + 5, { width: 58, align: 'center' });
 
         // 5. Active Hour
-        const activeText = (m.totalActivities > 0 && m.activeSeconds > 0) ? (m.activeHoursFormatted || `${m.activeHours}h`) : '-';
+        const activeText = (m.totalActivities > 0 || m.activeSeconds > 0) ? (m.activeHoursFormatted || `${m.activeHours}h`) : '-';
         doc.fillColor('#0f172a').font('Helvetica').text(activeText, tableX + 294, currentY + 5, { width: 52, align: 'center' });
 
         // 6. Key Strokes
@@ -1674,7 +1667,7 @@ class ReportGenerator {
         const name = (m.name || 'Employee').replace(/"/g, '""');
         const acts = m.totalActivities > 0 ? m.totalActivities : '-';
         const prod = m.totalActivities > 0 ? `${m.avgProductivity}%` : '-';
-        const hours = (m.totalActivities > 0 && m.activeSeconds > 0) ? (m.activeHoursFormatted || `${m.activeHours}h`) : '-';
+        const hours = (m.totalActivities > 0 || m.activeSeconds > 0) ? (m.activeHoursFormatted || `${m.activeHours}h`) : '-';
         const keys = m.totalKeystrokes > 0 ? m.totalKeystrokes : '-';
         const mouse = m.totalActivities > 0 ? `${m.avgMouse}%` : '-';
         const eff = m.efficiency === 'No Activity' ? '-' : m.efficiency;

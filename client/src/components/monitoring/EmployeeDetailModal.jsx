@@ -122,8 +122,8 @@ export function EmployeeDetailModal({ employee, onClose }) {
 
       let efficiency = employee.stillExist === 0 ? 'Exited' : 'No Telemetry Today';
       if (logCount > 0) {
-        if (avgProd >= 75) efficiency = 'High Efficiency';
-        else if (avgProd >= 50) efficiency = 'Moderate Efficiency';
+        if (avgProd >= 60) efficiency = 'High Efficiency';
+        else if (avgProd >= 40) efficiency = 'Moderate Efficiency';
         else efficiency = 'Low Efficiency';
       }
 
