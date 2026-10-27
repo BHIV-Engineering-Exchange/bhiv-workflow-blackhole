@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,19 @@ export function TeamOverviewGrid({
   onDepartmentChange,
   departments = []
 }) {
+  const sortedEmployees = useMemo(() => {
+    return [...employees].sort((a, b) => {
+      const aExited = a.stillExist === 0 || a.currentStatus === 'Exited';
+      const bExited = b.stillExist === 0 || b.currentStatus === 'Exited';
+      if (aExited !== bExited) return aExited ? 1 : -1;
+
+      const aStarted = (a.hasStartedDay || a.currentStatus === 'Active' || a.currentStatus === 'Idle' || a.activeSeconds > 0 || a.keystrokesToday > 0) ? 1 : 0;
+      const bStarted = (b.hasStartedDay || b.currentStatus === 'Active' || b.currentStatus === 'Idle' || b.activeSeconds > 0 || b.keystrokesToday > 0) ? 1 : 0;
+      if (aStarted !== bStarted) return bStarted - aStarted;
+
+      return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+    });
+  }, [employees]);
   const getStatusBadge = (status) => {
     switch (status) {
       case 'Active':
@@ -233,7 +246,7 @@ export function TeamOverviewGrid({
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {employees.map((emp) => (
+          {sortedEmployees.map((emp) => (
             <Card
               key={emp._id}
               className="group hover:shadow-2xl transition-all duration-300 border-zinc-800 hover:border-emerald-500/60 relative overflow-hidden bg-zinc-950/90 flex flex-col justify-between shadow-lg"

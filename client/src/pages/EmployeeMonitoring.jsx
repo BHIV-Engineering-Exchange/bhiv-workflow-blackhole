@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -236,13 +236,27 @@ export function EmployeeMonitoring() {
     }
   };
 
-  // Filter employees client-side for live view search
-  const filteredTeamEmployees = teamSummaryData.employees.filter((emp) => {
-    const matchesSearch =
-      emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.email.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
-  });
+  // Filter and sort employees client-side for live view search
+  const filteredTeamEmployees = useMemo(() => {
+    const list = teamSummaryData.employees.filter((emp) => {
+      const matchesSearch =
+        emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        emp.email.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesSearch;
+    });
+
+    return list.sort((a, b) => {
+      const aExited = a.stillExist === 0 || a.currentStatus === 'Exited';
+      const bExited = b.stillExist === 0 || b.currentStatus === 'Exited';
+      if (aExited !== bExited) return aExited ? 1 : -1;
+
+      const aStarted = (a.hasStartedDay || a.currentStatus === 'Active' || a.currentStatus === 'Idle' || a.activeSeconds > 0 || a.keystrokesToday > 0) ? 1 : 0;
+      const bStarted = (b.hasStartedDay || b.currentStatus === 'Active' || b.currentStatus === 'Idle' || b.activeSeconds > 0 || b.keystrokesToday > 0) ? 1 : 0;
+      if (aStarted !== bStarted) return bStarted - aStarted;
+
+      return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+    });
+  }, [teamSummaryData.employees, searchQuery]);
 
   // Filter counts from global backend counts if available
   const hasLoadedCounts = teamSummaryData.counts && typeof teamSummaryData.counts.activeCount === 'number';

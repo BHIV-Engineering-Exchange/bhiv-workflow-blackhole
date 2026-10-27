@@ -267,21 +267,9 @@ export function MonthlyMonitoringView({
   }, [teamMonthlyData.employeePerformance, propEmployees, directEmployees]);
 
   // Auto-select active employee when availableEmployees loads and none is selected
-  useEffect(() => {
-    if (!selectedEmp && availableEmployees.length > 0) {
-      const defaultEmp = (statusTab === 'active')
-        ? availableEmployees.find(e => e.stillExist === 1) || availableEmployees[0]
-        : availableEmployees[0];
-      setSelectedEmp(defaultEmp);
-      if (defaultEmp) {
-        fetchEmployeeMonthlyBreakdown(defaultEmp.employeeId || defaultEmp._id, defaultEmp);
-      }
-    }
-  }, [availableEmployees, selectedEmp, statusTab]);
-
-  // Filter employees for dropdown/selector strictly enforcing statusTab and dropdownSearch
+  // Filter employees for dropdown/selector strictly enforcing statusTab, dropdownSearch, and day-started sorting
   const filteredEmployeesList = useMemo(() => {
-    return availableEmployees.filter((emp) => {
+    const list = availableEmployees.filter((emp) => {
       // Strict statusTab filter
       if (statusTab === 'active' && emp.stillExist === 0) return false;
       if (statusTab === 'exited' && emp.stillExist === 1) return false;
@@ -295,7 +283,28 @@ export function MonthlyMonitoringView({
 
       return empName.includes(q) || empEmail.includes(q) || empDept.includes(q);
     });
+
+    return list.sort((a, b) => {
+      // Started day today comes first
+      const aStarted = (a.hasStartedToday || a.hasStartedDay || a.currentStatus === 'Active' || a.currentStatus === 'Idle' || a.activeSeconds > 0) ? 1 : 0;
+      const bStarted = (b.hasStartedToday || b.hasStartedDay || b.currentStatus === 'Active' || b.currentStatus === 'Idle' || b.activeSeconds > 0) ? 1 : 0;
+      if (aStarted !== bStarted) return bStarted - aStarted;
+
+      // Alphabetical A-Z by name
+      return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+    });
   }, [availableEmployees, statusTab, dropdownSearch]);
+
+  // Auto-select active employee when filteredEmployeesList loads and none is selected
+  useEffect(() => {
+    if (!selectedEmp && filteredEmployeesList.length > 0) {
+      const defaultEmp = filteredEmployeesList[0];
+      setSelectedEmp(defaultEmp);
+      if (defaultEmp) {
+        fetchEmployeeMonthlyBreakdown(defaultEmp.employeeId || defaultEmp._id, defaultEmp);
+      }
+    }
+  }, [filteredEmployeesList, selectedEmp]);
 
   // Filter individual day-by-day records
   const filteredDailyBreakdown = useMemo(() => {

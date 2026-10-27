@@ -73,14 +73,28 @@ export function DailyMonitoringView({ onSelectEmployee, departmentFilter = 'all'
     }
   };
 
-  const filteredEmployees = dailyData.employees.filter((emp) => {
-    if (statusTab === 'active' && emp.stillExist === 0) return false;
-    if (statusTab === 'exited' && emp.stillExist === 1) return false;
-    return (
-      emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.email.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  });
+  const filteredEmployees = React.useMemo(() => {
+    const list = dailyData.employees.filter((emp) => {
+      if (statusTab === 'active' && emp.stillExist === 0) return false;
+      if (statusTab === 'exited' && emp.stillExist === 1) return false;
+      return (
+        emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        emp.email.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    });
+
+    return list.sort((a, b) => {
+      const aExited = a.stillExist === 0;
+      const bExited = b.stillExist === 0;
+      if (aExited !== bExited) return aExited ? 1 : -1;
+
+      const aStarted = (a.hasStartedDay || a.activeSeconds > 0 || (a.totalActiveHours && a.totalActiveHours !== '0h 0m')) ? 1 : 0;
+      const bStarted = (b.hasStartedDay || b.activeSeconds > 0 || (b.totalActiveHours && b.totalActiveHours !== '0h 0m')) ? 1 : 0;
+      if (aStarted !== bStarted) return bStarted - aStarted;
+
+      return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+    });
+  }, [dailyData.employees, statusTab, searchQuery]);
 
   const getEfficiencyBadge = (efficiency, emp = null) => {
     if (emp && emp.stillExist === 0) {

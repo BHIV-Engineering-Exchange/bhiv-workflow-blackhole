@@ -1757,9 +1757,8 @@ router.get('/team-summary', async (req, res) => {
         }
       }
 
-      if (attendanceElapsedSec > 0 && logsToProcess.length > 0) {
-        // Active computer hours cannot exceed the official physical attendance session
-        activeSeconds = Math.min(activeSeconds, attendanceElapsedSec);
+      if (attendanceElapsedSec > 0) {
+        activeSeconds = Math.max(activeSeconds, attendanceElapsedSec);
       }
 
       let avgMouseActivity = 0;
@@ -1777,14 +1776,16 @@ router.get('/team-summary', async (req, res) => {
           productivityEfficiency = 'Low Efficiency';
         }
       } else {
-        // Zero logs today - strictly zero out all telemetry metrics
-        activeSeconds = 0;
+        // Zero logs today - preserve attendance active hours if checked in
+        activeSeconds = attendanceElapsedSec > 0 ? attendanceElapsedSec : 0;
         totalIdleSeconds = 0;
         totalKeystrokes = 0;
         avgMouseActivity = 0;
         avgProductivityScore = 0;
-        productivityEfficiency = emp.stillExist === 0 ? 'Exited' : 'No Activity';
+        productivityEfficiency = emp.stillExist === 0 ? 'Exited' : (attendanceElapsedSec > 0 ? 'Moderate Efficiency' : 'No Activity');
       }
+
+      const hasStartedDay = Boolean((att && att.startDayTime) || logsToProcess.length > 0 || activeSeconds > 0);
 
       // Current status calculation
       let currentStatus = 'Away';
@@ -1816,6 +1817,8 @@ router.get('/team-summary', async (req, res) => {
         department: emp.department?.name || 'General',
         stillExist: emp.stillExist,
         currentStatus,
+        hasStartedDay,
+        startDayTime: att?.startDayTime || null,
         productivityScore: avgProductivityScore,
         activeHours: activeHoursFormatted,
         activeSeconds,
@@ -1831,6 +1834,19 @@ router.get('/team-summary', async (req, res) => {
         productivityEfficiency,
         lastActiveTimestamp: latestLog?.timestamp || historicalLastLog?.timestamp || null
       };
+    });
+
+    // Sort employees: Day started today first (A-Z), then Day not started (A-Z)
+    teamData.sort((a, b) => {
+      const aExited = a.stillExist === 0 || a.currentStatus === 'Exited';
+      const bExited = b.stillExist === 0 || b.currentStatus === 'Exited';
+      if (aExited !== bExited) return aExited ? 1 : -1;
+
+      const aStarted = a.hasStartedDay ? 1 : 0;
+      const bStarted = b.hasStartedDay ? 1 : 0;
+      if (aStarted !== bStarted) return bStarted - aStarted;
+
+      return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
     });
 
     // Calculate aggregated team statistics
@@ -2004,9 +2020,8 @@ router.get('/daily-summary', async (req, res) => {
         }
       }
 
-      if (attendanceElapsedSec > 0 && logCount > 0) {
-        // Active computer hours cannot exceed the official physical attendance session
-        activeSeconds = Math.min(activeSeconds, attendanceElapsedSec);
+      if (attendanceElapsedSec > 0) {
+        activeSeconds = Math.max(activeSeconds, attendanceElapsedSec);
       }
 
       let avgMouseActivity = 0;
@@ -2030,14 +2045,20 @@ router.get('/daily-summary', async (req, res) => {
           productivityEfficiency = 'Low Efficiency';
         }
       } else {
-        // Zero logs today - strictly zero out all telemetry metrics
-        activeSeconds = 0;
+        // Zero logs today - preserve attendance active hours if checked in
+        activeSeconds = attendanceElapsedSec > 0 ? attendanceElapsedSec : 0;
         totalIdleSeconds = 0;
         totalKeystrokes = 0;
         avgMouseActivity = 0;
         avgProductivityScore = 0;
-        productivityEfficiency = emp.stillExist === 0 ? 'Exited' : 'No Activity';
+        productivityEfficiency = emp.stillExist === 0 ? 'Exited' : (attendanceElapsedSec > 0 ? 'Moderate Efficiency' : 'No Activity');
+        if (activeSeconds > 0) {
+          totalTeamActiveSeconds += activeSeconds;
+          activeEmployeeCount++;
+        }
       }
+
+      const hasStartedDay = Boolean((att && att.startDayTime) || logCount > 0 || activeSeconds > 0);
 
       const appDetails = Object.entries(appUsageMap)
         .sort((a, b) => b[1] - a[1])
@@ -2050,6 +2071,8 @@ router.get('/daily-summary', async (req, res) => {
         email: emp.email,
         department: emp.department?.name || 'General',
         stillExist: emp.stillExist,
+        hasStartedDay,
+        startDayTime: att?.startDayTime || null,
         totalActiveHours: `${Math.floor(activeSeconds / 3600)}h ${Math.floor((activeSeconds % 3600) / 60)}m`,
         activeSeconds,
         totalIdleTime: `${Math.floor(totalIdleSeconds / 60)}m`,
@@ -2060,6 +2083,19 @@ router.get('/daily-summary', async (req, res) => {
         activityDetails: appDetails.length > 0 ? appDetails : [{ name: 'Workspace Active', count: 1 }],
         productivityEfficiency
       };
+    });
+
+    // Sort employees: Day started today first (A-Z), then Day not started (A-Z)
+    employeeDailyData.sort((a, b) => {
+      const aExited = a.stillExist === 0;
+      const bExited = b.stillExist === 0;
+      if (aExited !== bExited) return aExited ? 1 : -1;
+
+      const aStarted = a.hasStartedDay ? 1 : 0;
+      const bStarted = b.hasStartedDay ? 1 : 0;
+      if (aStarted !== bStarted) return bStarted - aStarted;
+
+      return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
     });
 
     const avgTeamProductivity = activeEmployeeCount > 0
@@ -2141,6 +2177,63 @@ router.get('/monthly-summary', async (req, res) => {
       console.warn('⚠️ Monthly logs query encountered issue, proceeding with fallback telemetry:', dbErr.message);
     }
 
+    // Query official Attendance records for the month to sync active hours with Work Hours Manager
+    const Attendance = require('../models/Attendance');
+    let monthlyAttendances = [];
+    try {
+      monthlyAttendances = await Attendance.find({
+        user: { $in: activeEmpIds },
+        $or: [
+          { date: { $gte: startOfMonth, $lte: endOfMonth } },
+          { startDayTime: { $gte: startOfMonth, $lte: endOfMonth } }
+        ]
+      }).select('user date startDayTime endDayTime hoursWorked').lean();
+    } catch (attErr) {
+      console.warn('⚠️ Monthly attendances query error:', attErr.message);
+    }
+
+    const empAttendanceSecMap = new Map();
+    const dayAttendanceSecMap = new Map();
+    const empStartedTodayMap = new Map();
+    const nowLocalDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    monthlyAttendances.forEach(att => {
+      const uId = att.user ? att.user.toString() : null;
+      if (!uId) return;
+
+      let dateStr = '';
+      if (att.date) {
+        try {
+          const dObj = new Date(att.date);
+          dateStr = `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}-${String(dObj.getDate()).padStart(2, '0')}`;
+        } catch (e) {}
+      }
+      if (!dateStr && att.startDayTime) {
+        try {
+          const dObj = new Date(att.startDayTime);
+          dateStr = `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}-${String(dObj.getDate()).padStart(2, '0')}`;
+        } catch (e) {}
+      }
+
+      let sec = 0;
+      if (att.hoursWorked > 0) {
+        sec = Math.round(att.hoursWorked * 3600);
+      } else if (att.startDayTime) {
+        const isToday = dateStr === nowLocalDateStr;
+        const endSession = att.endDayTime ? new Date(att.endDayTime) : (isToday ? new Date() : endOfMonth);
+        sec = Math.max(0, Math.floor((endSession - new Date(att.startDayTime)) / 1000));
+      }
+
+      if (dateStr === nowLocalDateStr && att.startDayTime) {
+        empStartedTodayMap.set(uId, true);
+      }
+
+      empAttendanceSecMap.set(uId, (empAttendanceSecMap.get(uId) || 0) + sec);
+      if (dateStr) {
+        dayAttendanceSecMap.set(dateStr, (dayAttendanceSecMap.get(dateStr) || 0) + sec);
+      }
+    });
+
     const daysInMonth = endOfMonth.getDate();
     const dayByDayMap = {};
 
@@ -2183,6 +2276,10 @@ router.get('/monthly-summary', async (req, res) => {
       }
       const empIdStr = log.employee ? log.employee.toString() : '';
 
+      if (dateStr === nowLocalDateStr) {
+        empStartedTodayMap.set(empIdStr, true);
+      }
+
       const isLogActive = (log.keystroke_count || 0) > 0 || (log.mouse_activity_score || 0) >= 15;
       let idleVal = 0;
       if (!isLogActive) {
@@ -2209,10 +2306,12 @@ router.get('/monthly-summary', async (req, res) => {
       }
     });
 
-    // Process Day-by-Day chart array
+    // Process Day-by-Day chart array incorporating attendance
     const dayByDayBreakdown = Object.values(dayByDayMap).map(day => {
       const avgProd = day.count > 0 ? Math.round(day.productivitySum / day.count) : 0;
-      const activeHours = Math.round((day.activeSeconds / 3600) * 10) / 10;
+      const attDaySec = dayAttendanceSecMap.get(day.date) || 0;
+      const effectiveDayActiveSec = Math.max(day.activeSeconds, attDaySec);
+      const activeHours = Math.round((effectiveDayActiveSec / 3600) * 10) / 10;
       const idleHours = Math.round((day.idleSeconds / 3600) * 10) / 10;
       return {
         date: day.date,
@@ -2249,26 +2348,30 @@ router.get('/monthly-summary', async (req, res) => {
           avgProductivityScore: 0,
           totalKeystrokes: 0,
           avgMouseActivity: 0,
-          productivityEfficiency: 'Exited'
+          productivityEfficiency: 'Exited',
+          hasStartedToday: false
         };
       }
 
       let activeSec = Math.max(0, (emp.logCount * 30) - emp.totalIdleSeconds);
+      const attSec = empAttendanceSecMap.get(emp.employeeId.toString()) || 0;
+      let effectiveActiveSec = Math.max(activeSec, attSec);
+
       let avgProd = emp.logCount > 0 ? Math.round(emp.totalProductivityScore / emp.logCount) : 0;
       let avgMouse = emp.logCount > 0 ? Math.round(emp.totalMouseScore / emp.logCount) : 0;
       let idleSec = emp.totalIdleSeconds;
       let keystrokes = emp.totalKeystrokes;
 
-      if (emp.logCount === 0) {
+      if (emp.logCount === 0 && effectiveActiveSec === 0) {
         avgProd = 0;
-        activeSec = 0;
+        effectiveActiveSec = 0;
         idleSec = 0;
         keystrokes = 0;
         avgMouse = 0;
       }
 
-      if (emp.logCount > 0) {
-        totalTeamActiveSec += activeSec;
+      if (emp.logCount > 0 || effectiveActiveSec > 0) {
+        totalTeamActiveSec += effectiveActiveSec;
         totalTeamIdleSec += idleSec;
         totalTeamKeystrokes += keystrokes;
         totalTeamMouseScore += avgMouse;
@@ -2277,11 +2380,13 @@ router.get('/monthly-summary', async (req, res) => {
       }
 
       let efficiency = 'No Activity';
-      if (emp.logCount > 0) {
+      if (emp.logCount > 0 || effectiveActiveSec > 0) {
         if (avgProd >= 60) efficiency = 'High Efficiency';
         else if (avgProd >= 40) efficiency = 'Moderate Efficiency';
         else efficiency = 'Low Efficiency';
       }
+
+      const hasStartedToday = Boolean(empStartedTodayMap.get(emp.employeeId.toString()) || effectiveActiveSec > 0);
 
       return {
         employeeId: emp.employeeId,
@@ -2289,15 +2394,29 @@ router.get('/monthly-summary', async (req, res) => {
         email: emp.email,
         department: emp.department,
         stillExist: 1,
-        totalActiveHours: `${Math.floor(activeSec / 3600)}h ${Math.floor((activeSec % 3600) / 60)}m`,
-        activeSeconds: activeSec,
+        totalActiveHours: `${Math.floor(effectiveActiveSec / 3600)}h ${Math.floor((effectiveActiveSec % 3600) / 60)}m`,
+        activeSeconds: effectiveActiveSec,
         totalIdleHours: `${Math.floor(idleSec / 3600)}h ${Math.floor((idleSec % 3600) / 60)}m`,
         idleSeconds: idleSec,
         avgProductivityScore: avgProd,
         totalKeystrokes: keystrokes,
         avgMouseActivity: avgMouse,
-        productivityEfficiency: efficiency
+        productivityEfficiency: efficiency,
+        hasStartedToday
       };
+    });
+
+    // Sort employeePerformance: Started today first (A-Z), then Not started today (A-Z)
+    employeePerformance.sort((a, b) => {
+      const aExited = a.stillExist === 0;
+      const bExited = b.stillExist === 0;
+      if (aExited !== bExited) return aExited ? 1 : -1;
+
+      const aStarted = a.hasStartedToday ? 1 : 0;
+      const bStarted = b.hasStartedToday ? 1 : 0;
+      if (aStarted !== bStarted) return bStarted - aStarted;
+
+      return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
     });
 
     const overallAvgProductivity = activeEmpCount > 0 ? Math.round(totalTeamProdSum / activeEmpCount) : 0;
@@ -2415,6 +2534,52 @@ router.get('/monthly-employee-breakdown', async (req, res) => {
       }
     });
 
+    // Fetch official Attendance records for this employee in this month
+    const Attendance = require('../models/Attendance');
+    let empAttendances = [];
+    try {
+      empAttendances = await Attendance.find({
+        user: employeeId,
+        $or: [
+          { date: { $gte: startOfMonth, $lte: endOfMonth } },
+          { startDayTime: { $gte: startOfMonth, $lte: endOfMonth } }
+        ]
+      }).select('date startDayTime endDayTime hoursWorked').lean();
+    } catch (attErr) {
+      console.warn('⚠️ Monthly employee attendances query error:', attErr.message);
+    }
+
+    const attendanceByDateMap = new Map();
+    const nowLocalDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    empAttendances.forEach(att => {
+      let dStr = '';
+      if (att.date) {
+        try {
+          const dObj = new Date(att.date);
+          dStr = `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}-${String(dObj.getDate()).padStart(2, '0')}`;
+        } catch (e) {}
+      }
+      if (!dStr && att.startDayTime) {
+        try {
+          const dObj = new Date(att.startDayTime);
+          dStr = `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}-${String(dObj.getDate()).padStart(2, '0')}`;
+        } catch (e) {}
+      }
+      if (!dStr) return;
+
+      let sec = 0;
+      if (att.hoursWorked > 0) {
+        sec = Math.round(att.hoursWorked * 3600);
+      } else if (att.startDayTime) {
+        const isToday = dStr === nowLocalDateStr;
+        const endSession = att.endDayTime ? new Date(att.endDayTime) : (isToday ? new Date() : endOfMonth);
+        sec = Math.max(0, Math.floor((endSession - new Date(att.startDayTime)) / 1000));
+      }
+
+      attendanceByDateMap.set(dStr, Math.max(attendanceByDateMap.get(dStr) || 0, sec));
+    });
+
     const isExited = employee.stillExist === 0;
     let totalMonthlyActiveSec = 0;
     let totalMonthlyIdleSec = 0;
@@ -2495,8 +2660,13 @@ router.get('/monthly-employee-breakdown', async (req, res) => {
       let topApp = 'Visual Studio Code';
       let status = 'Worked';
 
+      const attSec = attendanceByDateMap.get(day.date) || 0;
+
       if (day.logCount > 0) {
         activeSec = Math.max(0, (day.logCount * 30) - day.idleSeconds);
+        if (attSec > 0) {
+          activeSec = Math.max(activeSec, attSec);
+        }
         idleSec = day.idleSeconds;
         avgProd = Math.round(day.productivitySum / day.logCount);
         avgMouse = Math.round(day.mouseScoreSum / day.logCount);
@@ -2514,18 +2684,30 @@ router.get('/monthly-employee-breakdown', async (req, res) => {
         totalMonthlyProdSum += avgProd;
         workedDaysCount++;
       } else {
-        // Weekday in the past with no recorded activity logs
-        status = 'No Activity';
-        activeSec = 0;
-        idleSec = 0;
-        avgProd = 0;
-        avgMouse = 0;
-        keystrokes = 0;
-        topApp = 'No Activity Logged';
+        if (attSec > 0) {
+          status = 'Worked';
+          activeSec = attSec;
+          idleSec = 0;
+          avgProd = 50;
+          avgMouse = 0;
+          keystrokes = 0;
+          topApp = 'Work Hours Session';
+          totalMonthlyActiveSec += activeSec;
+          workedDaysCount++;
+        } else {
+          // Weekday in the past with no recorded activity logs
+          status = 'No Activity';
+          activeSec = 0;
+          idleSec = 0;
+          avgProd = 0;
+          avgMouse = 0;
+          keystrokes = 0;
+          topApp = 'No Activity Logged';
+        }
       }
 
       let efficiency = 'No Activity';
-      if (day.logCount > 0) {
+      if (day.logCount > 0 || activeSec > 0) {
         if (avgProd >= 60) efficiency = 'High Efficiency';
         else if (avgProd >= 40) efficiency = 'Moderate Efficiency';
         else efficiency = 'Low Efficiency';
