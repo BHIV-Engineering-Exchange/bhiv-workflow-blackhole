@@ -352,7 +352,7 @@ export function ReportsGenerator({
       csv += `${totalActivities},${avgScore}%,${totalScreenshots},${flaggedScreenshots},${totalAlerts}\n\n`;
 
       csv += 'DAILY PERFORMANCE BREAKDOWN\n';
-      csv += 'Date,Total Activities,Productivity Score (%),Active Hours (h),Total Keystrokes,Mouse Activity (%),Efficiency Rating\n';
+      csv += 'Date,Total Activities,Productivity Score (%),Active Hours,Total Keystrokes,Mouse Activity (%),Efficiency Rating\n';
 
       if (reportData?.dailyMetrics && reportData.dailyMetrics.length > 0) {
         reportData.dailyMetrics.forEach(day => {
@@ -360,7 +360,10 @@ export function ReportsGenerator({
           if (day.avgProductivityScore >= 75) eff = 'High Efficiency';
           else if (day.avgProductivityScore >= 50) eff = 'Moderate Efficiency';
 
-          csv += `"${day.date}",${day.totalActivities},${day.avgProductivityScore}%,${day.activeHours}h,${day.totalKeystroke || 0},${day.avgMouseActivity || 0}%,${eff}\n`;
+          const activeText = (day.totalActivities > 0 && (day.activeSeconds > 0 || day.activeHours > 0))
+            ? (day.activeHoursFormatted || `${day.activeHours}h`)
+            : '-';
+          csv += `"${day.date}",${day.totalActivities > 0 ? day.totalActivities : '-'},"${day.totalActivities > 0 ? `${day.avgProductivityScore}%` : '-'}","${activeText}",${day.totalKeystroke > 0 ? day.totalKeystroke : '-'},"${day.totalActivities > 0 ? `${day.avgMouseActivity}%` : '-'}","${day.totalActivities > 0 ? eff : '-'}"\n`;
         });
       } else {
         csv += 'No daily activity logs recorded for this period\n';
@@ -493,7 +496,10 @@ export function ReportsGenerator({
           endDate: endStr,
           department: selectedDepartment
         },
-        { headers: { 'x-auth-token': token, Authorization: `Bearer ${token}` } }
+        { 
+          headers: { 'x-auth-token': token, Authorization: `Bearer ${token}` },
+          timeout: 60000 
+        }
       );
 
       const filename = response.data?.report?.filename;
@@ -501,7 +507,8 @@ export function ReportsGenerator({
         const downloadEndpoint = `${API_URL}/monitoring/download/${filename}`;
         const fileRes = await axios.get(downloadEndpoint, {
           headers: { 'x-auth-token': token, Authorization: `Bearer ${token}` },
-          responseType: 'blob'
+          responseType: 'blob',
+          timeout: 60000
         });
 
         const blob = new Blob([fileRes.data], { type: 'application/pdf' });
@@ -522,7 +529,8 @@ export function ReportsGenerator({
       }
     } catch (err) {
       console.error('Failed to export team PDF:', err);
-      toast({ title: 'Export Failed', description: 'Could not generate team PDF report', variant: 'destructive' });
+      const msg = err.response?.data?.error || err.message || 'Could not generate team PDF report';
+      toast({ title: 'Export Failed', description: msg, variant: 'destructive' });
     } finally {
       setGenerating(false);
     }
@@ -533,6 +541,8 @@ export function ReportsGenerator({
     try {
       const sDate = new Date(startDate);
       const eDate = new Date(endDate);
+      const startStr = format(sDate, 'yyyy-MM-dd');
+      const endStr = format(eDate, 'yyyy-MM-dd');
       const isSame = sDate.toDateString() === eDate.toDateString();
       const sDay = String(sDate.getDate()).padStart(2, '0');
       const sMonth = String(sDate.getMonth() + 1).padStart(2, '0');
@@ -541,17 +551,59 @@ export function ReportsGenerator({
       const dateDisplay = isSame ? `${sDay}/${sMonth}` : `${sDay}/${sMonth} - ${eDay}/${eMonth}`;
       const token = localStorage.getItem('WorkflowToken') || localStorage.getItem('token');
 
-      const members = teamReportData?.members || [];
+      let members = teamReportData?.members;
+
+      // If members are not loaded in client state yet, request generated CSV directly from backend
+      if (!members || members.length === 0) {
+        const res = await axios.post(
+          `${API_URL}/monitoring/export/csv/team`,
+          {
+            startDate: startStr,
+            endDate: endStr,
+            department: selectedDepartment
+          },
+          {
+            headers: { 'x-auth-token': token, Authorization: `Bearer ${token}` },
+            timeout: 60000
+          }
+        );
+
+        const filename = res.data?.export?.filename;
+        if (filename) {
+          const downloadEndpoint = `${API_URL}/monitoring/download/${filename}`;
+          const fileRes = await axios.get(downloadEndpoint, {
+            headers: { 'x-auth-token': token, Authorization: `Bearer ${token}` },
+            responseType: 'blob',
+            timeout: 60000
+          });
+
+          const blob = new Blob([fileRes.data], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+
+          toast({
+            title: 'Team CSV Exported',
+            description: `Exported consolidated team data successfully.`
+          });
+          return;
+        }
+      }
 
       // Exact 8 columns matching handwritten specification:
       // Name, Date, Activities, Productivity, Active Hour, Key Strokes, Mouse Score, Efficiency
       let csv = 'Name,Date,Activities,Productivity,Active Hour,Key Strokes,Mouse Score,Efficiency\n';
 
-      members.forEach(m => {
+      (members || []).forEach(m => {
         const name = (m.name || 'Employee').replace(/"/g, '""');
         const acts = m.totalActivities > 0 ? m.totalActivities : '-';
         const prod = m.totalActivities > 0 ? `${m.avgProductivity}%` : '-';
-        const hours = m.totalActivities > 0 ? `${m.activeHours}h` : '-';
+        const hours = (m.totalActivities > 0 && m.activeSeconds > 0) ? (m.activeHoursFormatted || `${m.activeHours}h`) : '-';
         const keys = m.totalKeystrokes > 0 ? m.totalKeystrokes : '-';
         const mouse = m.totalActivities > 0 ? `${m.avgMouse}%` : '-';
         const eff = m.efficiency === 'No Activity' ? '-' : m.efficiency;
@@ -562,7 +614,7 @@ export function ReportsGenerator({
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const fileDateSuffix = isSame ? `${format(sDate, 'yyyy-MM-dd')}` : `${format(sDate, 'yyyy-MM-dd')}_to_${format(eDate, 'yyyy-MM-dd')}`;
+      const fileDateSuffix = isSame ? `${startStr}` : `${startStr}_to_${endStr}`;
       link.download = `niyantran_team_report_${fileDateSuffix}.csv`;
       document.body.appendChild(link);
       link.click();
@@ -571,7 +623,7 @@ export function ReportsGenerator({
 
       toast({
         title: 'Team CSV Exported',
-        description: `Exported consolidated team data for ${members.length} active members.`
+        description: `Exported consolidated team data for ${(members || []).length} members.`
       });
 
       // Background server CSV trigger
@@ -585,7 +637,8 @@ export function ReportsGenerator({
 
     } catch (err) {
       console.error('Failed to export team CSV:', err);
-      toast({ title: 'Export Failed', description: 'Could not generate team CSV', variant: 'destructive' });
+      const msg = err.response?.data?.error || err.message || 'Could not generate team CSV';
+      toast({ title: 'Export Failed', description: msg, variant: 'destructive' });
     } finally {
       setGenerating(false);
     }
@@ -1171,7 +1224,7 @@ export function ReportsGenerator({
                             <td className={`p-3.5 text-center font-bold ${getProductivityColor(day.avgProductivityScore)}`}>
                               {day.avgProductivityScore}%
                             </td>
-                            <td className="p-3.5 text-center text-foreground font-bold">{day.activeHours}h</td>
+                            <td className="p-3.5 text-center text-foreground font-bold">{day.totalActivities > 0 ? (day.activeHoursFormatted || `${day.activeHours}h`) : '-'}</td>
                             <td className="p-3.5 text-center text-muted-foreground font-medium">
                               {(day.totalKeystroke || 0).toLocaleString()}
                             </td>
@@ -1365,7 +1418,7 @@ export function ReportsGenerator({
 
                             {/* 5. Active Hour */}
                             <td className="p-3.5 text-center text-foreground font-bold">
-                              {m.totalActivities > 0 ? `${m.activeHours}h` : '-'}
+                              {(m.totalActivities > 0 && m.activeSeconds > 0) ? (m.activeHoursFormatted || `${m.activeHours}h`) : '-'}
                             </td>
 
                             {/* 6. Key Strokes */}

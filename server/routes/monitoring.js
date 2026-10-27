@@ -978,14 +978,21 @@ router.get('/reports/:employeeId', async (req, res) => {
       })()
     ]);
 
+    const getLocalDateStr = (dateVal) => {
+      if (!dateVal) return null;
+      const d = dateVal instanceof Date ? dateVal : new Date(dateVal);
+      if (isNaN(d.getTime())) return null;
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
     // Build day map across date range
     const dailyMetricsMap = {};
     const curr = new Date(start);
     while (curr <= end) {
-      const y = curr.getFullYear();
-      const m = String(curr.getMonth() + 1).padStart(2, '0');
-      const d = String(curr.getDate()).padStart(2, '0');
-      const dateKey = `${y}-${m}-${d}`;
+      const dateKey = getLocalDateStr(curr);
       dailyMetricsMap[dateKey] = {
         date: dateKey,
         totalActivities: 0,
@@ -1001,12 +1008,7 @@ router.get('/reports/:employeeId', async (req, res) => {
     // Populate activity data into daily map
     activities.forEach(act => {
       if (!act || !act.timestamp) return;
-      let dateKey = '';
-      try {
-        dateKey = act.timestamp instanceof Date ? act.timestamp.toISOString().split('T')[0] : new Date(act.timestamp).toISOString().split('T')[0];
-      } catch (e) {
-        return;
-      }
+      const dateKey = getLocalDateStr(act.timestamp);
       if (dailyMetricsMap[dateKey]) {
         const item = dailyMetricsMap[dateKey];
         item.totalActivities++;
@@ -1019,7 +1021,7 @@ router.get('/reports/:employeeId', async (req, res) => {
         if (!isActive) {
           let raw = act.idle_duration || 0;
           if (raw > 10000) raw = Math.round(raw / 1000);
-          idle = Math.min(30, raw > 0 ? raw : 30);
+          idle = Math.min(30, Math.max(0, raw));
         }
         item.idleSeconds += idle;
         item.activeSeconds += Math.max(0, 30 - idle);
@@ -1028,11 +1030,19 @@ router.get('/reports/:employeeId', async (req, res) => {
 
     // Merge official attendance if available
     attendances.forEach(att => {
-      const dateKey = att.date ? new Date(att.date).toISOString().split('T')[0] : (att.startDayTime ? new Date(att.startDayTime).toISOString().split('T')[0] : null);
+      const dateKey = getLocalDateStr(att.date || att.startDayTime);
       if (dateKey && dailyMetricsMap[dateKey]) {
         const item = dailyMetricsMap[dateKey];
+        let sec = 0;
         if (att.hoursWorked > 0) {
-          item.activeSeconds = Math.max(item.activeSeconds, Math.round(att.hoursWorked * 3600));
+          sec = Math.round(att.hoursWorked * 3600);
+        } else if (att.startDayTime) {
+          const isToday = getLocalDateStr(new Date()) === dateKey;
+          const endSession = att.endDayTime ? new Date(att.endDayTime) : (isToday ? new Date() : new Date(att.startDayTime));
+          sec = Math.max(0, Math.floor((endSession - new Date(att.startDayTime)) / 1000));
+        }
+        if (sec > 0 && item.totalActivities > 0) {
+          item.activeSeconds = Math.min(item.activeSeconds, sec);
         }
       }
     });
@@ -1041,11 +1051,18 @@ router.get('/reports/:employeeId', async (req, res) => {
       const avgProd = day.totalActivities > 0 ? Math.round(day.productivitySum / day.totalActivities) : 0;
       const avgMouse = day.totalActivities > 0 ? Math.round(day.mouseScoreSum / day.totalActivities) : 0;
       const activeH = Math.round((day.activeSeconds / 3600) * 10) / 10;
+      const hNum = Math.floor(day.activeSeconds / 3600);
+      const mNum = Math.round((day.activeSeconds % 3600) / 60);
+      const activeHoursFormatted = day.totalActivities > 0 && day.activeSeconds > 0
+        ? `${hNum}h ${mNum}m`
+        : (day.totalActivities > 0 ? '0h 1m' : '0h 0m');
       return {
         date: day.date,
         totalActivities: day.totalActivities,
         avgProductivityScore: avgProd,
         activeHours: activeH,
+        activeHoursFormatted,
+        activeSeconds: day.activeSeconds,
         totalKeystroke: day.keystrokeSum,
         avgMouseActivity: avgMouse
       };
@@ -1959,7 +1976,7 @@ router.get('/daily-summary', async (req, res) => {
         if (!isActActive) {
           let rawIdle = (act.idle_duration || 0);
           if (rawIdle > 10000) rawIdle = Math.round(rawIdle / 1000);
-          idleVal = Math.min(30, rawIdle > 0 ? rawIdle : 30);
+          idleVal = Math.min(30, Math.max(0, rawIdle));
         }
         totalIdleSeconds += idleVal;
         totalProductivityScore += (act.productivity_score || 0);
@@ -2171,7 +2188,7 @@ router.get('/monthly-summary', async (req, res) => {
       if (!isLogActive) {
         let rawIdle = (log.idle_duration || 0);
         if (rawIdle > 10000) rawIdle = Math.round(rawIdle / 1000);
-        idleVal = Math.min(30, rawIdle > 0 ? rawIdle : 30);
+        idleVal = Math.min(30, Math.max(0, rawIdle));
       }
 
       if (dayByDayMap[dateStr]) {

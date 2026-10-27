@@ -8,6 +8,25 @@ const Department = require('../models/Department');
 const ScreenCapture = require('../models/ScreenCapture');
 const EmployeeActivity = require('../models/EmployeeActivity');
 const MonitoringAlert = require('../models/MonitoringAlert');
+const Attendance = require('../models/Attendance');
+
+function formatActiveTime(seconds) {
+  if (!seconds || seconds <= 0) return '0h 0m';
+  const totalMins = Math.round(seconds / 60);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  return `${h}h ${m}m`;
+}
+
+function getLocalDateString(d) {
+  if (!d) return null;
+  const dateObj = d instanceof Date ? d : new Date(d);
+  if (isNaN(dateObj.getTime())) return null;
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 class ReportGenerator {
   constructor() {
@@ -18,6 +37,27 @@ class ReportGenerator {
     });
     this.reportsDir = process.env.REPORTS_STORAGE_PATH || './uploads/reports';
     this.ensureReportsDirectory();
+  }
+
+  parseDateRange(startDate, endDate) {
+    let start, end;
+    if (typeof startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startDate.trim())) {
+      const [y, m, d] = startDate.trim().split('-').map(Number);
+      start = new Date(y, m - 1, d, 0, 0, 0, 0);
+    } else {
+      start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+    }
+
+    if (typeof endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(endDate.trim())) {
+      const [y, m, d] = endDate.trim().split('-').map(Number);
+      end = new Date(y, m - 1, d, 23, 59, 59, 999);
+    } else {
+      end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+    }
+
+    return { start, end };
   }
 
   async ensureReportsDirectory() {
@@ -93,12 +133,9 @@ class ReportGenerator {
    * Fetch all necessary data for the report
    */
   async gatherReportData(employeeId, startDate, endDate) {
-    const start = new Date(startDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+    const { start, end } = this.parseDateRange(startDate, endDate);
 
-    const [screenshots, activities, alerts] = await Promise.all([
+    const [screenshots, activities, alerts, attendances] = await Promise.all([
       ScreenCapture.find({
         employee: employeeId,
         timestamp: { $gte: start, $lte: end }
@@ -112,13 +149,28 @@ class ReportGenerator {
       MonitoringAlert.find({
         employee: employeeId,
         timestamp: { $gte: start, $lte: end }
-      }).select('timestamp alert_type severity title description').sort({ timestamp: -1 }).lean()
+      }).select('timestamp alert_type severity title description').sort({ timestamp: -1 }).lean(),
+
+      (async () => {
+        try {
+          return await Attendance.find({
+            user: employeeId,
+            $or: [
+              { date: { $gte: start, $lte: end } },
+              { startDayTime: { $gte: start, $lte: end } }
+            ]
+          }).lean();
+        } catch (e) {
+          return [];
+        }
+      })()
     ]);
 
     return {
       screenshots: screenshots || [],
       activities: activities || [],
       alerts: alerts || [],
+      attendances: attendances || [],
       period: { startDate, endDate }
     };
   }
@@ -210,7 +262,7 @@ class ReportGenerator {
       },
       {
         label: 'Active Work Hours',
-        value: `${summary.activeHours}h`,
+        value: summary.activeHoursFormatted || `${summary.activeHours}h`,
         color: '#0284c7'
       },
       {
@@ -262,11 +314,10 @@ class ReportGenerator {
 
     // Group activities by date
     const dailyMap = {};
-    const start = new Date(reportData.period.startDate);
-    const end = new Date(reportData.period.endDate);
+    const { start, end } = this.parseDateRange(reportData.period.startDate, reportData.period.endDate);
 
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dStr = d.toISOString().split('T')[0];
+      const dStr = getLocalDateString(d);
       dailyMap[dStr] = {
         date: dStr,
         activitiesCount: 0,
@@ -279,7 +330,7 @@ class ReportGenerator {
     }
 
     reportData.activities.forEach(act => {
-      const dStr = new Date(act.timestamp).toISOString().split('T')[0];
+      const dStr = getLocalDateString(act.timestamp);
       if (dailyMap[dStr]) {
         dailyMap[dStr].activitiesCount++;
         dailyMap[dStr].keystrokes += (act.keystroke_count || 0);
@@ -290,7 +341,7 @@ class ReportGenerator {
         if (!isActive) {
           let raw = act.idle_duration || 0;
           if (raw > 10000) raw = Math.round(raw / 1000);
-          idle = Math.min(30, raw > 0 ? raw : 30);
+          idle = Math.min(30, Math.max(0, raw));
         }
         dailyMap[dStr].activeSeconds += Math.max(0, 30 - idle);
 
@@ -303,6 +354,24 @@ class ReportGenerator {
           appName = isActive ? 'Desktop Workspace' : 'System Background';
         }
         dailyMap[dStr].topApps[appName] = (dailyMap[dStr].topApps[appName] || 0) + 1;
+      }
+    });
+
+    // Merge official attendance for each day
+    reportData.attendances?.forEach(att => {
+      const dStr = getLocalDateString(att.date || att.startDayTime);
+      if (dStr && dailyMap[dStr]) {
+        let sec = 0;
+        if (att.hoursWorked > 0) {
+          sec = Math.round(att.hoursWorked * 3600);
+        } else if (att.startDayTime) {
+          const isToday = getLocalDateString(new Date()) === dStr;
+          const endSession = att.endDayTime ? new Date(att.endDayTime) : (isToday ? new Date() : new Date(att.startDayTime));
+          sec = Math.max(0, Math.floor((endSession - new Date(att.startDayTime)) / 1000));
+        }
+        if (sec > 0 && dailyMap[dStr].activitiesCount > 0) {
+          dailyMap[dStr].activeSeconds = Math.min(dailyMap[dStr].activeSeconds, sec);
+        }
       }
     });
 
@@ -346,7 +415,7 @@ class ReportGenerator {
 
       const count = row.activitiesCount;
       const avgProd = count > 0 ? Math.round(row.prodSum / count) : 0;
-      const activeHours = (row.activeSeconds / 3600).toFixed(1);
+      const activeHoursStr = (count > 0 && row.activeSeconds > 0) ? formatActiveTime(row.activeSeconds) : '-';
       const avgMouse = count > 0 ? Math.round(row.mouseSum / count) : 0;
 
       let eff = 'No Activity';
@@ -382,7 +451,7 @@ class ReportGenerator {
       // Active Hours
       doc.fillColor('#0f172a')
          .font('Helvetica')
-         .text(count > 0 ? `${activeHours}h` : '0h', tableX + 225, currentY + 5, { width: 65, align: 'center' });
+         .text(activeHoursStr, tableX + 225, currentY + 5, { width: 65, align: 'center' });
 
       // Keystrokes
       doc.fillColor('#475569')
@@ -673,6 +742,7 @@ class ReportGenerator {
    */
   calculateExecutiveSummary(reportData) {
     const activities = reportData.activities || [];
+    const attendances = reportData.attendances || [];
     let totalKeys = 0;
     let totalMouse = 0;
     let totalActiveSec = 0;
@@ -692,18 +762,38 @@ class ReportGenerator {
       if (!isActive) {
         let raw = act.idle_duration || 0;
         if (raw > 10000) raw = Math.round(raw / 1000);
-        idle = Math.min(30, raw > 0 ? raw : 30);
+        idle = Math.min(30, Math.max(0, raw));
       }
       totalActiveSec += Math.max(0, 30 - idle);
     });
 
+    // Merge official attendance if available (capping active computer time, never inflating 0 activities)
+    let totalAttSec = 0;
+    attendances.forEach(att => {
+      if (att.hoursWorked > 0) {
+        totalAttSec += Math.round(att.hoursWorked * 3600);
+      } else if (att.startDayTime) {
+        const isToday = att.startDayTime && new Date(att.startDayTime).toDateString() === new Date().toDateString();
+        const endSession = att.endDayTime ? new Date(att.endDayTime) : (isToday ? new Date() : new Date(att.startDayTime));
+        totalAttSec += Math.max(0, Math.floor((endSession - new Date(att.startDayTime)) / 1000));
+      }
+    });
+
+    if (activities.length > 0 && totalAttSec > 0) {
+      totalActiveSec = Math.min(totalActiveSec, totalAttSec);
+    } else if (activities.length === 0) {
+      totalActiveSec = 0;
+    }
+
     const avgProd = prodCount > 0 ? Math.round(totalProd / prodCount) : 0;
     const activeHours = Math.round((totalActiveSec / 3600) * 10) / 10;
+    const activeHoursFormatted = formatActiveTime(totalActiveSec);
     const avgMouse = activities.length > 0 ? Math.round(totalMouse / activities.length) : 0;
 
     return {
       productivityScore: avgProd,
       activeHours,
+      activeHoursFormatted,
       activeSeconds: totalActiveSec,
       totalKeystrokes: totalKeys,
       avgMouseActivity: avgMouse,
@@ -882,7 +972,7 @@ class ReportGenerator {
 
       csv += 'EXECUTIVE KPI SUMMARY\n';
       csv += 'Total Activities,Average Productivity Score (%),Active Hours,Total Keystrokes,Total Alerts\n';
-      csv += `${reportData.activities.length},${summary.productivityScore}%,${summary.activeHours}h,${summary.totalKeystrokes},${summary.violations}\n\n`;
+      csv += `${reportData.activities.length},${summary.productivityScore}%,${summary.activeHoursFormatted || `${summary.activeHours}h`},${summary.totalKeystrokes},${summary.violations}\n\n`;
 
       csv += 'DETAILED ACTIVITY LOGS\n';
       csv += 'Timestamp,Application,Window Title,Productivity Score (%),Idle Duration (s),Keystrokes,Mouse Score (%)\n';
@@ -917,10 +1007,7 @@ class ReportGenerator {
    * TEAM REPORT: Gather aggregated telemetry for all members
    */
   async gatherTeamReportData(startDate, endDate, options = {}) {
-    const start = new Date(startDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+    const { start, end } = this.parseDateRange(startDate, endDate);
 
     let userQuery = { role: { $nin: ['admin', 'Admin'] } };
     if (!options.includeExited) {
@@ -940,103 +1027,284 @@ class ReportGenerator {
 
     const empIds = employees.map(e => e._id);
 
-    const [activities, alerts] = await Promise.all([
-      EmployeeActivity.find({
-        employee: { $in: empIds },
-        timestamp: { $gte: start, $lte: end }
-      }).select('employee timestamp keystroke_count mouse_activity_score idle_duration productivity_score active_application').sort({ timestamp: -1 }).lean(),
+    if (empIds.length === 0) {
+      return {
+        period: { startDate, endDate },
+        totalEmployees: 0,
+        activeMembersCount: 0,
+        teamSummary: {
+          teamAvgProductivity: 0,
+          teamTotalHours: 0,
+          teamTotalKeystrokes: 0,
+          teamTotalAlerts: 0,
+          teamTotalActivities: 0
+        },
+        members: [],
+        teamApps: {},
+        alertStats: {},
+        dailyTeamScores: []
+      };
+    }
 
-      MonitoringAlert.find({
-        employee: { $in: empIds },
-        timestamp: { $gte: start, $lte: end }
-      }).select('employee timestamp alert_type severity title description').sort({ timestamp: -1 }).lean()
+    // High performance: aggregate directly in MongoDB to avoid loading hundreds of thousands of raw docs into V8 heap
+    const actSecExpr = {
+      $cond: [
+        {
+          $or: [
+            { $gt: [{ $ifNull: ['$keystroke_count', 0] }, 0] },
+            { $gte: [{ $ifNull: ['$mouse_activity_score', 0] }, 15] }
+          ]
+        },
+        30,
+        {
+          $max: [
+            0,
+            {
+              $subtract: [
+                30,
+                {
+                  $min: [
+                    30,
+                    {
+                      $cond: [
+                        { $gt: [{ $ifNull: ['$idle_duration', 0] }, 10000] },
+                        { $round: [{ $divide: [{ $ifNull: ['$idle_duration', 0] }, 1000] }, 0] },
+                        { $ifNull: ['$idle_duration', 0] }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    const [empStats, workedDaysData, topAppsData, dailyTeamData, alertTypesData, empAlertsData, attendancesData] = await Promise.all([
+      // 1. Employee activity stats
+      EmployeeActivity.aggregate([
+        {
+          $match: {
+            employee: { $in: empIds },
+            timestamp: { $gte: start, $lte: end }
+          }
+        },
+        {
+          $group: {
+            _id: '$employee',
+            totalActivities: { $sum: 1 },
+            keystrokes: { $sum: { $ifNull: ['$keystroke_count', 0] } },
+            mouseSum: { $sum: { $ifNull: ['$mouse_activity_score', 0] } },
+            prodSum: {
+              $sum: {
+                $cond: [{ $gt: ['$productivity_score', 0] }, '$productivity_score', 0]
+              }
+            },
+            prodCount: {
+              $sum: {
+                $cond: [{ $gt: ['$productivity_score', 0] }, 1, 0]
+              }
+            },
+            activeSeconds: { $sum: actSecExpr }
+          }
+        }
+      ]),
+
+      // 2. Worked days per employee
+      EmployeeActivity.aggregate([
+        {
+          $match: {
+            employee: { $in: empIds },
+            timestamp: { $gte: start, $lte: end }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              employee: '$employee',
+              date: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } }
+            }
+          }
+        },
+        {
+          $group: {
+            _id: '$_id.employee',
+            workedDays: { $sum: 1 }
+          }
+        }
+      ]),
+
+      // 3. Team top applications
+      EmployeeActivity.aggregate([
+        {
+          $match: {
+            employee: { $in: empIds },
+            timestamp: { $gte: start, $lte: end }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              $ifNull: ['$active_application.name', 'Desktop Workspace']
+            },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { count: -1 } },
+        { $limit: 25 }
+      ]),
+
+      // 4. Daily team productivity trend
+      EmployeeActivity.aggregate([
+        {
+          $match: {
+            employee: { $in: empIds },
+            timestamp: { $gte: start, $lte: end },
+            productivity_score: { $gt: 0 }
+          }
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+            sum: { $sum: '$productivity_score' },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]),
+
+      // 5. Team alert categories breakdown
+      MonitoringAlert.aggregate([
+        {
+          $match: {
+            employee: { $in: empIds },
+            timestamp: { $gte: start, $lte: end }
+          }
+        },
+        {
+          $group: {
+            _id: { $ifNull: ['$alert_type', { $ifNull: ['$severity', 'general_alert'] }] },
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+
+      // 6. Alert count per employee
+      MonitoringAlert.aggregate([
+        {
+          $match: {
+            employee: { $in: empIds },
+            timestamp: { $gte: start, $lte: end }
+          }
+        },
+        {
+          $group: {
+            _id: '$employee',
+            alertsCount: { $sum: 1 }
+          }
+        }
+      ]),
+
+      // 7. Team official attendance
+      Attendance.find({
+        user: { $in: empIds },
+        $or: [
+          { date: { $gte: start, $lte: end } },
+          { startDayTime: { $gte: start, $lte: end } }
+        ]
+      }).select('user hoursWorked startDayTime endDayTime').lean()
     ]);
 
-    const empMap = new Map();
-    employees.forEach(emp => {
-      const idStr = emp._id.toString();
-      empMap.set(idStr, {
-        id: idStr,
-        name: emp.name || 'Employee',
-        email: emp.email || '',
-        department: typeof emp.department === 'object' ? (emp.department?.name || 'General') : (emp.department || 'General'),
-        stillExist: emp.stillExist,
-        totalActivities: 0,
-        keystrokes: 0,
-        mouseSum: 0,
-        activeSeconds: 0,
-        prodSum: 0,
-        prodCount: 0,
-        dailyDates: new Set(),
-        alertsCount: 0,
-        topApps: {}
-      });
+    const statsMap = new Map();
+    empStats.forEach(s => {
+      if (s._id) statsMap.set(s._id.toString(), s);
+    });
+
+    const workedDaysMap = new Map();
+    workedDaysData.forEach(w => {
+      if (w._id) workedDaysMap.set(w._id.toString(), w.workedDays);
+    });
+
+    const empAlertsMap = new Map();
+    empAlertsData.forEach(a => {
+      if (a._id) empAlertsMap.set(a._id.toString(), a.alertsCount);
+    });
+
+    const empAttendanceSecMap = new Map();
+    (attendancesData || []).forEach(att => {
+      const uId = att.user ? att.user.toString() : null;
+      if (!uId) return;
+      let sec = 0;
+      if (att.hoursWorked > 0) {
+        sec = Math.round(att.hoursWorked * 3600);
+      } else if (att.startDayTime) {
+        const isToday = att.startDayTime && new Date(att.startDayTime).toDateString() === new Date().toDateString();
+        const endSession = att.endDayTime ? new Date(att.endDayTime) : (isToday ? new Date() : new Date(att.startDayTime));
+        sec = Math.max(0, Math.floor((endSession - new Date(att.startDayTime)) / 1000));
+      }
+      empAttendanceSecMap.set(uId, (empAttendanceSecMap.get(uId) || 0) + sec);
     });
 
     const teamApps = {};
-    const dailyTeamMap = {};
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dStr = d.toISOString().split('T')[0];
-      dailyTeamMap[dStr] = { sum: 0, count: 0 };
-    }
-
-    activities.forEach(act => {
-      const idStr = act.employee?.toString();
-      const isActive = (act.keystroke_count || 0) > 0 || (act.mouse_activity_score || 0) >= 15;
-      let idle = 0;
-      if (!isActive) {
-        let raw = act.idle_duration || 0;
-        if (raw > 10000) raw = Math.round(raw / 1000);
-        idle = Math.min(30, raw > 0 ? raw : 30);
-      }
-      const actSec = Math.max(0, 30 - idle);
-
-      let appName = act.active_application?.name;
-      if (!appName || appName === 'Unknown' || appName === 'null') {
-        appName = isActive ? 'Desktop Workspace' : 'System Background';
-      }
-      teamApps[appName] = (teamApps[appName] || 0) + 1;
-
-      const dStr = act.timestamp ? new Date(act.timestamp).toISOString().split('T')[0] : null;
-      if (dStr && dailyTeamMap[dStr] && act.productivity_score > 0) {
-        dailyTeamMap[dStr].sum += act.productivity_score;
-        dailyTeamMap[dStr].count++;
-      }
-
-      if (empMap.has(idStr)) {
-        const item = empMap.get(idStr);
-        item.totalActivities++;
-        item.keystrokes += (act.keystroke_count || 0);
-        item.mouseSum += (act.mouse_activity_score || 0);
-        item.activeSeconds += actSec;
-        if (act.productivity_score > 0) {
-          item.prodSum += act.productivity_score;
-          item.prodCount++;
-        }
-        if (dStr) item.dailyDates.add(dStr);
-        item.topApps[appName] = (item.topApps[appName] || 0) + 1;
-      }
+    topAppsData.forEach(app => {
+      let name = app._id || 'Desktop Workspace';
+      if (name === 'Unknown' || name === 'null') name = 'Desktop Workspace';
+      teamApps[name] = app.count;
     });
 
     const alertStats = {};
-    alerts.forEach(al => {
-      const idStr = al.employee?.toString();
-      if (empMap.has(idStr)) {
-        empMap.get(idStr).alertsCount++;
-      }
-      const type = al.alert_type || al.severity || 'general_alert';
-      alertStats[type] = (alertStats[type] || 0) + 1;
+    let teamTotalAlerts = 0;
+    alertTypesData.forEach(al => {
+      const type = al._id || 'general_alert';
+      alertStats[type] = al.count;
+      teamTotalAlerts += al.count;
     });
 
-    const members = Array.from(empMap.values()).map(m => {
-      const avgProd = m.prodCount > 0 ? Math.round(m.prodSum / m.prodCount) : 0;
-      const activeHours = Math.round((m.activeSeconds / 3600) * 10) / 10;
-      const avgMouse = m.totalActivities > 0 ? Math.round(m.mouseSum / m.totalActivities) : 0;
-      const workedDays = m.dailyDates.size;
-      
+    const dailyTeamMap = {};
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dStr = getLocalDateString(d);
+      dailyTeamMap[dStr] = { sum: 0, count: 0 };
+    }
+    dailyTeamData.forEach(item => {
+      if (dailyTeamMap[item._id]) {
+        dailyTeamMap[item._id].sum = item.sum;
+        dailyTeamMap[item._id].count = item.count;
+      }
+    });
+
+    let teamTotalActivities = 0;
+    const members = employees.map(emp => {
+      const idStr = emp._id.toString();
+      const s = statsMap.get(idStr) || {
+        totalActivities: 0,
+        keystrokes: 0,
+        mouseSum: 0,
+        prodSum: 0,
+        prodCount: 0,
+        activeSeconds: 0
+      };
+
+      teamTotalActivities += s.totalActivities;
+      const alertsCount = empAlertsMap.get(idStr) || 0;
+      const workedDays = workedDaysMap.get(idStr) || 0;
+
+      const attSec = empAttendanceSecMap.get(idStr) || 0;
+      let effectiveActiveSec = s.activeSeconds;
+      if (s.totalActivities > 0 && attSec > 0) {
+        effectiveActiveSec = Math.min(effectiveActiveSec, attSec);
+      } else if (s.totalActivities === 0) {
+        effectiveActiveSec = 0;
+      }
+
+      const avgProd = s.prodCount > 0 ? Math.round(s.prodSum / s.prodCount) : 0;
+      const activeHoursDecimal = Math.round((effectiveActiveSec / 3600) * 10) / 10;
+      const activeHoursFormatted = formatActiveTime(effectiveActiveSec);
+      const avgMouse = s.totalActivities > 0 ? Math.round(s.mouseSum / s.totalActivities) : 0;
+
       let efficiency = 'No Activity';
       let effColor = '#94a3b8';
-      if (m.totalActivities > 0) {
+      if (s.totalActivities > 0 && effectiveActiveSec > 0) {
         if (avgProd >= 75) {
           efficiency = 'High Efficiency';
           effColor = '#10b981';
@@ -1050,33 +1318,38 @@ class ReportGenerator {
       }
 
       return {
-        id: m.id,
-        name: m.name,
-        email: m.email,
-        department: m.department,
-        stillExist: m.stillExist,
-        totalActivities: m.totalActivities,
+        id: idStr,
+        name: emp.name || 'Employee',
+        email: emp.email || '',
+        department: typeof emp.department === 'object' ? (emp.department?.name || 'General') : (emp.department || 'General'),
+        stillExist: emp.stillExist,
+        totalActivities: s.totalActivities,
         workedDays,
         avgProductivity: avgProd,
-        activeHours,
-        totalKeystrokes: m.keystrokes,
+        activeHours: activeHoursDecimal,
+        activeHoursFormatted,
+        activeSeconds: effectiveActiveSec,
+        totalKeystrokes: s.keystrokes,
         avgMouse,
-        alertsCount: m.alertsCount,
+        alertsCount,
         efficiency,
         effColor
       };
     });
 
-    members.sort((a, b) => b.totalActivities - a.totalActivities);
+    members.sort((a, b) => {
+      if (b.totalActivities !== a.totalActivities) {
+        return b.totalActivities - a.totalActivities;
+      }
+      return b.activeSeconds - a.activeSeconds;
+    });
 
-    const activeMembers = members.filter(m => m.totalActivities > 0);
+    const activeMembers = members.filter(m => m.totalActivities > 0 || m.activeSeconds > 0);
     const teamAvgProd = activeMembers.length > 0
       ? Math.round(activeMembers.reduce((sum, m) => sum + m.avgProductivity, 0) / activeMembers.length)
       : 0;
-    const teamTotalHours = Math.round(members.reduce((sum, m) => sum + m.activeHours, 0) * 10) / 10;
+    const teamTotalHours = Math.round(members.reduce((sum, m) => sum + (m.activeSeconds / 3600), 0) * 10) / 10;
     const teamTotalKeystrokes = members.reduce((sum, m) => sum + m.totalKeystrokes, 0);
-    const teamTotalAlerts = alerts.length;
-    const teamTotalActivities = activities.length;
 
     return {
       period: { startDate, endDate },
@@ -1085,6 +1358,7 @@ class ReportGenerator {
       teamSummary: {
         teamAvgProductivity: teamAvgProd,
         teamTotalHours,
+        teamTotalHoursFormatted: formatActiveTime(members.reduce((sum, m) => sum + m.activeSeconds, 0)),
         teamTotalKeystrokes,
         teamTotalAlerts,
         teamTotalActivities
@@ -1165,7 +1439,7 @@ class ReportGenerator {
         },
         {
           label: 'Total Active Hours',
-          value: `${data.teamSummary.teamTotalHours}h`,
+          value: data.teamSummary.teamTotalHoursFormatted || `${data.teamSummary.teamTotalHours}h`,
           color: '#0284c7'
         },
         {
@@ -1244,7 +1518,8 @@ class ReportGenerator {
            .text(m.totalActivities > 0 ? `${m.avgProductivity}%` : '-', tableX + 232, currentY + 5, { width: 58, align: 'center' });
 
         // 5. Active Hour
-        doc.fillColor('#0f172a').font('Helvetica').text(m.totalActivities > 0 ? `${m.activeHours}h` : '-', tableX + 294, currentY + 5, { width: 52, align: 'center' });
+        const activeText = (m.totalActivities > 0 && m.activeSeconds > 0) ? (m.activeHoursFormatted || `${m.activeHours}h`) : '-';
+        doc.fillColor('#0f172a').font('Helvetica').text(activeText, tableX + 294, currentY + 5, { width: 52, align: 'center' });
 
         // 6. Key Strokes
         doc.fillColor('#475569').text(m.totalKeystrokes > 0 ? m.totalKeystrokes.toLocaleString() : '-', tableX + 350, currentY + 5, { width: 54, align: 'center' });
@@ -1399,7 +1674,7 @@ class ReportGenerator {
         const name = (m.name || 'Employee').replace(/"/g, '""');
         const acts = m.totalActivities > 0 ? m.totalActivities : '-';
         const prod = m.totalActivities > 0 ? `${m.avgProductivity}%` : '-';
-        const hours = m.totalActivities > 0 ? `${m.activeHours}h` : '-';
+        const hours = (m.totalActivities > 0 && m.activeSeconds > 0) ? (m.activeHoursFormatted || `${m.activeHours}h`) : '-';
         const keys = m.totalKeystrokes > 0 ? m.totalKeystrokes : '-';
         const mouse = m.totalActivities > 0 ? `${m.avgMouse}%` : '-';
         const eff = m.efficiency === 'No Activity' ? '-' : m.efficiency;

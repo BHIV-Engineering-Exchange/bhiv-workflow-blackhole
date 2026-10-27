@@ -84,10 +84,14 @@ export function EmployeeDetailModal({ employee, onClose }) {
       dayLogs.forEach((log) => {
         totalKeystrokes += log.keystroke_count || 0;
         totalMouseScore += log.mouse_activity_score || 0;
-        let idleVal = log.idle_duration || 0;
-        if (idleVal > 10000) idleVal = Math.round(idleVal / 1000);
-        // Idle duration for a single 30s telemetry snapshot cannot exceed 30 seconds
-        idleVal = Math.min(30, Math.max(0, idleVal));
+        const isLogActive = (log.keystroke_count || 0) > 0 || (log.mouse_activity_score || 0) >= 15;
+        let idleVal = 0;
+        if (!isLogActive) {
+          let raw = log.idle_duration || 0;
+          if (raw > 10000) raw = Math.round(raw / 1000);
+          // Idle duration for a single 30s telemetry snapshot cannot exceed 30 seconds
+          idleVal = Math.min(30, Math.max(0, raw));
+        }
         totalIdleSec += idleVal;
         totalProdScore += log.productivity_score || 0;
 
@@ -109,7 +113,10 @@ export function EmployeeDetailModal({ employee, onClose }) {
       setTimelineData(processedTimeline);
 
       const logCount = dayLogs.length;
-      const calculatedActiveSec = Math.max(0, logCount * 30 - totalIdleSec);
+      let calculatedActiveSec = Math.max(0, logCount * 30 - totalIdleSec);
+      if (employee?.activeSeconds && employee.activeSeconds > 0) {
+        calculatedActiveSec = employee.activeSeconds;
+      }
       const avgProd = logCount > 0 ? Math.round(totalProdScore / logCount) : 0;
       const avgMouse = logCount > 0 ? Math.round(totalMouseScore / logCount) : 0;
 
@@ -120,7 +127,7 @@ export function EmployeeDetailModal({ employee, onClose }) {
         else efficiency = 'Low Efficiency';
       }
 
-      const calculatedActiveHours = `${Math.floor(calculatedActiveSec / 3600)}h ${Math.floor((calculatedActiveSec % 3600) / 60)}m`;
+      const calculatedActiveHours = employee?.totalActiveHours || `${Math.floor(calculatedActiveSec / 3600)}h ${Math.floor((calculatedActiveSec % 3600) / 60)}m`;
       const calculatedIdleTime = `${Math.floor(totalIdleSec / 60)}m`;
 
       const finalActiveHours = logCount > 0 ? calculatedActiveHours : '0h 0m';
