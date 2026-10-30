@@ -267,8 +267,12 @@ const invokeParikshak = async (submissionId, traceId, io) => {
         let execContext;
         try {
             if (finalStatus === "Approved") {
-                execContext = await emitTaskCompletedEvent(submission, traceId, task.branch);
-                console.log(`[TRACE_EMITTED] Task completed (Automated) - trace_id=${execContext?.traceId}`);
+                try {
+                    execContext = await emitTaskCompletedEvent(submission, traceId, task.branch);
+                    console.log(`[TRACE_EMITTED] Task completed (Automated) - trace_id=${execContext?.traceId}`);
+                } catch (traceErr) {
+                    console.warn(`[TRACE_WARNING] Lifecycle event emission failed (non-fatal):`, traceErr.message);
+                }
 
                 // Phase 2: KARMA Runtime Integration
                 try {

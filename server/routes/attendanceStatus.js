@@ -44,13 +44,21 @@ router.get('/status', auth, async (req, res) => {
       }).lean();
     }
     
+    // Look up employee name and email from database
+    const User = require('../models/User');
+    const userDoc = await User.findById(userId).select('name email').lean();
+    const realName = userDoc?.name || req.user.name || null;
+    const realEmail = userDoc?.email || req.user.email || null;
+
     // If no record exists or day has ended
     if (!attendance || attendance.endDayTime || attendance.endTime) {
       return res.json({
         dayStarted: false,
         startTime: null,
         attendanceId: null,
-        workLocation: null
+        workLocation: null,
+        userName: realName,
+        userEmail: realEmail
       });
     }
     
@@ -60,7 +68,9 @@ router.get('/status', auth, async (req, res) => {
       startTime: attendance.startDayTime || attendance.startTime,
       attendanceId: attendance._id,
       workLocation: attendance.workLocationType || 'Unknown',
-      location: attendance.startDayLocation || attendance.location
+      location: attendance.startDayLocation || attendance.location,
+      userName: realName,
+      userEmail: realEmail
     });
     
   } catch (error) {

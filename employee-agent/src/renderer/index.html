@@ -196,16 +196,25 @@
     }
 
     .user-info {
-      background: #f5f5f5;
-      padding: 15px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      padding: 12px 14px;
       border-radius: 8px;
-      margin-bottom: 20px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .user-name {
+      font-size: 16px;
+      color: #1e293b;
+      font-weight: 700;
+      margin-bottom: 2px;
     }
 
     .user-email {
-      font-size: 14px;
-      color: #333;
-      font-weight: 500;
+      font-size: 12px;
+      color: #64748b;
+      font-weight: 400;
     }
 
     .error-message {
@@ -341,6 +350,7 @@
       </div>
 
       <div class="user-info">
+        <div class="user-name" id="userName">Employee</div>
         <div class="user-email" id="userEmail">user@example.com</div>
       </div>
 
@@ -358,12 +368,12 @@
           <div class="stat-label">Key Events</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value" id="idleTime">0s</div>
-          <div class="stat-label">Idle Time</div>
+          <div class="stat-value" id="activeApp" style="font-size: 16px; color: #4f46e5; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Desktop</div>
+          <div class="stat-label">Active App</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value" id="activeApp">None</div>
-          <div class="stat-label">Active App</div>
+          <div class="stat-value" id="idleTime">0s</div>
+          <div class="stat-label">Idle Time</div>
         </div>
       </div>
 

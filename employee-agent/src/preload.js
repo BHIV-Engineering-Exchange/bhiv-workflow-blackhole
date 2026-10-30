@@ -22,5 +22,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Event listeners
   onShowConsent: (callback) => ipcRenderer.on('show-consent', callback),
   onShowLogin: (callback) => ipcRenderer.on('show-login', callback),
+  onShowDashboard: (callback) => ipcRenderer.on('show-dashboard', callback),
   onDayStatusChanged: (callback) => ipcRenderer.on('day-status-changed', (event, data) => callback(data))
 });

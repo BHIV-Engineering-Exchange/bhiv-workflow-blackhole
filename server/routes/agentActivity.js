@@ -60,7 +60,9 @@ router.post('/activity/ingest', auth, async (req, res) => {
     // Safety checks to prevent NaN
     const validIntervalDuration = intervalDuration && intervalDuration > 0 ? intervalDuration : 30;
     const validMouseEvents = mouseEvents || 0;
-    const mouseActivityScore = Math.min(100, Math.round((validMouseEvents / (validIntervalDuration / 60)) * 2));
+    const mouseActivityScore = (idleSeconds >= 30 || validMouseEvents === 0) 
+      ? 0 
+      : Math.min(100, Math.round((validMouseEvents / 20) * 100));
     
     // Create EmployeeActivity document
     const activityData = new EmployeeActivity({

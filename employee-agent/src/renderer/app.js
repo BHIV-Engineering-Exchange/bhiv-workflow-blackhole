@@ -14,6 +14,9 @@ async function init() {
   } else {
     showScreen('dashboard');
     updateDashboard(appState);
+    if (appState.isDayStarted) {
+      startStatsUpdate();
+    }
   }
 
   setupEventListeners();
@@ -168,16 +171,41 @@ function setupEventListeners() {
   }
 }
 
+// Active session start time tracker
+let currentStartTime = null;
+
+function formatActiveTime(startTime) {
+  if (!startTime) return '00:00:00';
+  const start = new Date(startTime).getTime();
+  if (isNaN(start)) return '00:00:00';
+  const diff = Math.max(0, Date.now() - start);
+  const hrs = Math.floor(diff / 3600000);
+  const mins = Math.floor((diff % 3600000) / 60000);
+  const secs = Math.floor((diff % 60000) / 1000);
+  return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
 // Dashboard Updates
 function updateDashboard(appState) {
+  const userNameElement = document.getElementById('userName');
   const userEmailElement = document.getElementById('userEmail');
   const trackingStatusElement = document.getElementById('trackingStatus');
   const startDayBtn = document.getElementById('startDayBtn');
   const endDayBtn = document.getElementById('endDayBtn');
   const statsContainer = document.getElementById('statsContainer');
 
+  if (appState.startTime) {
+    currentStartTime = appState.startTime;
+  } else if (!appState.isDayStarted) {
+    currentStartTime = null;
+  }
+
+  if (userNameElement && appState.user) {
+    userNameElement.textContent = appState.user.name || appState.user.email?.split('@')[0] || 'Employee';
+  }
+
   if (userEmailElement && appState.user) {
-    userEmailElement.textContent = appState.user.email || appState.user.username || 'User';
+    userEmailElement.textContent = appState.user.email || '';
   }
 
   if (trackingStatusElement) {
@@ -216,12 +244,23 @@ async function updateStats() {
     const idleTime = document.getElementById('idleTime');
     const activeApp = document.getElementById('activeApp');
 
-    if (mouseCount) mouseCount.textContent = stats.mouseEvents || 0;
-    if (keyCount) keyCount.textContent = stats.keyboardEvents || 0;
+    if (mouseCount) mouseCount.textContent = (stats.mouseEvents || 0).toLocaleString();
+    if (keyCount) keyCount.textContent = (stats.keyboardEvents || 0).toLocaleString();
     if (idleTime) idleTime.textContent = `${stats.idleSeconds || 0}s`;
     if (activeApp) {
-      const appName = stats.activeApp || 'None';
-      activeApp.textContent = appName.length > 15 ? appName.substring(0, 12) + '...' : appName;
+      const appName = stats.activeApp || 'Desktop';
+      activeApp.textContent = appName;
+      activeApp.title = appName;
+    }
+
+    // Auto-heal if user name is still showing placeholder 'Employee'
+    const userNameEl = document.getElementById('userName');
+    if (userNameEl && (userNameEl.textContent === 'Employee' || !userNameEl.textContent.trim())) {
+      window.electronAPI.getAppState().then(state => {
+        if (state && state.user && state.user.name && state.user.name !== 'Employee') {
+          updateDashboard(state);
+        }
+      }).catch(() => {});
     }
   }
 }
@@ -231,8 +270,8 @@ function startStatsUpdate() {
     clearInterval(updateInterval);
   }
   
-  // Update stats every 2 seconds
-  updateInterval = setInterval(updateStats, 2000);
+  // Update stats every 1 second for live feedback
+  updateInterval = setInterval(updateStats, 1000);
   updateStats(); // Initial update
 }
 
@@ -250,6 +289,28 @@ window.electronAPI.onShowConsent(() => {
 
 window.electronAPI.onShowLogin(() => {
   showScreen('login');
+});
+
+if (window.electronAPI.onShowDashboard) {
+  window.electronAPI.onShowDashboard(async () => {
+    showScreen('dashboard');
+    const appState = await window.electronAPI.getAppState();
+    updateDashboard(appState);
+    if (appState.isDayStarted) {
+      startStatsUpdate();
+    }
+  });
+}
+
+// When window comes into focus, refresh immediately
+window.addEventListener('focus', async () => {
+  if (currentScreen === 'dashboard') {
+    const appState = await window.electronAPI.getAppState();
+    updateDashboard(appState);
+    if (appState.isDayStarted) {
+      startStatsUpdate();
+    }
+  }
 });
 
 // Listen for day status changes from backend polling

@@ -185,8 +185,8 @@ class ApiService {
       // Decode the payload (base64)
       const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
       
-      // Backend JWT structure: { user: { id: "..." } }
-      return payload.user?.id || payload.id || payload.userId || payload.sub;
+      // Backend JWT structure: { id, name, email, role, department, branch }
+      return payload.id || payload.user?.id || payload.userId || payload.sub;
     } catch (error) {
       console.error('Error decoding token:', error);
       return null;
@@ -236,27 +236,51 @@ class ApiService {
     }
   }
 
+  getUserFromToken() {
+    try {
+      if (!this.authToken) return null;
+      const parts = this.authToken.split('.');
+      if (parts.length !== 3) return null;
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+      // Backend JWT is flat: { id, name, email, role, department, branch }
+      return {
+        id: payload.id || payload.user?.id || payload.userId,
+        name: payload.name || payload.user?.name,
+        email: payload.email || payload.user?.email,
+        role: payload.role || payload.user?.role
+      };
+    } catch (error) {
+      return null;
+    }
+  }
+
   /**
    * Check attendance status for today (POLLING ENDPOINT)
    * This is called every 30 seconds by the attendance poller
-   * @returns {Promise<Object>} - { dayStarted, attendanceId, startTime, workLocation }
+   * @returns {Promise<Object>} - { dayStarted, attendanceId, startTime, workLocation, userName, userEmail }
    */
   async checkAttendanceStatus() {
     try {
       const response = await this.client.get('/api/attendance/status');
+      const tokenUser = this.getUserFromToken();
       
       return {
         dayStarted: response.data.dayStarted || false,
         attendanceId: response.data.attendanceId || null,
         startTime: response.data.startTime || null,
-        workLocation: response.data.workLocation || null
+        workLocation: response.data.workLocation || null,
+        userName: response.data.userName || tokenUser?.name || null,
+        userEmail: response.data.userEmail || tokenUser?.email || null
       };
     } catch (error) {
       console.error('❌ Failed to check attendance status:', error.response?.data || error.message);
+      const tokenUser = this.getUserFromToken();
       return { 
         dayStarted: false,
         attendanceId: null,
-        startTime: null
+        startTime: null,
+        userName: tokenUser?.name || null,
+        userEmail: tokenUser?.email || null
       };
     }
   }

@@ -130,8 +130,10 @@ class EMSSignalCollector {
     // Don't capture actual key values for privacy
     this.addSignal({
       type: 'keystroke',
+      value: 1,
       metadata: {
         key: event.key.length === 1 ? 'char' : event.key, // Only log special keys
+        count: 1,
         ctrlKey: event.ctrlKey,
         altKey: event.altKey,
         shiftKey: event.shiftKey
@@ -149,7 +151,10 @@ class EMSSignalCollector {
 
     this.addSignal({
       type: 'mouse_movement',
+      value: 1,
       metadata: {
+        count: 1,
+        events: 1,
         x: event.clientX,
         y: event.clientY,
         type: type,
@@ -400,6 +405,12 @@ if (typeof window !== 'undefined') {
       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
         ? 'http://localhost:5000/api'
         : window.location.origin + '/api');
+
+    // If React monitoringService is already actively tracking, avoid duplicate listeners and double-counting
+    if (window.__monitoringServiceActive || window.__pranaSignalCapture) {
+      console.log('ℹ️ [EMS] monitoringService is already active, skipping duplicate emsCollector');
+      return;
+    }
 
     if (employeeId) {
       window.emsCollector = new EMSSignalCollector({

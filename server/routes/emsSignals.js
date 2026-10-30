@@ -94,11 +94,17 @@ router.post('/signals', async (req, res) => {
           
           case 'keystroke':
           case 'keystroke_rate':
-            emsSignals.captureKeystroke(employeeId, signal.metadata);
+            emsSignals.captureKeystroke(employeeId, {
+              ...signal.metadata,
+              count: signal.metadata?.count || signal.metadata?.keystroke_count || (typeof signal.value === 'number' && signal.value > 0 ? signal.value : 1)
+            });
             break;
           
           case 'mouse_movement':
-            emsSignals.captureMouseMovement(employeeId, signal.metadata);
+            emsSignals.captureMouseMovement(employeeId, {
+              ...signal.metadata,
+              count: signal.metadata?.events || signal.metadata?.mouse_events || signal.metadata?.count || (typeof signal.value === 'number' && signal.value > 0 ? signal.value : 1)
+            });
             break;
           
           case 'scroll_depth':

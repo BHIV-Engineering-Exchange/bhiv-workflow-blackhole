@@ -12,6 +12,7 @@
 const { EventEmitter } = require('events');
 const { powerMonitor } = require('electron');
 const { uIOhook } = require('uiohook-napi');
+const activeAppWatcher = require('../utils/activeAppWatcher');
 
 class ActivityTracker {
   constructor(apiService) {
@@ -27,6 +28,12 @@ class ActivityTracker {
       activeApp: 'System',
       lastActivity: Date.now()
     };
+
+    // Cumulative totals for the active workday session (shown in UI)
+    this.sessionTotals = {
+      mouseEvents: 0,
+      keyboardEvents: 0
+    };
     
     this.sendInterval = null;
     
@@ -38,11 +45,15 @@ class ActivityTracker {
     // Bind event handlers to the class instance
     this.handleKeyDown = this.handleKeyDown.bind(this);
     this.handleMouseClick = this.handleMouseClick.bind(this);
+    this.handleMouseMove = this.handleMouseMove.bind(this);
+    this.handleWheel = this.handleWheel.bind(this);
+    this._lastMouseMove = 0;
   }
 
   handleKeyDown(event) {
     if (this.isTracking) {
       this.stats.keyboardEvents++;
+      this.sessionTotals.keyboardEvents++;
       this.stats.lastActivity = Date.now();
     }
   }
@@ -50,6 +61,28 @@ class ActivityTracker {
   handleMouseClick(event) {
     if (this.isTracking) {
       this.stats.mouseEvents++;
+      this.sessionTotals.mouseEvents++;
+      this.stats.lastActivity = Date.now();
+    }
+  }
+
+  handleMouseMove(event) {
+    if (this.isTracking) {
+      const now = Date.now();
+      // Throttle mousemove events to at most 10 per second to keep CPU low
+      if (now - this._lastMouseMove >= 100) {
+        this._lastMouseMove = now;
+        this.stats.mouseEvents++;
+        this.sessionTotals.mouseEvents++;
+        this.stats.lastActivity = now;
+      }
+    }
+  }
+
+  handleWheel(event) {
+    if (this.isTracking) {
+      this.stats.mouseEvents++;
+      this.sessionTotals.mouseEvents++;
       this.stats.lastActivity = Date.now();
     }
   }
@@ -69,11 +102,17 @@ class ActivityTracker {
     this.isTracking = true;
     
     this.resetStats();
+    this.sessionTotals = { mouseEvents: 0, keyboardEvents: 0 };
     
-    // Register uiohook listeners
+    // Register uiohook listeners (keyboard, clicks, movement, scrolling)
     uIOhook.on('keydown', this.handleKeyDown);
     uIOhook.on('click', this.handleMouseClick);
+    uIOhook.on('mousemove', this.handleMouseMove);
+    uIOhook.on('wheel', this.handleWheel);
     uIOhook.start();
+    
+    // Start active window watcher
+    activeAppWatcher.start();
     
     this.startDataTransmission();
     
@@ -91,9 +130,14 @@ class ActivityTracker {
     console.log('🔴 Stopping activity tracking...');
     this.isTracking = false;
     
+    // Stop active window watcher
+    activeAppWatcher.stop();
+    
     // Unregister uiohook listeners
     uIOhook.off('keydown', this.handleKeyDown);
     uIOhook.off('click', this.handleMouseClick);
+    uIOhook.off('mousemove', this.handleMouseMove);
+    uIOhook.off('wheel', this.handleWheel);
     
     // Stop uiohook if it's running
     try {
@@ -156,13 +200,16 @@ class ActivityTracker {
       const isProductive = idleSeconds < idleThreshold;
       const productivePercentage = isProductive ? 100 : Math.max(0, 100 - ((idleSeconds - idleThreshold) / 60));
 
+      const currentApp = activeAppWatcher.getCurrentApp() || 'Desktop';
+      this.stats.activeApp = currentApp;
+
       const payload = {
         attendanceId: this.attendanceId,
         timestamp: new Date().toISOString(),
         mouseEvents: this.stats.mouseEvents,
         keyboardEvents: this.stats.keyboardEvents,
         idleSeconds: idleSeconds,
-        activeApp: this.stats.activeApp || 'System',
+        activeApp: currentApp,
         productivePercentage: Math.round(productivePercentage),
         trackingMode: 'UIOHOOK_NAPI', // Using uiohook-napi
         intervalDuration: 30
@@ -171,6 +218,7 @@ class ActivityTracker {
       console.log(`📤 Sending activity [${payload.trackingMode}]:`, {
         mouse: payload.mouseEvents,
         keyboard: payload.keyboardEvents,
+        app: payload.activeApp,
         idle: payload.idleSeconds + 's',
         productive: payload.productivePercentage + '%'
       });
@@ -278,10 +326,16 @@ class ActivityTracker {
    */
   getCurrentStats() {
     return {
-      mouseEvents: this.stats.mouseEvents,
-      keyboardEvents: this.stats.keyboardEvents,
+      mouseEvents: (this.sessionTotals && this.sessionTotals.mouseEvents !== undefined) 
+        ? this.sessionTotals.mouseEvents 
+        : this.stats.mouseEvents,
+      keyboardEvents: (this.sessionTotals && this.sessionTotals.keyboardEvents !== undefined) 
+        ? this.sessionTotals.keyboardEvents 
+        : this.stats.keyboardEvents,
+      intervalMouseEvents: this.stats.mouseEvents,
+      intervalKeyboardEvents: this.stats.keyboardEvents,
       idleSeconds: this.stats.idleSeconds,
-      activeApp: this.stats.activeApp,
+      activeApp: activeAppWatcher.getCurrentApp() || 'Desktop',
       isTracking: this.isTracking
     };
   }

@@ -55,6 +55,11 @@ class MonitoringService {
     this._sessionStart = Date.now();
     this._token = token;
     this._apiBase = apiBase;
+    this._prevKeystrokes = 0;
+    this._prevMouseEvents = 0;
+    if (typeof window !== 'undefined') {
+      window.__monitoringServiceActive = true;
+    }
 
     this._attachBrowserListeners();
     this._attachPranaListener();
@@ -104,6 +109,11 @@ class MonitoringService {
     this._sessionStart = null;
     this._token = null;
     this._signalBuffer = [];
+    this._prevKeystrokes = 0;
+    this._prevMouseEvents = 0;
+    if (typeof window !== 'undefined') {
+      window.__monitoringServiceActive = false;
+    }
   }
 
   // ─── PRANA bridge ──────────────────────────────────────────────────────────
@@ -134,17 +144,28 @@ class MonitoringService {
       browser_visibility: s.browser_visibility,
     });
 
-    // 4. Keyboard activity
-    if (s.keystroke_count > 0) {
-      this._pushSignal('keystroke', s.keystroke_count, {
-        keystroke_count: s.keystroke_count,
+    // 4. Keyboard activity - send DELTA since last sample, avoid phantom repetitive counts
+    const curKeys = s.keystroke_count || 0;
+    const deltaKeys = Math.max(0, curKeys - (this._prevKeystrokes || 0));
+    this._prevKeystrokes = curKeys;
+
+    if (deltaKeys > 0) {
+      this._pushSignal('keystroke', deltaKeys, {
+        count: deltaKeys,
+        keystroke_count: deltaKeys,
       });
     }
 
-    // 5. Mouse activity
-    if (s.mouse_events > 0) {
-      this._pushSignal('mouse_movement', s.mouse_events, {
-        mouse_events: s.mouse_events,
+    // 5. Mouse activity - send DELTA since last sample
+    const curMouse = s.mouse_events || 0;
+    const deltaMouse = Math.max(0, curMouse - (this._prevMouseEvents || 0));
+    this._prevMouseEvents = curMouse;
+
+    if (deltaMouse > 0) {
+      this._pushSignal('mouse_movement', deltaMouse, {
+        count: deltaMouse,
+        events: deltaMouse,
+        mouse_events: deltaMouse,
         mouse_distance: Math.round(s.mouse_distance),
         mouse_velocity: s.mouse_velocity,
         content_clicks: s.content_clicks,

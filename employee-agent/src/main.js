@@ -9,6 +9,26 @@ const ApiService = require('./services/apiService');
 // Initialize store for persistent data
 const store = new Store();
 
+function loadEnvConfig() {
+  const envPath = path.join(__dirname, '../.env');
+  const env = {};
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, 'utf-8');
+    content.split('\n').forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const match = trimmed.match(/^([^=]+)=(.*)$/);
+        if (match) {
+          env[match[1].trim()] = match[2].trim();
+        }
+      }
+    });
+  }
+  return env;
+}
+
+const envConfig = loadEnvConfig();
+
 let tray = null;
 let mainWindow = null;
 let activityTracker = null;
@@ -20,7 +40,8 @@ let appState = {
   isLoggedIn: false,
   isDayStarted: false,
   user: null,
-  consentGiven: false
+  startTime: null,
+  consentGiven: true
 };
 
 function createWindow() {
@@ -55,35 +76,36 @@ function createWindow() {
   });
 
   mainWindow.once('ready-to-show', () => {
-    // Check consent on first run
-    appState.consentGiven = store.get('consentGiven', false);
+    store.set('consentGiven', true);
+    appState.consentGiven = true;
     
-    if (!appState.consentGiven) {
-      mainWindow.webContents.send('show-consent');
+    if (appState.isLoggedIn) {
+      mainWindow.webContents.send('show-dashboard', { user: appState.user });
+      const startMinimized = envConfig.AGENT_START_MINIMIZED !== 'false';
+      if (!startMinimized) {
+        mainWindow.show();
+      } else {
+        console.log('✓ Agent running silently in background (system tray)');
+      }
     } else {
       mainWindow.webContents.send('show-login');
+      mainWindow.show();
     }
-    
-    mainWindow.show();
   });
 }
 
 function createTray() {
-  // Create a simple tray icon (you should replace with actual icon file)
   const iconPath = path.join(__dirname, '../assets/tray-icon.png');
   let icon;
   
-  // Use icon file if exists, otherwise use default Electron icon
   if (fs.existsSync(iconPath)) {
     icon = nativeImage.createFromPath(iconPath);
     icon = icon.resize({ width: 16, height: 16 });
   } else {
-    // Create a simple colored square as fallback
     icon = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABHSURBVDiN7dMxDgAgCAPA1v//5o6NJk0aF3EgJCRwAwAA/1YZY1lr7d57cc49hqiqqqoqMzPGmKp67NZ1XVVVVd/rAwD8sQNJMwstxTIWbQAAAABJRU5ErkJggg==');
   }
   
   tray = new Tray(icon);
-  
   updateTrayMenu();
   
   tray.on('click', () => {
@@ -92,6 +114,7 @@ function createTray() {
         mainWindow.hide();
       } else {
         mainWindow.show();
+        mainWindow.webContents.send('show-dashboard');
       }
     }
   });
@@ -114,6 +137,7 @@ function updateTrayMenu() {
       click: () => {
         if (mainWindow) {
           mainWindow.show();
+          mainWindow.webContents.send('show-dashboard');
         }
       }
     },
@@ -127,8 +151,6 @@ function updateTrayMenu() {
   ]);
 
   tray.setContextMenu(contextMenu);
-  
-  // Update tooltip
   const status = appState.isDayStarted ? 'Tracking Active' : 'Tracking Inactive';
   tray.setToolTip(`Employee Agent - ${status}`);
 }
@@ -152,18 +174,16 @@ ipcMain.handle('login', async (event, credentials) => {
       appState.isLoggedIn = true;
       appState.user = result.user;
       store.set('authToken', result.token);
+      store.set('user', result.user);
+      store.set('savedCredentials', credentials);
       apiService.setAuthToken(result.token);
       
-      // Start polling backend for attendance status
       startAttendancePoller();
       
-      // Immediately check current status to sync with Vercel
       const currentStatus = await apiService.checkAttendanceStatus();
       if (currentStatus.dayStarted && !appState.isDayStarted) {
         console.log('🟢 Day already started on backend! Syncing...');
         appState.isDayStarted = true;
-        
-        // Start activity tracking
         if (activityTracker && currentStatus.attendanceId) {
           activityTracker.start(currentStatus.attendanceId);
         }
@@ -171,7 +191,6 @@ ipcMain.handle('login', async (event, credentials) => {
       
       updateTrayMenu();
       
-      // Send initial status to renderer
       if (mainWindow) {
         mainWindow.webContents.send('day-status-changed', { 
           dayStarted: appState.isDayStarted,
@@ -187,12 +206,10 @@ ipcMain.handle('login', async (event, credentials) => {
 });
 
 ipcMain.handle('logout', () => {
-  // Stop polling
   if (attendancePoller) {
     attendancePoller.stop();
   }
   
-  // Stop tracking if active
   if (appState.isDayStarted) {
     activityTracker.stop();
     appState.isDayStarted = false;
@@ -201,6 +218,7 @@ ipcMain.handle('logout', () => {
   appState.isLoggedIn = false;
   appState.user = null;
   store.delete('authToken');
+  store.delete('savedCredentials');
   apiService.setAuthToken(null);
   updateTrayMenu();
   
@@ -210,16 +228,11 @@ ipcMain.handle('logout', () => {
 ipcMain.handle('start-day', async () => {
   try {
     const result = await apiService.startDay();
-    
     if (result.success) {
       appState.isDayStarted = true;
-      
-      // Start activity tracking
       activityTracker.start(result.attendanceId);
-      
       updateTrayMenu();
     }
-    
     return result;
   } catch (error) {
     return { success: false, error: error.message };
@@ -229,16 +242,11 @@ ipcMain.handle('start-day', async () => {
 ipcMain.handle('end-day', async () => {
   try {
     const result = await apiService.endDay();
-    
     if (result.success) {
       appState.isDayStarted = false;
-      
-      // Stop activity tracking immediately
       activityTracker.stop();
-      
       updateTrayMenu();
     }
-    
     return result;
   } catch (error) {
     return { success: false, error: error.message };
@@ -246,11 +254,35 @@ ipcMain.handle('end-day', async () => {
 });
 
 ipcMain.handle('get-app-state', async () => {
-  // If logged in and poller exists, get fresh status from backend
+  // Guarantee user info is loaded from token/store if not present or placeholder
+  if (!appState.user || !appState.user.name || appState.user.name === 'Employee') {
+    const tokenUser = apiService ? apiService.getUserFromToken() : null;
+    const savedUser = store.get('user');
+    if (tokenUser?.name && tokenUser.name !== 'Employee') {
+      appState.user = { name: tokenUser.name, email: tokenUser.email || appState.user?.email || '' };
+      store.set('user', appState.user);
+    } else if (savedUser?.name && savedUser.name !== 'Employee') {
+      appState.user = savedUser;
+    }
+  }
+
   if (appState.isLoggedIn && attendancePoller) {
     try {
       const currentStatus = await attendancePoller.forceCheck();
       appState.isDayStarted = currentStatus.dayStarted;
+      if (currentStatus.startTime) {
+        appState.startTime = currentStatus.startTime;
+      }
+      const tokenUser = apiService ? apiService.getUserFromToken() : null;
+      const realName = currentStatus.userName || tokenUser?.name || appState.user?.name;
+      const realEmail = currentStatus.userEmail || tokenUser?.email || appState.user?.email;
+      if (realName && realName !== 'Employee') {
+        appState.user = { 
+          name: realName, 
+          email: realEmail || '' 
+        };
+        store.set('user', appState.user);
+      }
     } catch (error) {
       console.error('Error fetching app state:', error);
     }
@@ -260,6 +292,7 @@ ipcMain.handle('get-app-state', async () => {
     isLoggedIn: appState.isLoggedIn,
     isDayStarted: appState.isDayStarted,
     user: appState.user,
+    startTime: appState.startTime,
     consentGiven: appState.consentGiven
   };
 });
@@ -272,22 +305,96 @@ ipcMain.handle('get-tracking-stats', () => {
 });
 
 // App lifecycle
-app.whenReady().then(() => {
-  // Initialize services
+app.whenReady().then(async () => {
+  // 1. Setup auto-start with Windows on PC boot
+  if (process.platform === 'win32' && envConfig.AGENT_AUTO_START_ON_BOOT !== 'false') {
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: true,
+        openAsHidden: true
+      });
+      console.log('✓ Configured to launch automatically on Windows boot');
+    } catch (e) {
+      console.warn('Could not set Windows auto-start:', e.message);
+    }
+  }
+
+  // 2. Initialize services
   apiService = new ApiService();
   activityTracker = new ActivityTracker(apiService);
-  
-  // Check for stored auth token
+
+  // 3. Mark consent as automatically given
+  store.set('consentGiven', true);
+  appState.consentGiven = true;
+
+  // 4. Automatic session recovery / login
   const savedToken = store.get('authToken');
+  const savedUser = store.get('user');
+  const savedCredentials = store.get('savedCredentials') || 
+    (envConfig.AGENT_AUTO_LOGIN_EMAIL && envConfig.AGENT_AUTO_LOGIN_PASSWORD ? {
+      email: envConfig.AGENT_AUTO_LOGIN_EMAIL,
+      password: envConfig.AGENT_AUTO_LOGIN_PASSWORD
+    } : null);
+
+  let sessionRestored = false;
+
   if (savedToken) {
     apiService.setAuthToken(savedToken);
-    // Start polling if already logged in
-    startAttendancePoller();
+    try {
+      const status = await apiService.checkAttendanceStatus();
+      const tokenUser = apiService.getUserFromToken();
+      appState.isLoggedIn = true;
+      appState.startTime = status.startTime || null;
+      appState.user = {
+        name: status.userName || tokenUser?.name || savedUser?.name || savedCredentials?.email?.split('@')[0] || 'Employee',
+        email: status.userEmail || tokenUser?.email || savedUser?.email || savedCredentials?.email || ''
+      };
+      sessionRestored = true;
+      console.log(`✓ Automatically restored session for: ${appState.user.name} (${appState.user.email})`);
+
+      startAttendancePoller();
+
+      if (status.dayStarted) {
+        console.log('🟢 Workday is active! Starting tracking automatically...');
+        appState.isDayStarted = true;
+        activityTracker.start(status.attendanceId);
+      }
+    } catch (err) {
+      console.log('⚠️ Saved token expired, attempting automatic re-login...');
+    }
   }
-  
+
+  if (!sessionRestored && savedCredentials) {
+    console.log('🔐 Auto-logging in with saved credentials for:', savedCredentials.email);
+    try {
+      const result = await apiService.login(savedCredentials);
+      if (result.success) {
+        appState.isLoggedIn = true;
+        appState.user = result.user;
+        store.set('authToken', result.token);
+        store.set('user', result.user);
+        store.set('savedCredentials', savedCredentials);
+        apiService.setAuthToken(result.token);
+        sessionRestored = true;
+        console.log('✓ Automatic login successful!');
+
+        startAttendancePoller();
+
+        const status = await apiService.checkAttendanceStatus();
+        if (status.dayStarted) {
+          console.log('🟢 Workday is active! Starting tracking automatically...');
+          appState.isDayStarted = true;
+          activityTracker.start(status.attendanceId);
+        }
+      }
+    } catch (err) {
+      console.error('❌ Automatic login error:', err.message);
+    }
+  }
+
   createWindow();
   createTray();
-  
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -297,7 +404,6 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   // Don't quit on window close - keep running in tray
-  // Will only quit when user selects "Quit" from tray menu
 });
 
 app.on('before-quit', () => {
@@ -309,56 +415,53 @@ app.on('before-quit', () => {
   }
 });
 
-/**
- * Start polling backend for attendance status
- * This enables automatic start/stop tracking based on Vercel dashboard actions
- */
 function startAttendancePoller() {
   if (!attendancePoller) {
     attendancePoller = new AttendanceStatusPoller(apiService);
     
-    // Listen for day-started event
     attendancePoller.on('day-started', (data) => {
       console.log('🟢 Workday started! Attendance ID:', data.attendanceId);
       appState.isDayStarted = true;
+      appState.startTime = data.startTime || new Date().toISOString();
+      if (data.userName) {
+        appState.user = { ...(appState.user || {}), name: data.userName, email: data.userEmail || appState.user?.email };
+      }
       
-      // Start activity tracking
       if (activityTracker) {
         activityTracker.start(data.attendanceId);
       }
       
       updateTrayMenu();
       
-      // Notify UI
       if (mainWindow) {
-        mainWindow.webContents.send('day-status-changed', { dayStarted: true });
+        mainWindow.webContents.send('day-status-changed', { 
+          dayStarted: true,
+          startTime: appState.startTime,
+          user: appState.user
+        });
       }
     });
     
-    // Listen for day-ended event
     attendancePoller.on('day-ended', () => {
       console.log('🔴 Workday ended! Stopping tracking...');
       appState.isDayStarted = false;
+      appState.startTime = null;
       
-      // Stop activity tracking
       if (activityTracker) {
         activityTracker.stop();
       }
       
       updateTrayMenu();
       
-      // Notify UI
       if (mainWindow) {
         mainWindow.webContents.send('day-status-changed', { dayStarted: false });
       }
     });
   }
   
-  // Start polling
   attendancePoller.start();
 }
 
-// Handle uncaught errors
 process.on('uncaughtException', (error) => {
   console.error('Uncaught exception:', error);
 });

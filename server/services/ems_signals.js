@@ -68,6 +68,8 @@ class EMSSignalLayer extends EventEmitter {
           keystrokeBuffer: [],
           mouseBuffer: [],
           scrollBuffer: [],
+          intervalKeystrokes: 0,
+          intervalMouseEvents: 0,
         }
       };
 
@@ -110,13 +112,26 @@ class EMSSignalLayer extends EventEmitter {
    * SIGNAL 2: Keystroke Rate Detection
    * Measures real typing activity
    */
+  /**
+   * SIGNAL 2: Keystroke Rate Detection
+   * Measures real typing activity
+   */
   captureKeystroke(employeeId, keystrokeData = {}) {
     const employee = this.employeeSignals.get(employeeId);
     if (!employee) return;
 
+    const count = Math.max(1, parseInt(keystrokeData.count || keystrokeData.keystroke_count || 1, 10));
     const now = Date.now();
-    employee.realtime.keystrokeBuffer.push(now);
+
+    // Accumulate actual keystrokes for the current 30s interval
+    employee.realtime.intervalKeystrokes = (employee.realtime.intervalKeystrokes || 0) + count;
     employee.realtime.lastKeystroke = now;
+
+    // Buffer timestamps for sliding-window rate calculation (up to count, capped at 60)
+    const samplesToPush = Math.min(count, 60);
+    for (let i = 0; i < samplesToPush; i++) {
+      employee.realtime.keystrokeBuffer.push(now);
+    }
 
     // Calculate keystrokes per minute (last 60 seconds)
     const oneMinuteAgo = now - 60000;
@@ -133,6 +148,8 @@ class EMSSignalLayer extends EventEmitter {
       meaning: keystrokesPerMinute >= this.config.keystrokeThreshold ? 'real_activity' : 'low_activity',
       metadata: {
         key: keystrokeData.key || 'unknown',
+        count: count,
+        intervalTotal: employee.realtime.intervalKeystrokes,
         isTyping: keystrokesPerMinute > 0,
         burstMode: keystrokesPerMinute > 60,
         ...keystrokeData
@@ -142,7 +159,7 @@ class EMSSignalLayer extends EventEmitter {
     employee.currentState.keystroke_rate = keystrokesPerMinute;
     this.addSignal(employeeId, signal);
 
-    console.log(`⌨️  [SIGNAL] keystroke_rate - Employee ${employeeId}: ${keystrokesPerMinute}/min - ${signal.meaning}`);
+    console.log(`⌨️  [SIGNAL] keystroke_rate - Employee ${employeeId}: +${count} keys (interval: ${employee.realtime.intervalKeystrokes}, rate: ${keystrokesPerMinute}/min) - ${signal.meaning}`);
     this.emit('signal-captured', { employeeId, signal });
   }
 
@@ -154,14 +171,23 @@ class EMSSignalLayer extends EventEmitter {
     const employee = this.employeeSignals.get(employeeId);
     if (!employee) return;
 
+    const count = Math.max(1, parseInt(mouseData.count || mouseData.events || mouseData.mouse_events || 1, 10));
     const now = Date.now();
-    employee.realtime.mouseBuffer.push({
-      timestamp: now,
-      x: mouseData.x || 0,
-      y: mouseData.y || 0,
-      type: mouseData.type || 'move' // move, click, scroll
-    });
+
+    // Accumulate actual mouse events for the current 30s interval
+    employee.realtime.intervalMouseEvents = (employee.realtime.intervalMouseEvents || 0) + count;
     employee.realtime.lastMouseMove = now;
+
+    // Buffer samples for sliding-window calculation
+    const samplesToPush = Math.min(count, 30);
+    for (let i = 0; i < samplesToPush; i++) {
+      employee.realtime.mouseBuffer.push({
+        timestamp: now,
+        x: mouseData.x || 0,
+        y: mouseData.y || 0,
+        type: mouseData.type || 'move'
+      });
+    }
 
     // Calculate movements per minute
     const oneMinuteAgo = now - 60000;
@@ -177,6 +203,8 @@ class EMSSignalLayer extends EventEmitter {
       value: movementsPerMinute,
       meaning: movementsPerMinute >= this.config.mouseMovementThreshold ? 'engagement' : 'low_engagement',
       metadata: {
+        count: count,
+        intervalTotal: employee.realtime.intervalMouseEvents,
         x: mouseData.x,
         y: mouseData.y,
         eventType: mouseData.type,
@@ -188,7 +216,7 @@ class EMSSignalLayer extends EventEmitter {
     employee.currentState.mouse_movement = movementsPerMinute;
     this.addSignal(employeeId, signal);
 
-    console.log(`🖱️  [SIGNAL] mouse_movement - Employee ${employeeId}: ${movementsPerMinute}/min - ${signal.meaning}`);
+    console.log(`🖱️  [SIGNAL] mouse_movement - Employee ${employeeId}: +${count} events (interval: ${employee.realtime.intervalMouseEvents}, rate: ${movementsPerMinute}/min) - ${signal.meaning}`);
     this.emit('signal-captured', { employeeId, signal });
   }
 
@@ -290,6 +318,17 @@ class EMSSignalLayer extends EventEmitter {
     const idleTime = now - lastActivity;
     const isIdle = idleTime >= this.config.idleThreshold;
     
+    // Purge sliding buffers older than 60s and update live rates
+    const oneMinuteAgo = now - 60000;
+    employee.realtime.keystrokeBuffer = (employee.realtime.keystrokeBuffer || []).filter(
+      timestamp => timestamp > oneMinuteAgo
+    );
+    employee.realtime.mouseBuffer = (employee.realtime.mouseBuffer || []).filter(
+      event => event.timestamp > oneMinuteAgo
+    );
+    employee.currentState.keystroke_rate = employee.realtime.keystrokeBuffer.length;
+    employee.currentState.mouse_movement = employee.realtime.mouseBuffer.length;
+
     const signal = {
       type: 'idle_time',
       timestamp: now,
@@ -620,30 +659,54 @@ class EMSSignalLayer extends EventEmitter {
           continue;
         }
 
+        const intervalKeystrokes = employee.realtime.intervalKeystrokes || 0;
+        const intervalMouseEvents = employee.realtime.intervalMouseEvents || 0;
+
+        // Reset interval counters immediately for the next 30-second window
+        employee.realtime.intervalKeystrokes = 0;
+        employee.realtime.intervalMouseEvents = 0;
+
+        // Calculate accurate mouse activity score (0-100%) for this 30s window:
+        // A baseline of 20 mouse movement/click events in 30 seconds = 100% active mouse engagement.
+        const timeSinceMouse = now - (employee.realtime.lastMouseMove || 0);
+        let intervalMouseScore = 0;
+        if (timeSinceMouse < 30000 && intervalMouseEvents > 0) {
+          intervalMouseScore = Math.min(100, Math.round((intervalMouseEvents / 20) * 100));
+        }
+
+        // Idle duration for this 30s interval:
+        // If user had no keystrokes and no mouse activity in this 30s, record idle seconds
+        const timeSinceActivity = now - lastActivity;
+        let intervalIdleSec = 0;
+        if (intervalKeystrokes === 0 && intervalMouseScore < 10) {
+          intervalIdleSec = Math.min(30, Math.max(0, Math.floor(timeSinceActivity / 1000)));
+        }
+
         const stats = this.calculateSignalStatistics(employeeId);
         const activityScore = stats.activityScore;
         const riskLevel = stats.riskLevel;
         const indicator = stats.productivityIndicator;
 
-        // 1. Persist snapshot to EmployeeActivity
-        await EmployeeActivity.create({
+        // 1. Persist snapshot to EmployeeActivity with real interval metrics
+        const activityDoc = new EmployeeActivity({
           employee: employeeId,
           session_id: employee.sessionId || 'unknown',
-          keystroke_count: employee.currentState.keystroke_rate,
-          mouse_activity_score: Math.min(100, (employee.currentState.mouse_movement / this.config.mouseMovementThreshold) * 100),
-          idle_duration: Math.floor(employee.currentState.idle_time / 1000),
-          productivity_score: activityScore,
+          keystroke_count: intervalKeystrokes,
+          mouse_activity_score: intervalMouseScore,
+          idle_duration: intervalIdleSec,
           active_application: { url: null, name: null, title: null },
           timestamp: new Date(),
         });
+        activityDoc.calculateProductivityScore();
+        await activityDoc.save();
 
         // 2. Update WorkSession productivity rollup
         const session = await WorkSession.getTodaySession(employeeId);
         if (session) {
           await session.updateProductivity({
-            keystrokeCount: (session.productivity.keystrokeCount || 0) + employee.currentState.keystroke_rate,
-            mouseActivity: Math.round((session.productivity.mouseActivity || 0 + activityScore) / 2),
-            idleTime: (session.productivity.idleTime || 0) + Math.floor(employee.currentState.idle_time / 60000),
+            keystrokeCount: (session.productivity.keystrokeCount || 0) + intervalKeystrokes,
+            mouseActivity: Math.round(((session.productivity.mouseActivity || 0) + intervalMouseScore) / 2),
+            idleTime: (session.productivity.idleTime || 0) + Math.floor(intervalIdleSec / 60),
           });
         }
 

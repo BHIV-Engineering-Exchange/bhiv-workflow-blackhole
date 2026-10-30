@@ -25,7 +25,7 @@ class AttendanceStatusPoller extends EventEmitter {
       attendanceId: null,
       startTime: null
     };
-    this.POLL_INTERVAL_MS = 30 * 1000; // 30 seconds
+    this.POLL_INTERVAL_MS = 5 * 1000; // 5 seconds - fast detection when employee starts day from web dashboard
   }
 
   /**
@@ -37,7 +37,7 @@ class AttendanceStatusPoller extends EventEmitter {
       return;
     }
 
-    console.log('🔄 Starting attendance status poller (every 30s)...');
+    console.log('🔄 Starting attendance status poller (every 5s)...');
     
     // Poll immediately on start
     this.poll();
@@ -75,7 +75,9 @@ class AttendanceStatusPoller extends EventEmitter {
         dayStarted: nowStarted,
         attendanceId: status.attendanceId,
         startTime: status.startTime,
-        workLocation: status.workLocation
+        workLocation: status.workLocation,
+        userName: status.userName,
+        userEmail: status.userEmail
       };
 
       // Day just started (transition from false → true)
@@ -84,7 +86,9 @@ class AttendanceStatusPoller extends EventEmitter {
         this.emit('day-started', {
           attendanceId: status.attendanceId,
           startTime: status.startTime,
-          workLocation: status.workLocation
+          workLocation: status.workLocation,
+          userName: status.userName,
+          userEmail: status.userEmail
         });
       }
 
