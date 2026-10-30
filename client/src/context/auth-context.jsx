@@ -104,10 +104,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Load user from localStorage on mount
+  // Load user from localStorage on mount; when there is no local session,
+  // try Pravesh (blackhole_auth) SSO auto-login: the blackhole_token cookie is
+  // sent with credentials:'include', so a valid Blackhole sign-in skips the
+  // login page entirely (identity arrives namespaced as pravesh:<user_id>).
   useEffect(() => {
     const storedUser = localStorage.getItem("WorkflowUser");
-    if (storedUser) {
+    const storedToken = localStorage.getItem("WorkflowToken");
+    if (storedUser && storedToken) {
       try {
         const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
@@ -117,8 +121,42 @@ export const AuthProvider = ({ children }) => {
         console.error("Error parsing stored user:", error);
         localStorage.removeItem("WorkflowUser");
       }
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(`${API_URL}/pravesh/exchange`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        if (response.ok) {
+          const data = await response.json().catch(() => null);
+          if (!cancelled && data?.success && data.access_token && data.user) {
+            localStorage.setItem("WorkflowToken", data.access_token);
+            localStorage.setItem("WorkflowUser", JSON.stringify(data.user));
+            setUser(data.user);
+            console.log(
+              "✅ AuthContext: Pravesh SSO auto-login as",
+              data.user.role,
+              data.user.is_guest ? "(guest)" : ""
+            );
+          }
+        }
+      } catch (error) {
+        // Bridge offline (or no Blackhole session) — show the normal login page
+        console.log("AuthContext: no Pravesh SSO session, showing login");
+      }
+      if (!cancelled) setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const register = async (userData) => {
@@ -200,6 +238,19 @@ export const AuthProvider = ({ children }) => {
     try {
       await axiosInstance.post("/auth/logout");
     } catch (_) {}
+    // End the Pravesh SSO session too: the httpOnly blackhole_token cookie
+    // outlives localStorage and the boot exchange would sign the user right
+    // back in on the next page load.
+    try {
+      await fetch(`${API_URL}/pravesh/logout`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+    } catch (_) {
+      // Bridge offline — local sign-out still proceeds
+    }
     setUser(null);
     localStorage.removeItem("WorkflowToken");
     localStorage.removeItem("WorkflowUser");

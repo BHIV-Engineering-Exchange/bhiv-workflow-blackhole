@@ -327,6 +327,8 @@ const corsOptions = {
     "x-governance-signature",
     "X-CLIENT-TIMESTAMP",
     "x-client-timestamp",
+    "X-Pravesh-Token",
+    "x-pravesh-token",
   ],
   optionsSuccessStatus: 204,
 };
@@ -351,7 +353,7 @@ app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Origin, X-Requested-With, Content-Type, Accept, x-auth-token, Authorization, X-Branch, x-branch, X-Execution-Id, x-execution-id, X-Trace-Id, x-trace-id, X-Execution-Key, x-execution-key, X-Tenant-Id, x-tenant-id, X-Governance-Route, x-governance-route, X-Governance-Policy, x-governance-policy, X-Governance-Authority, x-governance-authority, X-Governance-Signature, x-governance-signature"
+      "Origin, X-Requested-With, Content-Type, Accept, x-auth-token, Authorization, X-Branch, x-branch, X-Execution-Id, x-execution-id, X-Trace-Id, x-trace-id, X-Execution-Key, x-execution-key, X-Tenant-Id, x-tenant-id, X-Governance-Route, x-governance-route, X-Governance-Policy, x-governance-policy, X-Governance-Authority, x-governance-authority, X-Governance-Signature, x-governance-signature, X-Pravesh-Token, x-pravesh-token"
     );
   }
   next();
@@ -581,6 +583,7 @@ app.use("/api/tasks", taskRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/pravesh", require("./routes/pravesh")); // Pravesh (blackhole_auth) SSO bridge — read-only
 app.use("/api/ai", aiRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/dashboard", dashboardRoutes);
