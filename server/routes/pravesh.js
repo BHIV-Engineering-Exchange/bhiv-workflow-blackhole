@@ -17,6 +17,7 @@
 
 const express = require("express");
 const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 
 const {
   praveshEnabled,
@@ -53,7 +54,7 @@ router.post("/logout", (req, res) => {
 });
 
 // Exchange a valid Pravesh cookie/header for a Niyantran access token.
-router.post("/exchange", (req, res) => {
+router.post("/exchange", async (req, res) => {
   if (!praveshEnabled()) {
     return res.status(503).json({
       success: false,
@@ -85,8 +86,6 @@ router.post("/exchange", (req, res) => {
     });
   }
 
-  const local = localIdentity(identity);
-
   if (!process.env.JWT_SECRET) {
     return res.status(503).json({
       success: false,
@@ -94,16 +93,56 @@ router.post("/exchange", (req, res) => {
     });
   }
 
-  // Local token follows the standard Niyantran payload shape so every
-  // existing middleware/route (x-auth-token verification) keeps working.
-  const token = jwt.sign(
-    {
+  // Check if this user already exists in Niyantran's MongoDB collection by email
+  let existingUser = null;
+  if (identity.email) {
+    try {
+      existingUser = await User.findOne({ email: identity.email.toLowerCase().trim() });
+    } catch (err) {
+      console.warn("[PRAVESH] User lookup error:", err.message);
+    }
+  }
+
+  let payload;
+  if (existingUser) {
+    // User already has an account on Niyantran: Open their EXACT existing account, role & tasks!
+    payload = {
+      id: String(existingUser._id),
+      user_id: String(existingUser._id),
+      name: existingUser.name,
+      email: existingUser.email,
+      role: existingUser.role, // Exact role from existing account (User, Manager, Admin, etc.)
+      department: existingUser.department,
+      branch: existingUser.branch || "blackhole_mumbai",
+      sso: true,
+      is_guest: false,
+      blackhole_user_id: identity.user_id,
+    };
+  } else {
+    // New user without prior Niyantran account: Map role from Pravesh claims
+    const local = localIdentity(identity);
+    payload = {
       id: local.local_id,
+      user_id: local.local_id,
       name: (identity.email || "").split("@")[0] || identity.user_id,
       email: local.email,
       role: local.role,
       sso: true,
       is_guest: local.is_guest,
+      blackhole_user_id: identity.user_id,
+    };
+  }
+
+  const token = jwt.sign(
+    {
+      id: payload.id,
+      name: payload.name,
+      email: payload.email,
+      role: payload.role,
+      department: payload.department,
+      branch: payload.branch,
+      sso: true,
+      is_guest: payload.is_guest,
     },
     process.env.JWT_SECRET,
     { expiresIn: "180d" }
@@ -114,17 +153,8 @@ router.post("/exchange", (req, res) => {
     access_token: token,
     refresh_token: null,
     token_type: "bearer",
-    user: {
-      id: local.local_id,
-      user_id: local.local_id,
-      name: (identity.email || "").split("@")[0] || identity.user_id,
-      email: local.email,
-      role: local.role,
-      sso: true,
-      is_guest: local.is_guest,
-      blackhole_user_id: identity.user_id,
-    },
-    guest: local.is_guest,
+    user: payload,
+    guest: payload.is_guest,
   });
 });
 

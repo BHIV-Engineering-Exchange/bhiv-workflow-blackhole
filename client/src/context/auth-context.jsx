@@ -104,29 +104,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Load user from localStorage on mount; when there is no local session,
-  // try Pravesh (blackhole_auth) SSO auto-login: the blackhole_token cookie is
-  // sent with credentials:'include', so a valid Blackhole sign-in skips the
-  // login page entirely (identity arrives namespaced as pravesh:<user_id>).
+    // On mount: check active Pravesh (blackhole_auth) SSO session first so the
+  // currently signed-in user opens (not a stale localStorage session from a prior user).
   useEffect(() => {
-    const storedUser = localStorage.getItem("WorkflowUser");
-    const storedToken = localStorage.getItem("WorkflowToken");
-    if (storedUser && storedToken) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-        // Resume monitoring on page reload / tab reopen
-        startMonitoring(parsedUser);
-      } catch (error) {
-        console.error("Error parsing stored user:", error);
-        localStorage.removeItem("WorkflowUser");
-      }
-      setLoading(false);
-      return;
-    }
-
     let cancelled = false;
+
     (async () => {
+      // 1. Try Pravesh SSO cookie exchange
       try {
         const response = await fetch(`${API_URL}/pravesh/exchange`, {
           method: "POST",
@@ -134,23 +118,43 @@ export const AuthProvider = ({ children }) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
         });
+
         if (response.ok) {
           const data = await response.json().catch(() => null);
           if (!cancelled && data?.success && data.access_token && data.user) {
             localStorage.setItem("WorkflowToken", data.access_token);
             localStorage.setItem("WorkflowUser", JSON.stringify(data.user));
             setUser(data.user);
+            startMonitoring(data.user);
+            setLoading(false);
             console.log(
               "✅ AuthContext: Pravesh SSO auto-login as",
-              data.user.role,
-              data.user.is_guest ? "(guest)" : ""
+              data.user.email,
+              data.user.role
             );
+            return;
           }
         }
       } catch (error) {
-        // Bridge offline (or no Blackhole session) — show the normal login page
-        console.log("AuthContext: no Pravesh SSO session, showing login");
+        // Pravesh bridge offline or no Blackhole session
       }
+
+      // 2. Fallback to existing localStorage session when Pravesh is not active
+      const storedUser = localStorage.getItem("WorkflowUser");
+      const storedToken = localStorage.getItem("WorkflowToken");
+      if (storedUser && storedToken) {
+        try {
+          const parsedUser = JSON.parse(storedUser);
+          if (!cancelled) {
+            setUser(parsedUser);
+            startMonitoring(parsedUser);
+          }
+        } catch (error) {
+          console.error("Error parsing stored user:", error);
+          localStorage.removeItem("WorkflowUser");
+        }
+      }
+
       if (!cancelled) setLoading(false);
     })();
 
